@@ -134,6 +134,12 @@ Status: **PASSED — 2026-09-03**
 
 ## Milestone 4 — Minimum Database Schema
 
-Status: **NEXT**
+Status: **IN PROGRESS — DATABASE TEST EXECUTION PENDING**
+
+- Follow-up audit/ledger migration and isolated PostgreSQL test harness added.
+- Original core migration preserved; no live database or API deployment performed.
+- Test schema target: `meshalot_test`; fixtures roll back after verification.
+- Pending: successful PostgreSQL execution, migration tracking, least-privilege
+  application role, and application persistence verification. Do not advance yet.
 
 Implement migrations for accounts, nodes, status, hardware and network benchmarks, models, jobs and job events, usage, the append-only simulated-money wallet ledger, pricing rates, and enrollment tokens. Prove that a test user, node, benchmark, job, usage record, earning, and charge can be created and read without manual database edits; verify that job history is auditable and wallet balance can be reconstructed from ledger entries.
