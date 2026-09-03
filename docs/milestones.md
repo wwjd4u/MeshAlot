@@ -10,6 +10,7 @@ Status: **IN PROGRESS**
 - [x] Environments, naming, and operating rules are documented.
 - [x] Minimal API/agent vertical slice and automated integration test exist.
 - [x] Clone, build, and run on the primary development machine.
+- [x] Run the control API and agent together on the primary development machine.
 - [ ] Verify commit/push from the primary development machine.
 - [ ] Clone and build on a second test machine.
 
@@ -25,6 +26,16 @@ Status: **IN PROGRESS**
 - Result: **PASS**
 - Server integration package completed in `0.003s`; all other packages compiled successfully.
 
+### Live API/agent evidence
+
+- Control API: `127.0.0.1:8180` (port 8180 avoids the existing local llama.cpp service on port 8080)
+- Agent: `meshalot-development-node-001`
+- Agent version: `0.0.1-dev`
+- Enrollment: **PASS**
+- Heartbeat: **PASS**
+- `GET /v1/health`: **PASS**, protocol `v1`, status `ok`
+- `GET /v1/nodes`: **PASS**, node status `online`, mode `available`
+
 ### Next concrete step
 
-Run the control server and agent together on the MS-02, verify the health and node-list endpoints, then verify a commit/push from the primary development machine. After that, clone and build on a second test machine. Only when those checks pass may Milestone 1 begin with the dedicated Google Cloud POC project and billing-budget guardrails.
+Verify an authenticated commit/push from the MS-02, then clone and build on a second test machine. Only when those checks pass may Milestone 1 begin with the dedicated Google Cloud POC project and billing-budget guardrails.
