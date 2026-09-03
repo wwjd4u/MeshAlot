@@ -59,6 +59,28 @@ Status: **PASSED — 2026-09-03**
 
 ## Milestone 1 — Google Cloud Account and Billing Guardrails
 
+Status: **PASSED — 2026-09-03**
+
+- [x] Dedicated MeshAlot Google administrator account and Google Cloud project created.
+- [x] Paid billing attached to the single POC project.
+- [x] Monthly alert budget set to $25 with low-threshold and forecasted alerts.
+- [x] Only the milestone-required Compute Engine and Cloud Logging APIs enabled.
+- [x] Primary Google Cloud region selected: `us-south1` (Dallas).
+- [x] No VM instances existed before network provisioning.
+- [x] Unused Google-created default firewall rules and default auto-mode VPC were deleted with explicit authorization.
+- [x] Post-deletion checks showed no remaining VPC networks or firewall rules.
+- [x] Administrator and billing identifiers recorded in a private Drive register and omitted from this public repository.
+
+### Milestone 1 release gate
+
+- Build: **PASS**
+- Test: **PASS**
+- Pass criteria: **PASS**
+- Do-not-proceed check: **PASS**
+- Result: **PROCEED TO MILESTONE 2**
+
+## Milestone 2 — Dual-Stack Google Network
+
 Status: **NEXT**
 
-Create or select the Google Cloud account, create a dedicated MeshAlot POC project, attach billing, configure low-threshold budget alerts, enable only required APIs, and record private project identifiers without committing secrets or billing details to this public repository.
+Create a purpose-built custom-mode VPC and dual-stack subnet in `us-south1`, apply least-privilege firewall policy, launch a temporary test VM, and prove both IPv4 and IPv6 connectivity before proceeding.
