@@ -79,8 +79,33 @@ Status: **PASSED — 2026-09-03**
 - Do-not-proceed check: **PASS**
 - Result: **PROCEED TO MILESTONE 2**
 
+
 ## Milestone 2 — Dual-Stack Google Network
+
+Status: **PASSED — 2026-09-03**
+
+- [x] Custom-mode VPC created with regional routing.
+- [x] Dallas subnet created with private IPv4 and external IPv6.
+- [x] Private Google Access enabled.
+- [x] Management firewall permits TCP 22 only from Google IAP and only to tagged instances.
+- [x] No public database, local-AI runtime, or unrestricted SSH ports exposed.
+- [x] Temporary dual-stack Debian VM launched on the subnet.
+- [x] IAP-only SSH access verified.
+- [x] Outbound IPv4 returned HTTP 204.
+- [x] Outbound IPv6 returned HTTP 204.
+- [x] Temporary test VM and attached boot disk permanently deleted after explicit authorization.
+- [x] Purpose-built VPC, subnet, and restricted IAP firewall rule retained.
+
+### Milestone 2 release gate
+
+- Build: **PASS**
+- Test: **PASS**
+- Pass criteria: **PASS**
+- Do-not-proceed check: **PASS**
+- Result: **PROCEED TO MILESTONE 3**
+
+## Milestone 3 — First Control Server
 
 Status: **NEXT**
 
-Create a purpose-built custom-mode VPC and dual-stack subnet in `us-south1`, apply least-privilege firewall policy, launch a temporary test VM, and prove both IPv4 and IPv6 connectivity before proceeding.
+Deploy the first dual-stack MeshAlot control-plane VM, install Git, Go, PostgreSQL, and a TLS-capable web front end, run the application under a non-root service account, enable automatic restart and structured logging, and verify PostgreSQL, HTTPS, IPv4, IPv6, and repeated reboot stability.
