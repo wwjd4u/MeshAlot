@@ -106,6 +106,34 @@ Status: **PASSED — 2026-09-03**
 
 ## Milestone 3 — First Control Server
 
+Status: **PASSED — 2026-09-03**
+
+- [x] Permanent dual-stack `e2-small` control-plane VM deployed in `us-south1-a`.
+- [x] Static IPv4 and IPv6 addresses assigned and DNS published for `api.meshalot.com`.
+- [x] Git, Go, PostgreSQL 16, and Caddy installed.
+- [x] MeshAlot server built from the repository and run as the non-login `meshalot` service account.
+- [x] Enrollment secret stored in a root-controlled environment file and omitted from logs and source control.
+- [x] MeshAlot, PostgreSQL, and Caddy enabled as automatic system services.
+- [x] MeshAlot API bound privately to `127.0.0.1:8180`; PostgreSQL bound privately to `127.0.0.1:5432`.
+- [x] Public HTTPS limited to versioned `/v1/*` API routes; unrelated paths return HTTP 404.
+- [x] Valid Let's Encrypt TLS certificate issued for `api.meshalot.com`.
+- [x] Public IPv4 health request returned HTTP 200.
+- [x] External IPv6 ingress and TLS request observed successfully; Cloud Shell itself has no IPv6 default route.
+- [x] Structured JSON application and reverse-proxy logging enabled.
+- [x] Two independent reboot cycles produced new boot IDs and automatic service/API recovery.
+- [x] Compute Engine reset returned success; post-reset public health returned HTTP 200.
+- [x] Current-boot error review found only a transient rsyslog `/dev/console` write warning.
+
+### Milestone 3 release gate
+
+- Build: **PASS**
+- Test: **PASS**
+- Pass criteria: **PASS**
+- Do-not-proceed check: **PASS**
+- Result: **PROCEED TO MILESTONE 4**
+
+## Milestone 4 — Minimum Database Schema
+
 Status: **NEXT**
 
-Deploy the first dual-stack MeshAlot control-plane VM, install Git, Go, PostgreSQL, and a TLS-capable web front end, run the application under a non-root service account, enable automatic restart and structured logging, and verify PostgreSQL, HTTPS, IPv4, IPv6, and repeated reboot stability.
+Implement migrations for accounts, nodes, status, hardware and network benchmarks, models, jobs and job events, usage, the append-only simulated-money wallet ledger, pricing rates, and enrollment tokens. Prove that a test user, node, benchmark, job, usage record, earning, and charge can be created and read without manual database edits; verify that job history is auditable and wallet balance can be reconstructed from ledger entries.
