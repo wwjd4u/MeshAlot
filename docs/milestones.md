@@ -11,7 +11,7 @@ Status: **IN PROGRESS**
 - [x] Minimal API/agent vertical slice and automated integration test exist.
 - [x] Clone, build, and run on the primary development machine.
 - [x] Run the control API and agent together on the primary development machine.
-- [ ] Verify commit/push from the primary development machine.
+- [x] Verify commit/push from the primary development machine.
 - [ ] Clone and build on a second test machine.
 
 ### Primary development-machine evidence
@@ -36,6 +36,15 @@ Status: **IN PROGRESS**
 - `GET /v1/health`: **PASS**, protocol `v1`, status `ok`
 - `GET /v1/nodes`: **PASS**, node status `online`, mode `available`
 
+### Primary source-control evidence
+
+- Authentication: GitHub CLI authenticated as `wwjd4u`
+- Git protocol: HTTPS
+- Push commit: `c40cfe9`
+- Remote update: `0806520..c40cfe9 main -> main`
+- Local `HEAD`, `origin/main`, and GitHub `main` matched after push
+- Result: **PASS**
+
 ### Next concrete step
 
-Verify an authenticated commit/push from the MS-02, then clone and build on a second test machine. Only when those checks pass may Milestone 1 begin with the dedicated Google Cloud POC project and billing-budget guardrails.
+Clone and build on a second test machine. Only when that final check passes may Milestone 1 begin with the dedicated Google Cloud POC project and billing-budget guardrails.
