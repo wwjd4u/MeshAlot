@@ -1,0 +1,16 @@
+BEGIN;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE TABLE users(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),email text UNIQUE NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE nodes(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid NOT NULL REFERENCES users(id),node_key text UNIQUE NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE node_status(node_id uuid PRIMARY KEY REFERENCES nodes(id),status text NOT NULL,observed_at timestamptz NOT NULL);
+CREATE TABLE hardware_inventory(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),node_id uuid NOT NULL REFERENCES nodes(id),payload jsonb NOT NULL,observed_at timestamptz NOT NULL);
+CREATE TABLE network_benchmarks(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),node_id uuid NOT NULL REFERENCES nodes(id),payload jsonb NOT NULL,score numeric,observed_at timestamptz NOT NULL);
+CREATE TABLE compute_benchmarks(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),node_id uuid NOT NULL REFERENCES nodes(id),payload jsonb NOT NULL,score numeric,observed_at timestamptz NOT NULL);
+CREATE TABLE models(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),name text NOT NULL,quantization text,UNIQUE(name,quantization));
+CREATE TABLE jobs(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),consumer_user_id uuid NOT NULL REFERENCES users(id),provider_node_id uuid REFERENCES nodes(id),model_id uuid REFERENCES models(id),status text NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE job_events(id bigserial PRIMARY KEY,job_id uuid NOT NULL REFERENCES jobs(id),event_type text NOT NULL,payload jsonb NOT NULL DEFAULT '{}',created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE usage_records(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),job_id uuid UNIQUE NOT NULL REFERENCES jobs(id),metrics jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE wallet_transactions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid NOT NULL REFERENCES users(id),job_id uuid REFERENCES jobs(id),transaction_type text NOT NULL,amount_microunits bigint NOT NULL,idempotency_key text UNIQUE NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE pricing_rates(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),workload_type text NOT NULL,rate_microunits bigint NOT NULL,inputs jsonb NOT NULL,effective_at timestamptz NOT NULL);
+CREATE TABLE enrollment_tokens(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid NOT NULL REFERENCES users(id),token_hash text UNIQUE NOT NULL,expires_at timestamptz NOT NULL,consumed_at timestamptz);
+COMMIT;
