@@ -4,7 +4,7 @@ The Google Drive **AI Mesh POC Build, Test, and Release Guide** remains the sour
 
 ## Milestone 0 — Project Foundation
 
-Status: **IN PROGRESS**
+Status: **PASSED — 2026-09-03**
 
 - [x] Planned top-level structure is present.
 - [x] Environments, naming, and operating rules are documented.
@@ -12,7 +12,7 @@ Status: **IN PROGRESS**
 - [x] Clone, build, and run on the primary development machine.
 - [x] Run the control API and agent together on the primary development machine.
 - [x] Verify commit/push from the primary development machine.
-- [ ] Clone and build on a second test machine.
+- [x] Clone and build on a second test machine.
 
 ### Primary development-machine evidence
 
@@ -45,6 +45,20 @@ Status: **IN PROGRESS**
 - Local `HEAD`, `origin/main`, and GitHub `main` matched after push
 - Result: **PASS**
 
-### Next concrete step
+### Second development-machine evidence
 
-Clone and build on a second test machine. Only when that final check passes may Milestone 1 begin with the dedicated Google Cloud POC project and billing-budget guardrails.
+- Date: 2026-09-03
+- Machine: `Jasons-MacBook-Pro`
+- Operating system: macOS 26.5.1, Intel `x86_64`
+- Go: `go1.27.1 darwin/amd64`
+- Branch: `main`
+- Tested commit: `773dfb7`
+- Command: `go test ./...`
+- Result: **PASS**
+- Server integration package completed in `0.480s`; all other packages compiled successfully.
+
+## Milestone 1 — Google Cloud Account and Billing Guardrails
+
+Status: **NEXT**
+
+Create or select the Google Cloud account, create a dedicated MeshAlot POC project, attach billing, configure low-threshold budget alerts, enable only required APIs, and record private project identifiers without committing secrets or billing details to this public repository.
