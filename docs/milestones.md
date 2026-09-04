@@ -148,9 +148,16 @@ Status: **IN PROGRESS — ISOLATED DATABASE TESTS PASSED**
 - Restricted test-role verification: **PASS**, user-reported output. Required
   job/usage/ledger writes succeeded; all ten forbidden operations were denied.
   Fixtures rolled back. This used SET ROLE, not a runtime login connection.
-- Version/checksum runner and tracking integration tests added. Local runner
-  construction tests passed; PostgreSQL tracking execution remains pending.
-- Pending: migration tracking verification, runtime-role deployment, and
-  application persistence verification. Do not advance yet.
+- Version/checksum runner: eight local construction tests passed.
+- PostgreSQL tracking integration tests: **PASS**, user-reported output from
+  commit `d83f15c`, verified 2026-09-04 UTC.
+- Existing test schema registered explicitly as `adopted_test`; versions 1 and 2
+  matched pinned SHA-256 checksums without re-executing their migrations.
+- Repeat application skipped recorded migrations; altered checksum was rejected;
+  intentionally failed migration rolled back schema changes and history.
+- Final status showed both versions verified with unchanged registration times.
+- Pending: runtime-role deployment and application persistence verification.
+  Fresh-database application of the full tracked migration batch also remains
+  to be tested before application deployment. Do not advance yet.
 
 Implement migrations for accounts, nodes, status, hardware and network benchmarks, models, jobs and job events, usage, the append-only simulated-money wallet ledger, pricing rates, and enrollment tokens. Prove that a test user, node, benchmark, job, usage record, earning, and charge can be created and read without manual database edits; verify that job history is auditable and wallet balance can be reconstructed from ledger entries.
