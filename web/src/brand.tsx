@@ -34,6 +34,15 @@ export function MeshAlotBrand({compact = false, hero = false}: {compact?: boolea
   </div>;
 }
 
+export function MeshHeroArtwork({className = ""}: {className?: string}) {
+  return <img
+    className={`mesh-hero-art ${className}`.trim()}
+    src="/brand/meshalot_logo_web.svg"
+    alt="MeshAlot distributed compute network"
+    draggable={false}
+  />;
+}
+
 export function MeshBackdrop() {
   return <div className="mesh-backdrop" aria-hidden="true">
     <MeshMark className="backdrop-mark" />
