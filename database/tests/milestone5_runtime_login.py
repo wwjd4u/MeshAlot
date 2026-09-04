@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Exercise Milestone 5 through the real restricted meshalot PostgreSQL login.
 
-Run as the postgres OS user with MESHALOT_RUNTIME_TEST_DSN set in the inherited
-environment. The DSN must identify user=meshalot and database=meshalot_m5_test.
-The DSN and generated credentials are never printed. Test fixtures are retained.
+Run this orchestrator as root with MESHALOT_RUNTIME_TEST_DSN set in the inherited
+environment. Database fixture/migration work runs as the postgres OS user, while
+the temporary API process drops to the production meshalot OS user. The DSN must
+identify user=meshalot and database=meshalot_m5_test. The DSN and generated
+credentials are never printed. Test fixtures are retained.
 """
 from http.cookiejar import CookieJar
 import json
@@ -25,17 +27,28 @@ DATABASE = "meshalot_m5_test"
 PORT = 18181
 BASE = f"http://127.0.0.1:{PORT}"
 TOKEN = "m5-runtime-enrollment-token-not-production-0001"
+RUNTIME_OS_USER = "meshalot"
 
 
 def literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def as_postgres(command, **kwargs):
+    return subprocess.run(
+        ["sudo", "-n", "-u", "postgres", *command],
+        text=True,
+        check=True,
+        **kwargs,
+    )
+
+
 def psql(sql: str):
-    subprocess.run(
+    as_postgres(
         ["psql", "-X", "--no-password", "--dbname=" + DATABASE,
          "--set=ON_ERROR_STOP=1", "--file=-"],
-        input=sql, text=True, check=True, stdout=subprocess.DEVNULL,
+        input=sql,
+        stdout=subprocess.DEVNULL,
     )
 
 
@@ -49,6 +62,13 @@ def dsn_identity(dsn: str):
             key, value = token.split("=", 1)
             values[key] = value
     return values.get("user", ""), values.get("dbname", "")
+
+
+def drop_to_runtime_user():
+    account = pwd.getpwnam(RUNTIME_OS_USER)
+    os.setgid(account.pw_gid)
+    os.initgroups(account.pw_name, account.pw_gid)
+    os.setuid(account.pw_uid)
 
 
 def request(opener, method, path, body=None, expected=200, headers=None):
@@ -71,14 +91,18 @@ def request(opener, method, path, body=None, expected=200, headers=None):
 
 
 def main():
-    if pwd.getpwuid(os.geteuid()).pw_name != "postgres":
-        raise SystemExit("Run this test as the postgres OS user")
+    if os.geteuid() != 0:
+        raise SystemExit("Run this test orchestrator as root")
     if len(sys.argv) != 2:
         raise SystemExit("usage: milestone5_runtime_login.py /path/to/meshalot-server")
 
     binary = Path(sys.argv[1]).resolve()
     if not binary.is_file():
         raise SystemExit("server binary not found")
+    try:
+        pwd.getpwnam(RUNTIME_OS_USER)
+    except KeyError:
+        raise SystemExit("meshalot OS user not found")
 
     dsn = os.environ.get("MESHALOT_RUNTIME_TEST_DSN", "")
     if not dsn:
@@ -93,9 +117,9 @@ def main():
         except OSError:
             raise SystemExit(f"test port {PORT} is already in use; live API is not touched")
 
-    subprocess.run(
+    as_postgres(
         [sys.executable, str(ROOT / "migrate.py"), "apply", "--database", DATABASE],
-        text=True, check=True, stdout=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
     )
 
     suffix = uuid.uuid4().hex
@@ -144,7 +168,11 @@ COMMIT;
     env.pop("MESHALOT_RUNTIME_TEST_DSN", None)
 
     process = subprocess.Popen(
-        [str(binary)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        [str(binary)],
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        preexec_fn=drop_to_runtime_user,
     )
     try:
         deadline = time.time() + 20
@@ -207,7 +235,7 @@ COMMIT;
         request(client_b, "POST", "/v1/auth/logout", expected=204)
 
         print("MILESTONE 5 RESTRICTED LOGIN TEST PASSED")
-        print("PASS: real meshalot DB login, sessions, account separation, dashboard/jobs, enrollment, heartbeat")
+        print("PASS: meshalot OS user + DB login, sessions, account separation, dashboard/jobs, enrollment, heartbeat")
         print(f"Audit fixtures retained in {DATABASE}; live service untouched")
     finally:
         if process.poll() is None:
