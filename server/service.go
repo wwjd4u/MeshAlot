@@ -45,8 +45,12 @@ func (s *Service) databaseError(w http.ResponseWriter, err error) {
 		writeError(w, 404, "record not found")
 		return
 	}
-	if errors.Is(err, ErrNodeOwnership) {
-		writeError(w, 409, "node ownership conflict")
+	if errors.Is(err, ErrNodeOwnership) || errors.Is(err, ErrNodeIdentityConflict) {
+		writeError(w, 409, "node identity conflict")
+		return
+	}
+	if errors.Is(err, ErrTooManyActiveEnrollmentCodes) {
+		writeError(w, 429, "too many active enrollment codes; use or let an existing code expire")
 		return
 	}
 	s.logger.Error("database operation failed")
@@ -66,6 +70,8 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/account/nodes/{nodeID}", s.requireSession(s.accountNode))
 	mux.HandleFunc("GET /v1/account/wallet", s.requireSession(s.wallet))
 	mux.HandleFunc("GET /v1/account/jobs", s.requireSession(s.jobs))
+	mux.HandleFunc("POST /v1/account/enrollment-codes", s.requireSession(s.issueEnrollmentCode))
+	mux.HandleFunc("POST /v1/agent/enroll", s.secureEnroll)
 	return middleware(mux)
 }
 func (s *Service) health(w http.ResponseWriter, r *http.Request) {
