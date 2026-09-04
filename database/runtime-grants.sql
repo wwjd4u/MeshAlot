@@ -16,9 +16,6 @@ BEGIN
 END
 $$;
 
--- Reset direct table/column rights first so an older broader grant set cannot
--- survive a later tightening. PostgreSQL table-level REVOKE also removes the
--- corresponding column privileges on that table.
 REVOKE ALL PRIVILEGES ON
     users,
     nodes,
@@ -28,17 +25,23 @@ REVOKE ALL PRIVILEGES ON
     wallet_transactions,
     pricing_rates,
     jobs,
-    user_sessions
+    user_sessions,
+    enrollment_tokens
 FROM meshalot;
 
 GRANT USAGE ON SCHEMA public TO meshalot;
 GRANT SELECT (id,email,password_hash) ON users TO meshalot;
 
 GRANT SELECT ON nodes, node_status TO meshalot;
-GRANT INSERT (user_id,node_key,agent_version) ON nodes TO meshalot;
-GRANT UPDATE (agent_version) ON nodes TO meshalot;
+GRANT INSERT (user_id,node_key,agent_version,identity_public_key) ON nodes TO meshalot;
+GRANT UPDATE (agent_version,identity_public_key) ON nodes TO meshalot;
 GRANT INSERT (node_id,status,observed_at) ON node_status TO meshalot;
 GRANT UPDATE (status,mode,observed_at,last_heartbeat) ON node_status TO meshalot;
+
+GRANT SELECT (id,user_id,token_hash,expires_at,consumed_at,created_at,consumed_node_id)
+    ON enrollment_tokens TO meshalot;
+GRANT INSERT (user_id,token_hash,expires_at) ON enrollment_tokens TO meshalot;
+GRANT UPDATE (consumed_at,consumed_node_id) ON enrollment_tokens TO meshalot;
 
 GRANT SELECT (node_id,score,observed_at) ON compute_benchmarks, network_benchmarks TO meshalot;
 GRANT SELECT (id,user_id,job_id,transaction_type,amount_microunits,created_at) ON wallet_transactions TO meshalot;
