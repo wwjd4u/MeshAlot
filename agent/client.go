@@ -19,6 +19,7 @@ func(c *Client)post(ctx context.Context,path string,value any,expected int)error
 	body,err:=json.Marshal(value);if err!=nil{return err}
 	req,err:=http.NewRequestWithContext(ctx,"POST",c.baseURL+path,bytes.NewReader(body));if err!=nil{return err}
 	req.Header.Set("Content-Type","application/json")
+	req.Header.Set("Authorization","Bearer "+c.token)
 	resp,err:=c.httpClient.Do(req);if err!=nil{return err};defer resp.Body.Close()
 	if resp.StatusCode!=expected{return fmt.Errorf("%s returned %s",path,resp.Status)};return nil
 }

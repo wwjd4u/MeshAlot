@@ -156,8 +156,13 @@ Status: **IN PROGRESS — ISOLATED DATABASE TESTS PASSED**
 - Repeat application skipped recorded migrations; altered checksum was rejected;
   intentionally failed migration rolled back schema changes and history.
 - Final status showed both versions verified with unchanged registration times.
-- Pending: runtime-role deployment and application persistence verification.
-  Fresh-database application of the full tracked migration batch also remains
-  to be tested before application deployment. Do not advance yet.
+- Fresh-database tracked application of migrations 1 and 2: **PASS**,
+  user-reported PostgreSQL output. Both registered as executed, repeat apply
+  skipped them, and all 13 core tables were listed.
+- PostgreSQL node storage, migration 3, restricted runtime test setup, and
+  persistence integration test added. Go compilation/database execution of this
+  new persistence path remains pending; the live service is unchanged.
+- Pending: runtime-role/persistence tests, actual process restart verification,
+  and controlled application deployment. Do not advance yet.
 
 Implement migrations for accounts, nodes, status, hardware and network benchmarks, models, jobs and job events, usage, the append-only simulated-money wallet ledger, pricing rates, and enrollment tokens. Prove that a test user, node, benchmark, job, usage record, earning, and charge can be created and read without manual database edits; verify that job history is auditable and wallet balance can be reconstructed from ledger entries.
