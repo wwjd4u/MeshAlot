@@ -1,6 +1,6 @@
 import React, {FormEvent, ReactNode, useEffect, useState} from "react";
 import {createRoot} from "react-dom/client";
-import {MeshAlotBrand, MeshBackdrop} from "./brand";
+import {MeshAlotBrand, MeshHeroArtwork} from "./brand";
 import "./style.css";
 
 type User = {id: string; email: string};
@@ -77,12 +77,13 @@ function SignIn({onSignedIn, initialError}: {onSignedIn: (user: User) => void; i
   }
   return <main className="signin-shell">
     <section className="signin-visual">
-      <MeshBackdrop />
       <div className="signin-visual-content">
-        <MeshAlotBrand hero />
-        <p className="signin-kicker">DISTRIBUTED COMPUTE NETWORK</p>
-        <h2>Turn independent machines into one coordinated mesh.</h2>
-        <p>Securely attach computers, see network state, and build toward a marketplace for shared compute.</p>
+        <MeshHeroArtwork />
+        <div className="signin-visual-copy">
+          <p className="signin-kicker">DISTRIBUTED COMPUTE NETWORK</p>
+          <h2>Turn independent machines into one coordinated mesh.</h2>
+          <p>Securely attach computers, see network state, and build toward a marketplace for shared compute.</p>
+        </div>
       </div>
     </section>
     <section className="signin-card">
