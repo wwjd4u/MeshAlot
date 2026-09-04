@@ -81,7 +81,7 @@ function SignIn({onSignedIn, initialError}: {onSignedIn: (user: User) => void; i
         <MeshHeroArtwork />
         <div className="signin-visual-copy">
           <p className="signin-kicker">DISTRIBUTED COMPUTE NETWORK</p>
-          <h2>Turn independent machines into one coordinated mesh.</h2>
+          <h2>Turn independent local machines into one coordinated mesh network.</h2>
           <p>Securely attach computers, see network state, and build toward a marketplace for shared compute.</p>
         </div>
       </div>

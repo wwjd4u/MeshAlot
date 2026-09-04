@@ -18,3 +18,7 @@ The production web artwork in this directory is derived from the user-supplied M
 - The simplified React `MeshMark` remains the compact icon for the authenticated application shell and future small-size surfaces.
 
 The supplied MP4/GIF animation assets are intentionally not part of this authenticated-app release candidate. They remain future marketing/landing-page material and should only be introduced through a separately tested asset/deployment change.
+
+## Official MeshAlot motto
+
+**Turn independent local machines into one coordinated mesh network.**
