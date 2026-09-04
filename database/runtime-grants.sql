@@ -12,6 +12,7 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'meshalot runtime role missing or unsafe';
     END IF;
+    EXECUTE format('GRANT CONNECT ON DATABASE %I TO meshalot', current_database());
 END
 $$;
 
