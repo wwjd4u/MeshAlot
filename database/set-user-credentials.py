@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Set login credentials for an existing MeshAlot user without echoing the password."""
+"""Set login credentials for an existing MeshAlot user without echoing account secrets."""
 import argparse
 import getpass
 import re
@@ -42,15 +42,16 @@ END $$;
 UPDATE users
 SET email={sql_text(email)},
     password_hash=crypt({sql_text(password)},gen_salt('bf',12))
-WHERE id='{args.user_id}'::uuid
-RETURNING email;
+WHERE id='{args.user_id}'::uuid;
 COMMIT;
 """
     result = subprocess.run(
         ["psql", "-X", "--no-password", "--dbname=" + args.database, "--set=ON_ERROR_STOP=1", "--file=-"],
-        input=sql, text=True, check=False)
+        input=sql, text=True, check=False,
+        stdout=subprocess.DEVNULL)
     if result.returncode:
         return result.returncode
+    print("Credentials updated for existing MeshAlot user.")
     return 0
 
 
