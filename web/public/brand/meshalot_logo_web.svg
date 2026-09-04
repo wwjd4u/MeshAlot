@@ -8,7 +8,7 @@
 <filter id="textGlow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
 <pattern id="binary" width="96" height="64" patternUnits="userSpaceOnUse"><text x="12" y="20" fill="#00ff99" opacity=".08" font-family="Consolas,Courier New,monospace" font-size="13">1</text><text x="62" y="50" fill="#00ff99" opacity=".06" font-family="Consolas,Courier New,monospace" font-size="13">0</text></pattern>
 </defs>
-<rect width="800" height="800" fill="url(#bgGlow)"/><rect width="800" height="800" fill="url(#binary)"/>
+<rect width="800" height="800" fill="url(#binary)"/>
 <g><circle cx="400" cy="160" r="26" fill="url(#nodeGlow)"/><circle cx="570" cy="230" r="26" fill="url(#nodeGlow)"/><circle cx="640" cy="400" r="26" fill="url(#nodeGlow)"/><circle cx="570" cy="570" r="26" fill="url(#nodeGlow)"/><circle cx="400" cy="640" r="26" fill="url(#nodeGlow)"/><circle cx="230" cy="570" r="26" fill="url(#nodeGlow)"/><circle cx="160" cy="400" r="26" fill="url(#nodeGlow)"/><circle cx="230" cy="230" r="26" fill="url(#nodeGlow)"/><circle cx="400" cy="400" r="34" fill="url(#nodeGlow)"/></g>
 <g fill="#eafff9" filter="url(#glow)"><circle cx="400" cy="160" r="8"/><circle cx="570" cy="230" r="8"/><circle cx="640" cy="400" r="8"/><circle cx="570" cy="570" r="8"/><circle cx="400" cy="640" r="8"/><circle cx="230" cy="570" r="8"/><circle cx="160" cy="400" r="8"/><circle cx="230" cy="230" r="8"/><circle cx="400" cy="400" r="12"/></g>
 <text x="400" y="430" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="120" font-weight="700" letter-spacing="2" fill="#ff6a00" filter="url(#textGlow)">MeshAlot</text>
