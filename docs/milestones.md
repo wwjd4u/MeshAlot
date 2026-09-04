@@ -159,9 +159,12 @@ Status: **IN PROGRESS — ISOLATED DATABASE TESTS PASSED**
 - Fresh-database tracked application of migrations 1 and 2: **PASS**,
   user-reported PostgreSQL output. Both registered as executed, repeat apply
   skipped them, and all 13 core tables were listed.
-- PostgreSQL node storage, migration 3, restricted runtime test setup, and
-  persistence integration test added. Go compilation/database execution of this
-  new persistence path remains pending; the live service is unchanged.
+- PostgreSQL API integration: **PASS**, user-reported output from `2b246b2`.
+  Migration 3 applied and the restricted `meshalot` login connected successfully.
+  All Go packages compiled; TestPostgresPersistence and TestVerticalSlice passed.
+  Persistence through service/pool recreation, stable identity, authentication,
+  and database-failure behavior verified. Test node retained in isolated database.
+- Separate process-restart test added; execution pending. Live service unchanged.
 - Pending: runtime-role/persistence tests, actual process restart verification,
   and controlled application deployment. Do not advance yet.
 
