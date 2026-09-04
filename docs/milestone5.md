@@ -21,9 +21,13 @@ The one-off monitoring delivery-test policy is disabled rather than deleted.
 
 ## Milestone 5 status
 
-Status: **IN PROGRESS — CODE READY FOR ISOLATED AND LIVE GATE TESTS**
+Status: **PASSED**
 
 Initial implementation commit: `ac4d1e8`
+
+Production release commit: `9631776d5cbb07903c3f018b49cf9304c5e8200b`
+
+Production release ID: `9631776d5cbb-20260904-162618`
 
 Implemented without changing the existing agent enrollment/heartbeat path:
 
@@ -39,19 +43,32 @@ Implemented without changing the existing agent enrollment/heartbeat path:
 - isolated two-user API test covering sign-in, sign-out, node separation, wallet separation, dashboard/jobs access, and understandable authentication errors;
 - credential-setting helper that does not echo the password or store plaintext credentials in source control.
 
-### Milestone 5 release gate still required
+### Milestone 5 release gate — PASSED
 
-Do **not** mark Milestone 5 passed until all of the following are demonstrated:
+All required Milestone 5 release gates were demonstrated on September 4, 2026:
 
-1. Go tests and the web production build pass from the committed source.
-2. Migration 4 applies successfully to an isolated PostgreSQL database.
-3. The restricted application role has only the required Milestone 5 access.
-4. Two separate test users cannot see each other's nodes or wallet entries.
-5. Sign in and sign out work.
-6. All Milestone 5 pages load and API failures show understandable errors.
-7. The production migration and binary/web deployment succeed without exposing secrets.
-8. The existing live node remains present after deployment and its heartbeat continues to persist.
-9. Public HTTPS health remains good after the web dashboard is enabled.
+1. Go regression tests and the production web build passed from committed source.
+2. Migration 4 applied and verified in an isolated PostgreSQL database before production deployment.
+3. The real `meshalot` OS user and restricted PostgreSQL login passed the isolated runtime test.
+4. Exact runtime privilege assertions passed, including required database `CONNECT`, schema/table/column rights, and rejection of excess write privileges.
+5. Two separate isolated test users could not see each other's nodes or wallet entries.
+6. Sign in, sign out, session invalidation, dashboard, nodes, wallet, and jobs APIs passed.
+7. The exact production backend and React web release were staged and checksum-verified before cutover.
+8. Production migration `000004_user_auth_and_sessions.up.sql` applied and verified successfully.
+9. Narrowed production runtime grants and production privilege assertions passed.
+10. Login credentials were set on the existing POC owner without exposing the password, hash, DSN, user UUID, or email in logs.
+11. The live backend cut over to `/opt/meshalot/releases/9631776d5cbb-20260904-162618/meshalot-server` and remained healthy.
+12. The existing live node remained present; an authenticated heartbeat returned HTTP 204 and persisted successfully.
+13. Caddy validated and reloaded successfully, serving the React dashboard and SPA routes while preserving `/v1/*` reverse proxying.
+14. Production `/`, `/dashboard`, and `/v1/health` returned HTTP 200; unauthenticated `/v1/auth/me` returned HTTP 401.
+15. Production login returned HTTP 200 with a `Secure`, `HttpOnly`, `SameSite=Lax` session cookie; authenticated account APIs returned HTTP 200; logout returned HTTP 204; the invalidated session then returned HTTP 401.
+16. HSTS, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: no-referrer` were verified after deployment.
+17. Five public HTTPS health checks averaged approximately 0.082 seconds during the production technical gate.
+18. Final production state showed migrations 1–4 verified, one existing user, one existing node, one node-status record, no recent backend errors, and local/public health HTTP 200.
+19. Rollback material was preserved at `/opt/meshalot/backups/9631776d5cbb-20260904-162618-cutover-20260904-163659`.
+20. Final browser verification passed: the user signed in successfully, viewed the production dashboard, and confirmed the deployed web experience worked as expected.
+
+No files were intentionally deleted during the Milestone 5 production staging or cutover workflow.
 
 ## Archive coverage caveat
 
