@@ -181,7 +181,7 @@ function WalletPage() {
 
 function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]); const [error, setError] = useState("");
-  useEffect(() => { apiFetch<{jobs: Job[]}>("/v1/account/jobs").then(d => setJobs(d.nodes)).catch(e => setError(e.message)); }, []);
+  useEffect(() => { apiFetch<{jobs: Job[]}>("/v1/account/jobs").then(d => setJobs(d.jobs)).catch(e => setError(e.message)); }, []);
   return <><PageHeader eyebrow="AUDIT TRAIL" title="Job History" text="Jobs consumed by or provided through this account." />{error && <ErrorBox message={error} />}{!error && !jobs.length ? <Empty>No jobs have been recorded for this account.</Empty> : <div className="list-card">{jobs.map(job => <div className="list-row static" key={job.id}><span><strong>{job.id}</strong><small>{new Date(job.created_at).toLocaleString()}</small></span><span className="status">{job.status}</span></div>)}</div>}</>;
 }
 
