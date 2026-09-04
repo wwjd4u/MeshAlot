@@ -1,5 +1,6 @@
 import React, {FormEvent, ReactNode, useEffect, useState} from "react";
 import {createRoot} from "react-dom/client";
+import {MeshAlotBrand, MeshBackdrop} from "./brand";
 import "./style.css";
 
 type User = {id: string; email: string};
@@ -75,8 +76,16 @@ function SignIn({onSignedIn, initialError}: {onSignedIn: (user: User) => void; i
     finally { setBusy(false); }
   }
   return <main className="signin-shell">
+    <section className="signin-visual">
+      <MeshBackdrop />
+      <div className="signin-visual-content">
+        <MeshAlotBrand hero />
+        <p className="signin-kicker">DISTRIBUTED COMPUTE NETWORK</p>
+        <h2>Turn independent machines into one coordinated mesh.</h2>
+        <p>Securely attach computers, see network state, and build toward a marketplace for shared compute.</p>
+      </div>
+    </section>
     <section className="signin-card">
-      <div className="brand-mark">M</div>
       <p className="eyebrow">MESHALOT POC</p>
       <h1>Sign in to your compute network.</h1>
       <p className="muted">Manage nodes, simulated earnings, and marketplace activity from one account.</p>
@@ -98,7 +107,7 @@ const nav = [
 function Shell({user, route, navigate, onLogout, children}: {user: User; route: string; navigate: (path: string) => void; onLogout: () => void; children: ReactNode}) {
   return <div className="app-shell">
     <aside>
-      <div><div className="brand"><span className="brand-mark small">M</span><strong>MeshAlot</strong></div>
+      <div><div className="brand"><MeshAlotBrand compact /></div>
         <nav>{nav.map(([path, label]) => <button key={path} className={route === path || (path === "/nodes" && route.startsWith("/nodes/")) ? "active" : ""} onClick={() => navigate(path)}>{label}</button>)}</nav>
       </div>
       <div className="account-block"><span>{user.email}</span><button onClick={onLogout}>Sign out</button></div>
