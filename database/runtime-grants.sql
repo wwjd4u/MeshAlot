@@ -15,6 +15,21 @@ BEGIN
 END
 $$;
 
+-- Reset direct table/column rights first so an older broader grant set cannot
+-- survive a later tightening. PostgreSQL table-level REVOKE also removes the
+-- corresponding column privileges on that table.
+REVOKE ALL PRIVILEGES ON
+    users,
+    nodes,
+    node_status,
+    compute_benchmarks,
+    network_benchmarks,
+    wallet_transactions,
+    pricing_rates,
+    jobs,
+    user_sessions
+FROM meshalot;
+
 GRANT USAGE ON SCHEMA public TO meshalot;
 GRANT SELECT (id,email,password_hash) ON users TO meshalot;
 
