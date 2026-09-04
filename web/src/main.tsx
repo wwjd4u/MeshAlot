@@ -4,6 +4,7 @@ import "./style.css";
 
 type User = {id: string; email: string};
 type NodeRecord = {node_id: string; status: string; mode: string; agent_version: string; last_heartbeat?: string};
+type EnrollmentCode = {enrollment_code: string; expires_at: string};
 type Dashboard = {
   balance_microunits: number;
   online_nodes: number;
@@ -119,9 +120,51 @@ function DashboardPage() {
 }
 
 function NodesPage({navigate}: {navigate: (path: string) => void}) {
-  const [nodes, setNodes] = useState<NodeRecord[]>([]); const [error, setError] = useState("");
+  const [nodes, setNodes] = useState<NodeRecord[]>([]);
+  const [error, setError] = useState("");
+  const [codeError, setCodeError] = useState("");
+  const [issuing, setIssuing] = useState(false);
+  const [issued, setIssued] = useState<EnrollmentCode | null>(null);
+  const [copied, setCopied] = useState(false);
   useEffect(() => { apiFetch<{nodes: NodeRecord[]}>("/v1/account/nodes").then(d => setNodes(d.nodes)).catch(e => setError(e.message)); }, []);
-  return <><PageHeader eyebrow="PROVIDER" title="My Nodes" text="Computers attached to this account." />{error && <ErrorBox message={error} />}{!error && !nodes.length ? <Empty>No nodes are attached to this account yet.</Empty> : <div className="list-card">{nodes.map(node => <button className="list-row" key={node.node_id} onClick={() => navigate(`/nodes/${encodeURIComponent(node.node_id)}`)}><span><strong>{node.node_id}</strong><small>Agent {node.agent_version || "unknown"}</small></span><span className={`status ${node.status}`}>{node.status} · {node.mode}</span></button>)}</div>}</>;
+  async function generateEnrollmentCode() {
+    setCodeError(""); setCopied(false); setIssuing(true);
+    try {
+      const result = await apiFetch<EnrollmentCode>("/v1/account/enrollment-codes", {method: "POST", body: "{}"});
+      setIssued(result);
+    } catch (err) {
+      setCodeError(err instanceof Error ? err.message : "Unable to create enrollment code");
+    } finally {
+      setIssuing(false);
+    }
+  }
+  async function copyEnrollmentCode() {
+    if (!issued) return;
+    try {
+      await navigator.clipboard.writeText(issued.enrollment_code);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+      setCodeError("Copy was blocked by the browser. Select the enrollment code and copy it manually.");
+    }
+  }
+  return <>
+    <PageHeader eyebrow="PROVIDER" title="My Nodes" text="Computers securely attached to this account." />
+    <section className="enrollment-card">
+      <div className="enrollment-heading">
+        <div><p className="eyebrow">SECURE ENROLLMENT</p><h2>Add a computer</h2><p>Create a short-lived, one-time code for the MeshAlot agent. The code is displayed here only and is not saved in this browser.</p></div>
+        <button className="primary" type="button" disabled={issuing} onClick={generateEnrollmentCode}>{issuing ? "Generating…" : issued ? "Generate another code" : "Generate enrollment code"}</button>
+      </div>
+      {codeError && <ErrorBox message={codeError} />}
+      {issued && <div className="enrollment-code-panel" aria-live="polite">
+        <div className="enrollment-code-label"><span>One-time enrollment code</span><strong>Expires {new Date(issued.expires_at).toLocaleString()}</strong></div>
+        <code className="enrollment-code">{issued.enrollment_code}</code>
+        <div className="enrollment-actions"><button type="button" onClick={copyEnrollmentCode}>{copied ? "Copied" : "Copy code"}</button><span>Use it once with <code>meshalot-agent enroll</code>. Refreshing or leaving this page removes this displayed copy.</span></div>
+      </div>}
+    </section>
+    {error && <ErrorBox message={error} />}
+    {!error && !nodes.length ? <Empty>No nodes are attached to this account yet.</Empty> : <div className="list-card">{nodes.map(node => <button className="list-row" key={node.node_id} onClick={() => navigate(`/nodes/${encodeURIComponent(node.node_id)}`)}><span><strong>{node.node_id}</strong><small>Agent {node.agent_version || "unknown"}</small></span><span className={`status ${node.status}`}>{node.status} · {node.mode}</span></button>)}</div>}
+  </>;
 }
 
 function NodeDetailsPage({nodeID}: {nodeID: string}) {
@@ -138,7 +181,7 @@ function WalletPage() {
 
 function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]); const [error, setError] = useState("");
-  useEffect(() => { apiFetch<{jobs: Job[]}>("/v1/account/jobs").then(d => setJobs(d.jobs)).catch(e => setError(e.message)); }, []);
+  useEffect(() => { apiFetch<{jobs: Job[]}>("/v1/account/jobs").then(d => setJobs(d.nodes)).catch(e => setError(e.message)); }, []);
   return <><PageHeader eyebrow="AUDIT TRAIL" title="Job History" text="Jobs consumed by or provided through this account." />{error && <ErrorBox message={error} />}{!error && !jobs.length ? <Empty>No jobs have been recorded for this account.</Empty> : <div className="list-card">{jobs.map(job => <div className="list-row static" key={job.id}><span><strong>{job.id}</strong><small>{new Date(job.created_at).toLocaleString()}</small></span><span className="status">{job.status}</span></div>)}</div>}</>;
 }
 
