@@ -15,6 +15,7 @@ Milestone 6 goal from the project guide: install one agent binary on a computer 
 - Production API: `https://api.meshalot.com`
 - Production migration: `000005_agent_identity_and_enrollment.up.sql`
 - Preserved M5 rollback directory: `/opt/meshalot/backups/bb7c75b4cd07-20260904-183650-cutover-20260904-191501`
+- Preserved pre-M6 production source branch: `backup/pre-m6-source-20260904-195308`
 
 ## Delivered functionality
 
@@ -120,6 +121,23 @@ The final server-side verification passed:
 - M6 systemd release override was effective;
 - local API, public API, and public web health were all HTTP 200.
 
+## Operational source closeout
+
+After the M6 pass was recorded, `/opt/meshalot/source` was cleanly fast-forwarded from the M5 release commit to the exact M6 release source commit `bb7c75b4cd0797f68fb4b8a5f26c3f2de26b3a65`.
+
+Closeout verification confirmed:
+
+- a local backup branch `backup/pre-m6-source-20260904-195308` preserved the previous production source ref;
+- the exact M6 release remained in current GitHub `main` history;
+- GitHub commits after the runtime release were documentation-only at closeout;
+- migration status remained verified through version 5 from the synchronized production source;
+- the live M6 service PID did not change during source synchronization;
+- the live backend SHA remained the verified M6 SHA;
+- no database changes were made during source synchronization;
+- no Caddy changes were made during source synchronization;
+- no rollback material was deleted;
+- local API, public API, and public web all remained HTTP 200.
+
 ## Milestone 6 pass criteria
 
 **PASSED:** A node securely joins an account, preserves its identity through restart/new-process reload, and invalid enrollment attempts are rejected.
@@ -130,4 +148,4 @@ The final server-side verification passed:
 
 Milestone 6 did not pull forward later work. Hardware inventory, network benchmarking, compute benchmarking, node scoring, provider resource controls, runtime adapters, and persistent agent heartbeat/connection behavior remain future milestones.
 
-At the time of the final M6 release gate, `/opt/meshalot/source` intentionally still pointed at the verified M5 release commit. Operational closeout is to synchronize that production source checkout to the exact M6 release commit after the M6 pass is recorded, without changing the already-running M6 release binary.
+Milestone 6 is technically and operationally closed. Production source, versioned runtime release, migration state, web release, and preserved rollback chain are reconciled to the completed M6 state.
