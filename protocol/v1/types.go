@@ -13,15 +13,30 @@ type EnrollRequest struct {
 	EnrollmentToken string `json:"enrollment_token"`
 	AgentVersion    string `json:"agent_version"`
 }
+
+type SecureEnrollRequest struct {
+	NodeID         string `json:"node_id"`
+	EnrollmentCode string `json:"enrollment_code"`
+	AgentVersion   string `json:"agent_version"`
+	PublicKey      string `json:"public_key"`
+}
+
 type EnrollResponse struct {
 	NodeID   string `json:"node_id"`
 	Accepted bool   `json:"accepted"`
 }
+
+type EnrollmentCodeResponse struct {
+	EnrollmentCode string    `json:"enrollment_code"`
+	ExpiresAt      time.Time `json:"expires_at"`
+}
+
 type HeartbeatRequest struct {
 	NodeID     string    `json:"node_id"`
 	ObservedAt time.Time `json:"observed_at"`
 	Mode       string    `json:"mode"`
 }
+
 type Node struct {
 	NodeID        string    `json:"node_id"`
 	AgentVersion  string    `json:"agent_version"`
@@ -29,6 +44,7 @@ type Node struct {
 	Mode          string    `json:"mode"`
 	LastHeartbeat time.Time `json:"last_heartbeat"`
 }
+
 type NodesResponse struct {
 	Nodes []Node `json:"nodes"`
 }
