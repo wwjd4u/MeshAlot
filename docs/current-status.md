@@ -30,7 +30,7 @@ See `docs/milestone5.md` for the detailed Milestone 5 implementation and release
 
 ## Milestone 6 completion
 
-Milestone 6 passed on September 4, 2026.
+Milestone 6 passed on September 4, 2026 and is operationally closed.
 
 Release source commit: `bb7c75b4cd0797f68fb4b8a5f26c3f2de26b3a65`
 
@@ -42,9 +42,17 @@ Verified completion includes locally generated persistent UUIDv4 and Ed25519 nod
 
 Final production verification confirmed the real Node 001 as enrolled with M6 agent version `0.1.0-m6`, a public cryptographic identity present, the one-time token consumed and node-bound, migration 5 verified, M6 runtime privileges verified, the exact M6 backend live, the M6 systemd release override effective, and local/public API plus public web health all HTTP 200.
 
+Operational source closeout then fast-forwarded `/opt/meshalot/source` to the exact M6 release commit without restarting the live M6 service, changing the database, or changing Caddy. The previous source ref remains preserved as local branch `backup/pre-m6-source-20260904-195308`; health remained HTTP 200 throughout.
+
 Preserved M5 rollback directory: `/opt/meshalot/backups/bb7c75b4cd07-20260904-183650-cutover-20260904-191501`
 
 See `docs/milestone6.md` for the detailed Milestone 6 implementation and release-gate evidence.
+
+## Next work
+
+Technical next milestone: **Milestone 7 — Hardware Inventory**. Reconcile against the source-of-truth Drive guide before implementation and do not pull forward M8+ work.
+
+A parallel MeshAlot Brand/UI track is approved using the supplied network artwork as the visual direction. Brand work should remain separately auditable from technical milestone work.
 
 ## Archive coverage
 
