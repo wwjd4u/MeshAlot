@@ -16,6 +16,10 @@ BEGIN
         RAISE EXCEPTION 'meshalot runtime role attributes are unsafe';
     END IF;
 
+    IF NOT has_database_privilege('meshalot', current_database(), 'CONNECT') THEN
+        RAISE EXCEPTION 'missing database CONNECT privilege';
+    END IF;
+
     IF NOT has_schema_privilege('meshalot','public','USAGE') THEN
         RAISE EXCEPTION 'missing public schema usage';
     END IF;
