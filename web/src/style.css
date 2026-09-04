@@ -49,6 +49,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--mesh-teal-brigh
 .mesh-mark{display:block;overflow:visible}
 .mesh-edges line{stroke:var(--mesh-teal-line);stroke-width:1.2;opacity:.78}
 .mesh-nodes circle{fill:#54ffd5;stroke:#d7fff4;stroke-width:.6}
+.mesh-hero-art{display:block;width:min(520px,88%);height:auto;max-height:430px;object-fit:contain;filter:drop-shadow(0 22px 48px rgba(0,0,0,.34));user-select:none;-webkit-user-drag:none}
 .mesh-backdrop{position:absolute;inset:0;overflow:hidden;pointer-events:none}
 .mesh-backdrop::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 42%,rgba(0,216,168,.13),transparent 42%)}
 .mesh-backdrop .backdrop-mark{position:absolute;width:min(620px,90%);height:min(620px,90%);left:50%;top:50%;transform:translate(-50%,-50%);opacity:.32}
@@ -57,11 +58,12 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--mesh-teal-brigh
 /* Sign in */
 .signin-shell{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(360px,460px);gap:42px;align-items:center;width:min(1260px,100%);min-height:100vh;margin:0 auto;padding:42px}
 .signin-visual{position:relative;min-height:620px;overflow:hidden;border:1px solid var(--mesh-border);border-radius:28px;background:linear-gradient(145deg,rgba(0,18,12,.96),rgba(0,7,5,.88));box-shadow:0 32px 100px rgba(0,0,0,.45)}
-.signin-visual::after{content:"";position:absolute;inset:auto 0 0;height:38%;background:linear-gradient(transparent,rgba(0,4,3,.86));pointer-events:none}
-.signin-visual-content{position:relative;z-index:2;display:flex;min-height:620px;flex-direction:column;justify-content:flex-end;padding:50px}
-.signin-kicker{margin:28px 0 10px;color:var(--mesh-teal-bright);font-size:.76rem;font-weight:900;letter-spacing:.2em}
+.signin-visual::after{content:"";position:absolute;inset:auto 0 0;height:34%;background:linear-gradient(transparent,rgba(0,4,3,.75));pointer-events:none}
+.signin-visual-content{position:relative;z-index:2;display:grid;min-height:620px;align-content:center;justify-items:center;padding:28px 42px 44px}
+.signin-visual-copy{width:min(620px,100%);margin-top:-6px}
+.signin-kicker{margin:0 0 10px;color:var(--mesh-teal-bright);font-size:.76rem;font-weight:900;letter-spacing:.2em}
 .signin-visual h2{max-width:620px;margin:0;font-size:clamp(2rem,4vw,3.65rem);line-height:1.02;letter-spacing:-.04em}
-.signin-visual-content>p:last-child{max-width:600px;margin:18px 0 0;color:var(--mesh-muted);font-size:1.02rem;line-height:1.65}
+.signin-visual-copy>p:last-child{max-width:600px;margin:18px 0 0;color:var(--mesh-muted);font-size:1.02rem;line-height:1.65}
 .signin-card{width:100%;padding:42px;border:1px solid var(--mesh-border);border-radius:24px;background:rgba(8,21,18,.94);box-shadow:0 28px 80px rgba(0,0,0,.38);backdrop-filter:blur(14px)}
 .signin-card h1,.page-header h1{margin:0;font-size:clamp(2rem,5vw,3.4rem);line-height:1.05;letter-spacing:-.035em}
 .signin-card form{display:grid;gap:18px;margin-top:30px}
@@ -131,9 +133,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--mesh-teal-brigh
 
 @media(max-width:1000px){
   .signin-shell{grid-template-columns:1fr;gap:20px;padding:24px;align-content:center}
-  .signin-visual{min-height:400px}
-  .signin-visual-content{min-height:400px;padding:34px}
-  .brand-lockup.hero .mesh-mark{width:125px;height:125px}
+  .signin-visual{min-height:470px}
+  .signin-visual-content{min-height:470px;padding:20px 34px 34px}
+  .mesh-hero-art{width:min(390px,78%);max-height:330px}
 }
 @media(max-width:850px){
   .app-shell{grid-template-columns:1fr}
@@ -151,12 +153,12 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--mesh-teal-brigh
 }
 @media(max-width:560px){
   .signin-shell{padding:14px}
-  .signin-visual{min-height:310px;border-radius:20px}
-  .signin-visual-content{min-height:310px;padding:24px}
-  .brand-lockup.hero .mesh-mark{width:88px;height:88px}
-  .brand-lockup.hero .brand-wordmark{font-size:2.8rem}
-  .signin-visual h2{font-size:1.8rem}
-  .signin-visual-content>p:last-child{display:none}
+  .signin-visual{min-height:410px;border-radius:20px}
+  .signin-visual-content{min-height:410px;padding:16px 24px 26px}
+  .mesh-hero-art{width:min(270px,82%);max-height:250px}
+  .signin-visual-copy{margin-top:-4px}
+  .signin-visual h2{font-size:1.72rem}
+  .signin-visual-copy>p:last-child{display:none}
   .signin-card{padding:28px 22px}
   .card-grid{grid-template-columns:1fr}
   .metric-card:last-child{grid-column:auto}
