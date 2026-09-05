@@ -218,6 +218,106 @@ qwen3:14b                             bdbd181c33f2    9.3 GB    5 weeks ago
 	}
 }
 
+func TestGGUFSymlinkPrivacyBoundary(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "models")
+
+	if err := os.MkdirAll(filepath.Join(root, "blobs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	internal := map[string]struct {
+		blob string
+		size int64
+	}{
+		"Qwen2.5-7B-Instruct-1M-Q4_K_M.gguf": {
+			blob: "blob-1m",
+			size: 4683074144,
+		},
+		"Qwen2.5-7B-Instruct-Q4_K_M.gguf": {
+			blob: "blob-standard",
+			size: 4683074240,
+		},
+	}
+
+	for modelName, fixture := range internal {
+		target := filepath.Join(root, "blobs", fixture.blob)
+
+		f, err := os.Create(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Truncate(fixture.size); err != nil {
+			f.Close()
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.Symlink(
+			filepath.Join("blobs", fixture.blob),
+			filepath.Join(root, modelName),
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	outsideRoot := t.TempDir()
+	outsideTarget := filepath.Join(outsideRoot, "private-blob")
+
+	f, err := os.Create(outsideTarget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(999); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Symlink(
+		outsideTarget,
+		filepath.Join(root, "Outside-Q4_K_M.gguf"),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	models := discoverGGUFModels(root)
+
+	for name, fixture := range internal {
+		expectedName := strings.TrimSuffix(name, ".gguf")
+
+		model, ok := findModel(models, expectedName)
+		if !ok {
+			t.Fatalf("safe in-root model symlink missing: %s", expectedName)
+		}
+		if model.SizeBytes != uint64(fixture.size) {
+			t.Fatalf(
+				"wrong size for %s: got %d want %d",
+				expectedName,
+				model.SizeBytes,
+				fixture.size,
+			)
+		}
+	}
+
+	if _, ok := findModel(models, "Outside-Q4_K_M"); ok {
+		t.Fatal("symlink escaping approved model root must not be reported")
+	}
+
+	symlinkRoot := filepath.Join(parent, "models-link")
+	if err := os.Symlink(root, symlinkRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	if models := discoverGGUFModels(symlinkRoot); len(models) != 0 {
+		t.Fatal("symlinked model root must not be scanned")
+	}
+}
+
 type fakeInfo struct {
 	name string
 	mode os.FileMode

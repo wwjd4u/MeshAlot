@@ -529,63 +529,108 @@ var multipartGGUF = regexp.MustCompile(`(?i)^(.*)-([0-9]{5})-of-([0-9]{5})\.gguf
 var quantizationPattern = regexp.MustCompile(`(?i)(Q[0-9]+(?:_[A-Z0-9]+)+|IQ[0-9]+_[A-Z0-9]+|UD-IQ[0-9]+_[A-Z0-9]+)`)
 
 func discoverGGUFModels(root string) []protocol.ModelInventory {
-	info, err := os.Stat(root)
-	if err != nil || !info.IsDir() {
+	rootInfo, err := os.Lstat(root)
+	if err != nil || !rootInfo.IsDir() || rootInfo.Mode()&os.ModeSymlink != 0 {
 		return nil
 	}
+
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return nil
+	}
+	resolvedRoot, err = filepath.Abs(resolvedRoot)
+	if err != nil {
+		return nil
+	}
+
 	type aggregate struct {
 		name string
 		size uint64
 	}
 	groups := map[string]*aggregate{}
+
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
+
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return nil
 		}
+
 		depth := 0
 		if rel != "." {
 			depth = len(strings.Split(rel, string(filepath.Separator)))
 		}
+
 		if d.IsDir() && depth > maxModelWalkDepth {
 			return filepath.SkipDir
 		}
-		if d.Type()&os.ModeSymlink != 0 {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
+
+		if d.IsDir() || depth > maxModelWalkDepth {
 			return nil
 		}
-		if d.IsDir() || depth > maxModelWalkDepth || !strings.EqualFold(filepath.Ext(d.Name()), ".gguf") {
+
+		if !strings.EqualFold(filepath.Ext(d.Name()), ".gguf") {
 			return nil
 		}
+
 		if strings.HasPrefix(strings.ToLower(d.Name()), "mmproj-") {
 			return nil
 		}
-		fileInfo, err := d.Info()
-		if err != nil || fileInfo.Size() < 0 {
-			return nil
+
+		var size int64
+
+		if d.Type()&os.ModeSymlink != 0 {
+			resolved, err := filepath.EvalSymlinks(path)
+			if err != nil {
+				return nil
+			}
+
+			resolved, err = filepath.Abs(resolved)
+			if err != nil || !pathInsideRoot(resolvedRoot, resolved) {
+				return nil
+			}
+
+			targetInfo, err := os.Stat(resolved)
+			if err != nil || !targetInfo.Mode().IsRegular() || targetInfo.Size() < 0 {
+				return nil
+			}
+
+			size = targetInfo.Size()
+		} else {
+			fileInfo, err := d.Info()
+			if err != nil || !fileInfo.Mode().IsRegular() || fileInfo.Size() < 0 {
+				return nil
+			}
+
+			size = fileInfo.Size()
 		}
+
 		name := d.Name()
 		key := strings.ToLower(name)
+
 		if match := multipartGGUF.FindStringSubmatch(name); len(match) == 4 {
 			name = match[1] + ".gguf"
 			key = strings.ToLower(name)
 		}
+
 		entry := groups[key]
 		if entry == nil {
 			entry = &aggregate{name: name}
 			groups[key] = entry
 		}
-		entry.size += uint64(fileInfo.Size())
+
+		entry.size += uint64(size)
 		return nil
 	})
+
 	result := make([]protocol.ModelInventory, 0, len(groups))
+
 	for _, group := range groups {
 		base := strings.TrimSuffix(group.name, filepath.Ext(group.name))
+
 		result = append(result, protocol.ModelInventory{
 			Name:         base,
 			Runtime:      "llama.cpp",
@@ -594,7 +639,18 @@ func discoverGGUFModels(root string) []protocol.ModelInventory {
 			SizeBytes:    group.size,
 		})
 	}
+
 	return result
+}
+
+func pathInsideRoot(root, target string) bool {
+	rel, err := filepath.Rel(root, target)
+	if err != nil || filepath.IsAbs(rel) {
+		return false
+	}
+
+	return rel != ".." &&
+		!strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func parseQuantization(name string) string {
