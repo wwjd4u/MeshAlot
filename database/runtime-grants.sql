@@ -20,6 +20,7 @@ REVOKE ALL PRIVILEGES ON
     users,
     nodes,
     node_status,
+    hardware_inventory,
     compute_benchmarks,
     network_benchmarks,
     wallet_transactions,
@@ -37,6 +38,9 @@ GRANT INSERT (user_id,node_key,agent_version,identity_public_key) ON nodes TO me
 GRANT UPDATE (agent_version,identity_public_key) ON nodes TO meshalot;
 GRANT INSERT (node_id,status,observed_at) ON node_status TO meshalot;
 GRANT UPDATE (status,mode,observed_at,last_heartbeat) ON node_status TO meshalot;
+
+GRANT SELECT (id,node_id,payload,observed_at) ON hardware_inventory TO meshalot;
+GRANT INSERT (id,node_id,payload,observed_at) ON hardware_inventory TO meshalot;
 
 GRANT SELECT (id,user_id,token_hash,expires_at,consumed_at,created_at,consumed_node_id)
     ON enrollment_tokens TO meshalot;
