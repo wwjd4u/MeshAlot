@@ -68,10 +68,12 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/dashboard", s.requireSession(s.dashboard))
 	mux.HandleFunc("GET /v1/account/nodes", s.requireSession(s.accountNodes))
 	mux.HandleFunc("GET /v1/account/nodes/{nodeID}", s.requireSession(s.accountNode))
+	mux.HandleFunc("GET /v1/account/nodes/{nodeID}/inventory", s.requireSession(s.accountNodeInventory))
 	mux.HandleFunc("GET /v1/account/wallet", s.requireSession(s.wallet))
 	mux.HandleFunc("GET /v1/account/jobs", s.requireSession(s.jobs))
 	mux.HandleFunc("POST /v1/account/enrollment-codes", s.requireSession(s.issueEnrollmentCode))
 	mux.HandleFunc("POST /v1/agent/enroll", s.secureEnroll)
+	mux.HandleFunc("POST /v1/agent/inventory", s.inventorySubmission)
 	return middleware(mux)
 }
 func (s *Service) health(w http.ResponseWriter, r *http.Request) {
