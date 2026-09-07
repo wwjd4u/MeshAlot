@@ -5,6 +5,41 @@ import "./style.css";
 
 type User = {id: string; email: string};
 type NodeRecord = {node_id: string; status: string; mode: string; agent_version: string; last_heartbeat?: string};
+type InventoryGPU = {
+  vendor: string;
+  model: string;
+  device_type: string;
+  memory_type: string;
+  usable_vram_bytes?: number;
+  kernel_driver?: string;
+  driver_name?: string;
+  driver_version?: string;
+};
+type InventoryRuntime = {name: string; version?: string; status: string};
+type InventoryModel = {
+  name: string;
+  runtime?: string;
+  format: string;
+  quantization?: string;
+  size_bytes?: number;
+};
+type HardwareInventory = {
+  schema_version: string;
+  collected_at: string;
+  os: {name: string; version: string; architecture: string; kernel?: string};
+  cpu: {model: string; physical_cores?: number; logical_cores: number};
+  memory: {total_bytes: number};
+  gpus: InventoryGPU[] | null;
+  acceleration_runtimes: InventoryRuntime[] | null;
+  ai_runtimes: InventoryRuntime[] | null;
+  models: InventoryModel[] | null;
+};
+type InventoryReport = {
+  report_id: string;
+  node_id: string;
+  received_at: string;
+  inventory: HardwareInventory;
+};
 type EnrollmentCode = {enrollment_code: string; expires_at: string};
 type Dashboard = {
   balance_microunits: number;
@@ -46,6 +81,20 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
 function money(microunits: number | null | undefined) {
   if (microunits == null) return "Pending";
   return `$${(microunits / 1_000_000).toFixed(2)}`;
+}
+
+function formatBytes(value: number | null | undefined) {
+  if (value == null) return "Not reported";
+  if (value === 0) return "0 B";
+
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  const index = Math.min(
+    Math.floor(Math.log(value) / Math.log(1024)),
+    units.length - 1,
+  );
+  const amount = value / (1024 ** index);
+
+  return `${amount.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 function useRoute() {
@@ -177,10 +226,283 @@ function NodesPage({navigate}: {navigate: (path: string) => void}) {
   </>;
 }
 
+function InventoryField({label, value}: {label: string; value: ReactNode}) {
+  return <div className="inventory-field"><span>{label}</span><strong>{value}</strong></div>;
+}
+
 function NodeDetailsPage({nodeID}: {nodeID: string}) {
-  const [node, setNode] = useState<NodeRecord | null>(null); const [error, setError] = useState("");
-  useEffect(() => { apiFetch<NodeRecord>(`/v1/account/nodes/${encodeURIComponent(nodeID)}`).then(setNode).catch(e => setError(e.message)); }, [nodeID]);
-  return <><PageHeader eyebrow="NODE DETAILS" title={nodeID} text="Identity and current POC connection state." />{error && <ErrorBox message={error} />}{node && <section className="detail-card"><Detail label="Status" value={node.status} /><Detail label="Mode" value={node.mode} /><Detail label="Agent version" value={node.agent_version || "Unknown"} /><Detail label="Last heartbeat" value={node.last_heartbeat ? new Date(node.last_heartbeat).toLocaleString() : "Not yet reported"} /></section>}</>;
+  const [node, setNode] = useState<NodeRecord | null>(null);
+  const [nodeError, setNodeError] = useState("");
+  const [inventory, setInventory] = useState<InventoryReport | null | undefined>(undefined);
+  const [inventoryError, setInventoryError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setNode(null);
+    setNodeError("");
+    setInventory(undefined);
+    setInventoryError("");
+
+    async function loadNodeAndInventory() {
+      try {
+        const loadedNode = await apiFetch<NodeRecord>(
+          `/v1/account/nodes/${encodeURIComponent(nodeID)}`,
+        );
+
+        if (cancelled) return;
+
+        setNode(loadedNode);
+      } catch (err) {
+        if (cancelled) return;
+
+        setInventory(null);
+        setNodeError(
+          err instanceof Error ? err.message : "Unable to load node",
+        );
+        return;
+      }
+
+      try {
+        const loadedInventory = await apiFetch<InventoryReport>(
+          `/v1/account/nodes/${encodeURIComponent(nodeID)}/inventory`,
+        );
+
+        if (cancelled) return;
+
+        setInventory(loadedInventory);
+      } catch (err) {
+        if (cancelled) return;
+
+        if (err instanceof ApiError && err.status === 404) {
+          setInventory(null);
+          return;
+        }
+
+        setInventory(null);
+        setInventoryError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load hardware inventory",
+        );
+      }
+    }
+
+    void loadNodeAndInventory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [nodeID]);
+
+  const hardware = inventory?.inventory;
+  const gpus = hardware?.gpus ?? [];
+  const acceleration = hardware?.acceleration_runtimes ?? [];
+  const aiRuntimes = hardware?.ai_runtimes ?? [];
+  const models = hardware?.models ?? [];
+
+  return <>
+    <PageHeader
+      eyebrow="NODE DETAILS"
+      title={nodeID}
+      text="Identity, connection state, and latest verified hardware inventory."
+    />
+
+    {nodeError && <ErrorBox message={nodeError} />}
+
+    {node && <section className="detail-card">
+      <Detail label="Status" value={node.status} />
+      <Detail label="Mode" value={node.mode} />
+      <Detail label="Agent version" value={node.agent_version || "Unknown"} />
+      <Detail
+        label="Last heartbeat"
+        value={node.last_heartbeat ? new Date(node.last_heartbeat).toLocaleString() : "Not yet reported"}
+      />
+    </section>}
+
+    {node && <section className="inventory-section">
+      <div className="inventory-heading">
+        <div>
+          <p className="eyebrow">M7 HARDWARE INVENTORY</p>
+          <h2>Detected hardware and AI capability</h2>
+          <p>
+            Latest signed inventory accepted by MeshAlot for this node.
+          </p>
+        </div>
+        {inventory && <span className="inventory-received">
+          Received {new Date(inventory.received_at).toLocaleString()}
+        </span>}
+      </div>
+
+      {inventoryError && <ErrorBox message={`Hardware inventory: ${inventoryError}`} />}
+
+      {inventory === undefined && !inventoryError &&
+        <Empty>Loading hardware inventory…</Empty>}
+
+      {inventory === null && !inventoryError &&
+        <Empty>No hardware inventory reported yet.</Empty>}
+
+      {inventory && hardware && <>
+        <div className="inventory-meta">
+          <span>Report {inventory.report_id}</span>
+          <span>Collected {new Date(hardware.collected_at).toLocaleString()}</span>
+          <span>Schema {hardware.schema_version}</span>
+        </div>
+
+        <div className="inventory-summary-grid">
+          <section className="inventory-card">
+            <h3>System</h3>
+            <InventoryField
+              label="Operating system"
+              value={`${hardware.os.name} ${hardware.os.version}`}
+            />
+            <InventoryField
+              label="Architecture"
+              value={hardware.os.architecture}
+            />
+            <InventoryField
+              label="Kernel"
+              value={hardware.os.kernel || "Not reported"}
+            />
+          </section>
+
+          <section className="inventory-card">
+            <h3>Processor</h3>
+            <InventoryField
+              label="CPU"
+              value={hardware.cpu.model}
+            />
+            <InventoryField
+              label="Physical cores"
+              value={hardware.cpu.physical_cores || "Not reported"}
+            />
+            <InventoryField
+              label="Logical cores"
+              value={hardware.cpu.logical_cores}
+            />
+          </section>
+
+          <section className="inventory-card">
+            <h3>Memory</h3>
+            <InventoryField
+              label="Installed RAM"
+              value={formatBytes(hardware.memory.total_bytes)}
+            />
+          </section>
+        </div>
+
+        <section className="inventory-wide-card">
+          <div className="inventory-card-heading">
+            <h3>Graphics processors</h3>
+            <span>{gpus.length} detected</span>
+          </div>
+
+          {!gpus.length ? <p className="inventory-empty-line">
+            No physical GPU was reported.
+          </p> : <div className="inventory-items">
+            {gpus.map((gpu, index) =>
+              <article className="inventory-item" key={`${gpu.vendor}-${gpu.model}-${index}`}>
+                <div className="inventory-item-title">
+                  <strong>{gpu.vendor} {gpu.model}</strong>
+                  <span>{gpu.device_type}</span>
+                </div>
+                <div className="inventory-field-grid">
+                  <InventoryField label="Memory type" value={gpu.memory_type} />
+                  <InventoryField
+                    label="Usable VRAM"
+                    value={
+                      gpu.usable_vram_bytes == null
+                        ? (gpu.memory_type.toLowerCase() === "shared"
+                          ? "Shared / not dedicated"
+                          : "Not reported")
+                        : formatBytes(gpu.usable_vram_bytes)
+                    }
+                  />
+                  <InventoryField
+                    label="Kernel driver"
+                    value={gpu.kernel_driver || "Not reported"}
+                  />
+                  <InventoryField
+                    label="Driver"
+                    value={
+                      [gpu.driver_name, gpu.driver_version]
+                        .filter(Boolean)
+                        .join(" ") || "Not reported"
+                    }
+                  />
+                </div>
+              </article>
+            )}
+          </div>}
+        </section>
+
+        <div className="inventory-runtime-grid">
+          <section className="inventory-card">
+            <div className="inventory-card-heading">
+              <h3>Acceleration runtimes</h3>
+              <span>{acceleration.length}</span>
+            </div>
+
+            {!acceleration.length ? <p className="inventory-empty-line">
+              None reported.
+            </p> : <div className="inventory-items compact">
+              {acceleration.map((runtime, index) =>
+                <article className="inventory-runtime" key={`${runtime.name}-${index}`}>
+                  <strong>{runtime.name}</strong>
+                  <span>{runtime.version || "Version not reported"}</span>
+                  <em>{runtime.status}</em>
+                </article>
+              )}
+            </div>}
+          </section>
+
+          <section className="inventory-card">
+            <div className="inventory-card-heading">
+              <h3>AI runtimes</h3>
+              <span>{aiRuntimes.length}</span>
+            </div>
+
+            {!aiRuntimes.length ? <p className="inventory-empty-line">
+              None reported.
+            </p> : <div className="inventory-items compact">
+              {aiRuntimes.map((runtime, index) =>
+                <article className="inventory-runtime" key={`${runtime.name}-${index}`}>
+                  <strong>{runtime.name}</strong>
+                  <span>{runtime.version || "Version not reported"}</span>
+                  <em>{runtime.status}</em>
+                </article>
+              )}
+            </div>}
+          </section>
+        </div>
+
+        <section className="inventory-wide-card">
+          <div className="inventory-card-heading">
+            <h3>Discovered AI models</h3>
+            <span>{models.length}</span>
+          </div>
+
+          {!models.length ? <p className="inventory-empty-line">
+            No AI models were reported.
+          </p> : <div className="inventory-model-list">
+            {models.map((model, index) =>
+              <article className="inventory-model" key={`${model.runtime}-${model.name}-${index}`}>
+                <div>
+                  <strong>{model.name}</strong>
+                  <span>{model.runtime || "Runtime not reported"}</span>
+                </div>
+                <div className="inventory-model-meta">
+                  <span>{model.format}</span>
+                  {model.quantization && <span>{model.quantization}</span>}
+                  {model.size_bytes != null && <span>{formatBytes(model.size_bytes)}</span>}
+                </div>
+              </article>
+            )}
+          </div>}
+        </section>
+      </>}
+    </section>}
+  </>;
 }
 
 function WalletPage() {

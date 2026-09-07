@@ -159,6 +159,48 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--mesh-teal-brigh
 .detail strong{display:block;margin-top:9px}
 .detail:nth-last-child(-n+2){border-bottom:0}
 
+
+/* Hardware inventory */
+.inventory-section{margin-top:22px}
+.inventory-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:16px}
+.inventory-heading h2{margin:0;font-size:1.5rem}
+.inventory-heading p:last-child{margin:8px 0 0;color:var(--mesh-muted);line-height:1.55}
+.inventory-received{flex:0 0 auto;padding:8px 11px;border:1px solid var(--mesh-border);border-radius:999px;background:#061512;color:#8cdcc7;font-size:.76rem}
+.inventory-meta{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+.inventory-meta span{padding:7px 9px;border:1px solid var(--mesh-border);border-radius:8px;background:#04100d;color:var(--mesh-muted);font:600 .72rem/1.3 ui-monospace,SFMono-Regular,Menlo,monospace}
+.inventory-summary-grid{display:grid;grid-template-columns:1.2fr 1.2fr .8fr;gap:14px;margin-bottom:14px}
+.inventory-card,.inventory-wide-card{border:1px solid var(--mesh-border);border-radius:16px;background:linear-gradient(145deg,var(--mesh-panel-2),var(--mesh-panel))}
+.inventory-card{padding:20px}
+.inventory-wide-card{margin-top:14px;padding:20px}
+.inventory-card h3,.inventory-wide-card h3{margin:0 0 16px;font-size:1rem}
+.inventory-card-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.inventory-card-heading h3{margin:0}
+.inventory-card-heading>span{color:var(--mesh-muted);font-size:.78rem}
+.inventory-field{padding:11px 0;border-top:1px solid var(--mesh-border)}
+.inventory-field:first-of-type{border-top:0}
+.inventory-field span{display:block;color:var(--mesh-muted);font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em}
+.inventory-field strong{display:block;margin-top:5px;overflow-wrap:anywhere;font-size:.92rem}
+.inventory-field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:22px}
+.inventory-items{display:grid;gap:10px;margin-top:16px}
+.inventory-items.compact{gap:8px}
+.inventory-item{padding:16px;border:1px solid var(--mesh-border);border-radius:12px;background:#04100d}
+.inventory-item-title{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.inventory-item-title strong{font-size:1rem}
+.inventory-item-title span{color:#79d9c0;font-size:.77rem;text-transform:capitalize}
+.inventory-empty-line{margin:14px 0 0;color:var(--mesh-muted)}
+.inventory-runtime-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}
+.inventory-runtime{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--mesh-border)}
+.inventory-runtime:first-child{border-top:0}
+.inventory-runtime span{color:var(--mesh-muted);font-size:.78rem}
+.inventory-runtime em{color:#79d9c0;font-size:.75rem;font-style:normal;text-transform:capitalize}
+.inventory-model-list{max-height:440px;overflow:auto;margin-top:16px;border-top:1px solid var(--mesh-border)}
+.inventory-model{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:13px 0;border-bottom:1px solid var(--mesh-border)}
+.inventory-model>div:first-child{display:grid;gap:4px;min-width:0}
+.inventory-model strong{overflow-wrap:anywhere}
+.inventory-model>div:first-child span{color:var(--mesh-muted);font-size:.78rem}
+.inventory-model-meta{display:flex;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+.inventory-model-meta span{padding:4px 7px;border:1px solid var(--mesh-border);border-radius:7px;background:#061512;color:#9fc2b9;font-size:.7rem}
+
 /* Secure enrollment */
 .enrollment-card{margin-bottom:18px;padding:24px}
 .enrollment-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:24px}
@@ -192,6 +234,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--mesh-teal-brigh
   .content{padding:34px 20px 70px}
   .card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .metric-card:last-child{grid-column:span 2}
+  .inventory-summary-grid{grid-template-columns:1fr 1fr}
+  .inventory-summary-grid .inventory-card:last-child{grid-column:span 2}
   .enrollment-heading{flex-direction:column}
   .enrollment-heading .primary{width:100%}
 }
@@ -207,6 +251,14 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--mesh-teal-brigh
   .card-grid{grid-template-columns:1fr}
   .metric-card:last-child{grid-column:auto}
   .detail-card{grid-template-columns:1fr}
+  .inventory-heading{flex-direction:column}
+  .inventory-received{flex:none}
+  .inventory-summary-grid,.inventory-runtime-grid{grid-template-columns:1fr}
+  .inventory-summary-grid .inventory-card:last-child{grid-column:auto}
+  .inventory-field-grid{grid-template-columns:1fr}
+  .inventory-runtime{grid-template-columns:1fr}
+  .inventory-model{flex-direction:column}
+  .inventory-model-meta{justify-content:flex-start}
   .detail,.detail:nth-child(odd),.detail:nth-last-child(-n+2){border-right:0;border-bottom:1px solid var(--mesh-border)}
   .detail:last-child{border-bottom:0}
   .list-row{align-items:flex-start;flex-direction:column}
