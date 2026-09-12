@@ -48,6 +48,16 @@ GRANT INSERT (user_id,token_hash,expires_at) ON enrollment_tokens TO meshalot;
 GRANT UPDATE (consumed_at,consumed_node_id) ON enrollment_tokens TO meshalot;
 
 GRANT SELECT (node_id,score,observed_at) ON compute_benchmarks, network_benchmarks TO meshalot;
+
+GRANT EXECUTE
+ON FUNCTION public.insert_network_benchmark(
+    uuid,
+    text,
+    jsonb,
+    numeric,
+    timestamptz
+)
+TO meshalot;
 GRANT SELECT (id,user_id,job_id,transaction_type,amount_microunits,created_at) ON wallet_transactions TO meshalot;
 GRANT SELECT (rate_microunits,effective_at) ON pricing_rates TO meshalot;
 GRANT SELECT (id,consumer_user_id,provider_node_id,status,created_at) ON jobs TO meshalot;
