@@ -8,6 +8,10 @@ import (
 type computeBenchmarkRunMeasurement struct {
 	Throughput llamaBenchThroughput
 	Telemetry  computeBenchmarkRunTelemetry
+
+	// Error is populated when this repetition failed. Failed runs are retained
+	// so the authoritative server score can account for benchmark instability.
+	Error string
 }
 
 // combineComputeBenchmarkRuns combines exactly five independently measured
