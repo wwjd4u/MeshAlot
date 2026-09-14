@@ -75,6 +75,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/agent/enroll", s.secureEnroll)
 	mux.HandleFunc("POST /v1/agent/inventory", s.inventorySubmission)
 	mux.HandleFunc("POST "+protocol.NetworkBenchmarkSubmissionPath, s.networkBenchmarkSubmission)
+	mux.HandleFunc("POST "+protocol.ComputeBenchmarkSubmissionPath, s.computeBenchmarkSubmission)
 	return middleware(mux)
 }
 func (s *Service) health(w http.ResponseWriter, r *http.Request) {
