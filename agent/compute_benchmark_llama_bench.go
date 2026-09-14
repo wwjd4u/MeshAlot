@@ -14,6 +14,10 @@ const (
 	m9StandardGeneratedTokens = 128
 	m9StandardRepetitions     = 5
 	m9StandardContextSize     = 4096
+
+	// Each llama-bench process represents exactly one M9 repetition.
+	// The benchmark runner performs m9StandardRepetitions separate processes.
+	m9LlamaBenchInvocationRepetitions = 1
 )
 
 type llamaBenchJSONResult struct {
@@ -41,8 +45,11 @@ type llamaBenchThroughput struct {
 	GenerationTokensPerSecond []float64
 }
 
-// m9LlamaBenchArgs defines only the standardized M9 throughput workload.
-// TTFT and resource telemetry are collected separately.
+// m9LlamaBenchArgs defines one standardized M9 throughput repetition.
+//
+// The complete M9 benchmark executes this command five separate times so that
+// each throughput measurement can be paired with its own TTFT and resource
+// telemetry. TTFT and resource telemetry are collected separately.
 func m9LlamaBenchArgs(
 	modelPath string,
 ) ([]string, error) {
@@ -58,7 +65,7 @@ func m9LlamaBenchArgs(
 		"-m", modelPath,
 		"-p", fmt.Sprintf("%d", m9StandardPromptTokens),
 		"-n", fmt.Sprintf("%d", m9StandardGeneratedTokens),
-		"-r", fmt.Sprintf("%d", m9StandardRepetitions),
+		"-r", fmt.Sprintf("%d", m9LlamaBenchInvocationRepetitions),
 		"-o", "json",
 	}, nil
 }
@@ -178,11 +185,11 @@ func parseLlamaBenchJSON(
 	}
 
 	if len(promptRow.SamplesTS) !=
-		m9StandardRepetitions {
+		m9LlamaBenchInvocationRepetitions {
 		return result, fmt.Errorf(
-			"llama-bench repetition count = %d, want %d",
+			"llama-bench invocation repetition count = %d, want %d",
 			len(promptRow.SamplesTS),
-			m9StandardRepetitions,
+			m9LlamaBenchInvocationRepetitions,
 		)
 	}
 
