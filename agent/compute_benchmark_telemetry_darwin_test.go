@@ -169,3 +169,88 @@ CPU_Speed_Limit = 100
 		)
 	}
 }
+
+func TestParseDarwinTimePeakRSS(
+	t *testing.T,
+) {
+	raw := `
+        0.40 real         0.06 user         0.08 sys
+            73805824  maximum resident set size
+                   0  average shared memory size
+                   0  swaps
+            70766592  peak memory footprint
+`
+
+	got, err := parseDarwinTimePeakRSS(
+		[]byte(raw),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const want uint64 = 73805824
+
+	if got != want {
+		t.Fatalf(
+			"peak RSS = %d, want %d",
+			got,
+			want,
+		)
+	}
+}
+
+func TestParseDarwinTimePeakRSSDoesNotUseMemoryFootprint(
+	t *testing.T,
+) {
+	raw := `
+            73596928  maximum resident set size
+            99999999  peak memory footprint
+`
+
+	got, err := parseDarwinTimePeakRSS(
+		[]byte(raw),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got != 73596928 {
+		t.Fatalf(
+			"peak RSS = %d, want 73596928",
+			got,
+		)
+	}
+}
+
+func TestParseDarwinTimePeakRSSRejectsMissingValue(
+	t *testing.T,
+) {
+	raw := `
+        0.00 real
+        123456 peak memory footprint
+`
+
+	if _, err := parseDarwinTimePeakRSS(
+		[]byte(raw),
+	); err == nil {
+		t.Fatal(
+			"missing maximum RSS was accepted",
+		)
+	}
+}
+
+func TestParseDarwinTimePeakRSSRejectsZero(
+	t *testing.T,
+) {
+	raw := `
+        0 maximum resident set size
+`
+
+	if _, err := parseDarwinTimePeakRSS(
+		[]byte(raw),
+	); err == nil {
+		t.Fatal(
+			"zero maximum RSS was accepted",
+		)
+	}
+}

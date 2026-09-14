@@ -145,3 +145,50 @@ func parseDarwinThermalState(
 
 	return throttled, nil
 }
+
+// parseDarwinTimePeakRSS extracts the maximum resident set size from:
+//
+//	/usr/bin/time -l <command>
+//
+// On macOS this value is reported in bytes.
+func parseDarwinTimePeakRSS(
+	raw []byte,
+) (uint64, error) {
+	for _, line := range strings.Split(
+		string(raw),
+		"\n",
+	) {
+		line = strings.TrimSpace(line)
+
+		if !strings.HasSuffix(
+			line,
+			"maximum resident set size",
+		) {
+			continue
+		}
+
+		value := strings.TrimSpace(
+			strings.TrimSuffix(
+				line,
+				"maximum resident set size",
+			),
+		)
+
+		bytes, err := strconv.ParseUint(
+			value,
+			10,
+			64,
+		)
+		if err != nil || bytes == 0 {
+			return 0, errors.New(
+				"invalid macOS maximum resident set size",
+			)
+		}
+
+		return bytes, nil
+	}
+
+	return 0, errors.New(
+		"macOS maximum resident set size not found",
+	)
+}
