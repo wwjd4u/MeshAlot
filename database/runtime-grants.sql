@@ -58,6 +58,16 @@ ON FUNCTION public.insert_network_benchmark(
     timestamptz
 )
 TO meshalot;
+
+GRANT EXECUTE
+ON FUNCTION public.insert_compute_benchmark(
+    uuid,
+    text,
+    jsonb,
+    numeric,
+    timestamptz
+)
+TO meshalot;
 GRANT SELECT (id,user_id,job_id,transaction_type,amount_microunits,created_at) ON wallet_transactions TO meshalot;
 GRANT SELECT (rate_microunits,effective_at) ON pricing_rates TO meshalot;
 GRANT SELECT (id,consumer_user_id,provider_node_id,status,created_at) ON jobs TO meshalot;
