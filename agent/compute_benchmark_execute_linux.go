@@ -5,25 +5,100 @@ package agent
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
-const m9LinuxBenchmarkOutputLimit = 2 << 20
+const (
+	m9LinuxBenchmarkOutputLimit = 2 << 20
+
+	m9LinuxBashPath = "/bin/bash"
+
+	m9LinuxOneAPISetvarsPath = "/opt/intel/oneapi/setvars.sh"
+
+	m9LinuxOneAPICommandScript = `env_script="$1"; shift; command_args=("$@"); set --; source "$env_script" >/dev/null 2>&1 || exit 125; exec "${command_args[@]}"`
+)
 
 type linuxComputeBenchmarkOSRunner struct{}
+
+// linuxOneAPIWrappedCommand creates a shell invocation that loads the
+// pre-installed Intel oneAPI environment before executing the requested
+// command.
+//
+// The executable and all command arguments are passed as positional parameters,
+// not interpolated into shell source. This prevents command arguments such as a
+// model filename from becoming shell syntax.
+func linuxOneAPIWrappedCommand(
+	name string,
+	args []string,
+) (
+	string,
+	[]string,
+	error,
+) {
+	name =
+		strings.TrimSpace(name)
+
+	if name == "" {
+		return "", nil, errors.New(
+			"Linux benchmark command is empty",
+		)
+	}
+
+	wrappedArgs :=
+		make(
+			[]string,
+			0,
+			len(args)+5,
+		)
+
+	wrappedArgs =
+		append(
+			wrappedArgs,
+			"-c",
+			m9LinuxOneAPICommandScript,
+			"meshalot-oneapi",
+			m9LinuxOneAPISetvarsPath,
+			name,
+		)
+
+	wrappedArgs =
+		append(
+			wrappedArgs,
+			args...,
+		)
+
+	return m9LinuxBashPath,
+		wrappedArgs,
+		nil
+}
 
 func (linuxComputeBenchmarkOSRunner) Run(
 	ctx context.Context,
 	name string,
 	args ...string,
 ) (linuxComputeBenchmarkCommandOutput, error) {
+	commandName,
+		commandArgs,
+		err :=
+		linuxOneAPIWrappedCommand(
+			name,
+			args,
+		)
+
+	if err != nil {
+		return linuxComputeBenchmarkCommandOutput{},
+			err
+	}
+
 	cmd :=
 		exec.CommandContext(
 			ctx,
-			name,
-			args...,
+			commandName,
+			commandArgs...,
 		)
 
 	var stdout bytes.Buffer
@@ -41,7 +116,7 @@ func (linuxComputeBenchmarkOSRunner) Run(
 			n: m9LinuxBenchmarkOutputLimit,
 		}
 
-	err := cmd.Run()
+	err = cmd.Run()
 
 	return linuxComputeBenchmarkCommandOutput{
 		Stdout: append(
@@ -74,7 +149,8 @@ func (b *m9LinuxLimitedBuffer) Write(
 		p = p[:b.n]
 	}
 
-	_, _ = b.w.Write(p)
+	_, _ =
+		b.w.Write(p)
 
 	b.n -= len(p)
 
@@ -98,8 +174,9 @@ func (linuxComputeTelemetryOSReader) ReadFile(
 // collectLinuxLlamaBenchRun is the real Linux OS-backed entry point used later
 // by the M9 benchmark orchestrator.
 //
-// Merely compiling this function does not execute a benchmark or contact any
-// service.
+// The OS runner explicitly loads the installed Intel oneAPI environment before
+// starting GNU time and llama-bench. Merely compiling this function does not
+// execute a benchmark or contact any service.
 func collectLinuxLlamaBenchRun(
 	ctx context.Context,
 	llamaBenchPath string,
