@@ -9,6 +9,9 @@ This file is the concise current-status pointer. The Google Drive **AI Mesh POC 
 - Milestone 4 — **PASSED**
 - Milestone 5 — **PASSED**
 - Milestone 6 — **PASSED**
+- Milestone 7 — **PASSED**
+- Milestone 8 — **PASSED**
+- Milestone 9 — **PASSED**
 
 ## Milestone 4 reconciliation
 
@@ -50,7 +53,7 @@ See `docs/milestone6.md` for the detailed Milestone 6 implementation and release
 
 ## Next work
 
-Technical next milestone: **Milestone 7 — Hardware Inventory**. Reconcile against the source-of-truth Drive guide before implementation and do not pull forward M8+ work.
+Technical next milestone: **Milestone 10 — Node Rating and Eligibility**. Preserve the separate Compute, Network, Reliability, Availability, and Trust dimensions; do not collapse scheduling eligibility into one overall score.
 
 A parallel MeshAlot Brand/UI track is approved using the supplied network artwork as the visual direction. Brand work should remain separately auditable from technical milestone work.
 
