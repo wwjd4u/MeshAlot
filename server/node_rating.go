@@ -7,6 +7,7 @@ package server
 type NodeTier string
 
 const (
+	NodeTierUnrated    NodeTier = "unrated"
 	NodeTierBasic      NodeTier = "basic"
 	NodeTierStandard   NodeTier = "standard"
 	NodeTierGold       NodeTier = "gold"
@@ -34,6 +35,12 @@ type NodeRating struct {
 	AvailabilityScore int
 	TrustScore        int
 
+	ComputeKnown      bool
+	NetworkKnown      bool
+	ReliabilityKnown  bool
+	AvailabilityKnown bool
+	TrustKnown        bool
+
 	Tier NodeTier
 }
 
@@ -60,18 +67,18 @@ func EvaluateNodeEligibility(
 
 	switch workload {
 	case WorkloadClassTextInference:
-		checkMinimum(&result, "compute", rating.ComputeScore, 40)
-		checkMinimum(&result, "network", rating.NetworkScore, 25)
-		checkMinimum(&result, "reliability", rating.ReliabilityScore, 50)
-		checkMinimum(&result, "availability", rating.AvailabilityScore, 50)
-		checkMinimum(&result, "trust", rating.TrustScore, 50)
+		checkKnownMinimum(&result, "compute", rating.ComputeScore, rating.ComputeKnown, 40)
+		checkKnownMinimum(&result, "network", rating.NetworkScore, rating.NetworkKnown, 25)
+		checkKnownMinimum(&result, "reliability", rating.ReliabilityScore, rating.ReliabilityKnown, 50)
+		checkKnownMinimum(&result, "availability", rating.AvailabilityScore, rating.AvailabilityKnown, 50)
+		checkKnownMinimum(&result, "trust", rating.TrustScore, rating.TrustKnown, 50)
 
 	case WorkloadClassLargeData:
-		checkMinimum(&result, "compute", rating.ComputeScore, 50)
-		checkMinimum(&result, "network", rating.NetworkScore, 70)
-		checkMinimum(&result, "reliability", rating.ReliabilityScore, 60)
-		checkMinimum(&result, "availability", rating.AvailabilityScore, 60)
-		checkMinimum(&result, "trust", rating.TrustScore, 60)
+		checkKnownMinimum(&result, "compute", rating.ComputeScore, rating.ComputeKnown, 50)
+		checkKnownMinimum(&result, "network", rating.NetworkScore, rating.NetworkKnown, 70)
+		checkKnownMinimum(&result, "reliability", rating.ReliabilityScore, rating.ReliabilityKnown, 60)
+		checkKnownMinimum(&result, "availability", rating.AvailabilityScore, rating.AvailabilityKnown, 60)
+		checkKnownMinimum(&result, "trust", rating.TrustScore, rating.TrustKnown, 60)
 
 	default:
 		result.Limitations = append(
@@ -93,12 +100,21 @@ func EvaluateNodeEligibility(
 	return result
 }
 
-func checkMinimum(
+func checkKnownMinimum(
 	result *EligibilityResult,
 	dimension string,
 	value int,
+	known bool,
 	minimum int,
 ) {
+	if !known {
+		result.Limitations = append(
+			result.Limitations,
+			dimension+" score evidence unavailable",
+		)
+		return
+	}
+
 	if value >= minimum {
 		return
 	}
@@ -115,6 +131,14 @@ func checkMinimum(
 // Tier is descriptive only. Scheduling eligibility continues to use the
 // individual Compute, Network, Reliability, Availability, and Trust scores.
 func DetermineNodeTier(rating NodeRating) NodeTier {
+	if !rating.ComputeKnown ||
+		!rating.NetworkKnown ||
+		!rating.ReliabilityKnown ||
+		!rating.AvailabilityKnown ||
+		!rating.TrustKnown {
+		return NodeTierUnrated
+	}
+
 	lowest := rating.ComputeScore
 
 	values := []int{

@@ -11,6 +11,7 @@ func TestEvaluateNodeEligibilityDiffersByWorkload(t *testing.T) {
 		TrustScore:        85,
 		Tier:              NodeTierGold,
 	}
+	markAllEvidenceKnown(&highComputeSlowNetwork)
 
 	textResult := EvaluateNodeEligibility(
 		highComputeSlowNetwork,
@@ -47,6 +48,7 @@ func TestEvaluateNodeEligibilityAllowsFastNetworkLowerComputeForLargeData(
 		TrustScore:        85,
 		Tier:              NodeTierStandard,
 	}
+	markAllEvidenceKnown(&lowerComputeFastNetwork)
 
 	result := EvaluateNodeEligibility(
 		lowerComputeFastNetwork,
@@ -72,6 +74,7 @@ func TestEvaluateNodeEligibilityUsesIndependentDimensions(
 		TrustScore:        90,
 		Tier:              NodeTierPlatinum,
 	}
+	markAllEvidenceKnown(&node)
 
 	result := EvaluateNodeEligibility(
 		node,
@@ -180,7 +183,10 @@ func TestDetermineNodeTierUsesAllDimensions(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := DetermineNodeTier(test.rating)
+			rating := test.rating
+			markAllEvidenceKnown(&rating)
+
+			got := DetermineNodeTier(rating)
 
 			if got != test.want {
 				t.Fatalf(
@@ -190,5 +196,74 @@ func TestDetermineNodeTierUsesAllDimensions(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestEvaluateNodeEligibilityRejectsUnknownDimensionEvidence(
+	t *testing.T,
+) {
+	node := NodeRating{
+		ComputeScore:      90,
+		NetworkScore:      90,
+		ReliabilityScore:  90,
+		AvailabilityScore: 90,
+		TrustScore:        90,
+
+		ComputeKnown:      true,
+		NetworkKnown:      true,
+		ReliabilityKnown:  false,
+		AvailabilityKnown: true,
+		TrustKnown:        true,
+	}
+
+	result := EvaluateNodeEligibility(
+		node,
+		WorkloadClassTextInference,
+	)
+
+	if result.Eligible {
+		t.Fatal(
+			"node with unknown reliability evidence must not be eligible",
+		)
+	}
+
+	if len(result.Limitations) == 0 {
+		t.Fatal("expected unknown-evidence limitation")
+	}
+}
+
+func markAllEvidenceKnown(rating *NodeRating) {
+	rating.ComputeKnown = true
+	rating.NetworkKnown = true
+	rating.ReliabilityKnown = true
+	rating.AvailabilityKnown = true
+	rating.TrustKnown = true
+}
+
+func TestDetermineNodeTierIsUnratedWithUnknownEvidence(
+	t *testing.T,
+) {
+	node := NodeRating{
+		ComputeScore:      95,
+		NetworkScore:      95,
+		ReliabilityScore:  95,
+		AvailabilityScore: 95,
+		TrustScore:        95,
+
+		ComputeKnown:      true,
+		NetworkKnown:      true,
+		ReliabilityKnown:  false,
+		AvailabilityKnown: true,
+		TrustKnown:        true,
+	}
+
+	got := DetermineNodeTier(node)
+
+	if got != NodeTierUnrated {
+		t.Fatalf(
+			"DetermineNodeTier() = %q, want %q",
+			got,
+			NodeTierUnrated,
+		)
 	}
 }
