@@ -12,6 +12,7 @@ This file is the concise current-status pointer. The Google Drive **AI Mesh POC 
 - Milestone 7 — **PASSED**
 - Milestone 8 — **PASSED**
 - Milestone 9 — **PASSED**
+- Milestone 10 — **PASSED**
 
 ## Milestone 4 reconciliation
 
@@ -53,7 +54,7 @@ See `docs/milestone6.md` for the detailed Milestone 6 implementation and release
 
 ## Next work
 
-Technical next milestone: **Milestone 10 — Node Rating and Eligibility**. Preserve the separate Compute, Network, Reliability, Availability, and Trust dimensions; do not collapse scheduling eligibility into one overall score.
+Technical next milestone: **Milestone 11 — Provider Resource Controls**. Milestone 10 is closed with workload-aware eligibility preserving separate Compute, Network, Reliability, Availability, and Trust dimensions.
 
 A parallel MeshAlot Brand/UI track is approved using the supplied network artwork as the visual direction. Brand work should remain separately auditable from technical milestone work.
 
