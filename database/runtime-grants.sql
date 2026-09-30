@@ -23,6 +23,7 @@ REVOKE ALL PRIVILEGES ON
     hardware_inventory,
     compute_benchmarks,
     network_benchmarks,
+    node_ratings,
     wallet_transactions,
     pricing_rates,
     jobs,
@@ -49,6 +50,25 @@ GRANT UPDATE (consumed_at,consumed_node_id) ON enrollment_tokens TO meshalot;
 
 GRANT SELECT (node_id,score,observed_at) ON compute_benchmarks, network_benchmarks TO meshalot;
 
+GRANT SELECT (
+    id,
+    node_id,
+    compute_score,
+    network_score,
+    reliability_score,
+    availability_score,
+    trust_score,
+    compute_known,
+    network_known,
+    reliability_known,
+    availability_known,
+    trust_known,
+    tier,
+    observed_at
+)
+ON node_ratings
+TO meshalot;
+
 GRANT EXECUTE
 ON FUNCTION public.insert_network_benchmark(
     uuid,
@@ -65,6 +85,24 @@ ON FUNCTION public.insert_compute_benchmark(
     text,
     jsonb,
     numeric,
+    timestamptz
+)
+TO meshalot;
+
+GRANT EXECUTE
+ON FUNCTION public.insert_node_rating(
+    text,
+    integer,
+    integer,
+    integer,
+    integer,
+    integer,
+    boolean,
+    boolean,
+    boolean,
+    boolean,
+    boolean,
+    text,
     timestamptz
 )
 TO meshalot;

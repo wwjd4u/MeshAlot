@@ -114,4 +114,80 @@ CREATE TABLE node_ratings(
 CREATE INDEX node_ratings_node_observed_idx
     ON node_ratings(node_id, observed_at DESC);
 
+CREATE FUNCTION public.insert_node_rating(
+    p_node_key text,
+    p_compute_score integer,
+    p_network_score integer,
+    p_reliability_score integer,
+    p_availability_score integer,
+    p_trust_score integer,
+    p_compute_known boolean,
+    p_network_known boolean,
+    p_reliability_known boolean,
+    p_availability_known boolean,
+    p_trust_known boolean,
+    p_tier text,
+    p_observed_at timestamptz
+)
+RETURNS integer
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+    WITH inserted AS (
+        INSERT INTO public.node_ratings(
+            node_id,
+            compute_score,
+            network_score,
+            reliability_score,
+            availability_score,
+            trust_score,
+            compute_known,
+            network_known,
+            reliability_known,
+            availability_known,
+            trust_known,
+            tier,
+            observed_at
+        )
+        SELECT
+            n.id,
+            p_compute_score,
+            p_network_score,
+            p_reliability_score,
+            p_availability_score,
+            p_trust_score,
+            p_compute_known,
+            p_network_known,
+            p_reliability_known,
+            p_availability_known,
+            p_trust_known,
+            p_tier,
+            p_observed_at
+        FROM public.nodes n
+        WHERE n.node_key = p_node_key
+        RETURNING 1
+    )
+    SELECT count(*)::integer
+    FROM inserted;
+$$;
+
+REVOKE ALL
+ON FUNCTION public.insert_node_rating(
+    text,
+    integer,
+    integer,
+    integer,
+    integer,
+    integer,
+    boolean,
+    boolean,
+    boolean,
+    boolean,
+    boolean,
+    text,
+    timestamptz
+)
+FROM PUBLIC;
+
 COMMIT;
