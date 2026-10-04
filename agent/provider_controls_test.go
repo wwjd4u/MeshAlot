@@ -385,3 +385,59 @@ func TestProviderIncreaseToMaximumEarningsMode(t *testing.T) {
 		)
 	}
 }
+
+func TestMaximumEarningsStopsNewWorkWhenLocalUserReturns(t *testing.T) {
+	const gib = uint64(1024 * 1024 * 1024)
+
+	controls := ProviderResourceControls{
+		MaxGPUPercent:       50,
+		MaxVRAMBytes:        8 * gib,
+		MaxRAMBytes:         16 * gib,
+		MaxCPUPercent:       50,
+		AllowedStartHour:    0,
+		AllowedEndHour:      0,
+		ManualPause:         false,
+		Mode:                ProviderModeMaximumEarnings,
+		LocalReturnBehavior: LocalReturnStopNewWork,
+	}
+
+	request := ProviderWorkloadResources{
+		GPUPercent: 25,
+		VRAMBytes:  4 * gib,
+		RAMBytes:   8 * gib,
+		CPUPercent: 25,
+	}
+
+	result := EvaluateProviderNewWorkWithActivity(
+		controls,
+		request,
+		12,
+		false,
+	)
+	if !result.Allowed {
+		t.Fatalf(
+			"maximum-earnings mode rejected compatible work while local user inactive: %v",
+			result.Limitations,
+		)
+	}
+
+	result = EvaluateProviderNewWorkWithActivity(
+		controls,
+		request,
+		12,
+		true,
+	)
+	if result.Allowed {
+		t.Fatal(
+			"maximum-earnings mode accepted new work after the local user returned",
+		)
+	}
+
+	if action := EvaluateActiveProviderWork(false, false); action != ActiveProviderWorkContinue {
+		t.Fatalf(
+			"local user return unexpectedly terminated active work: got %q, want %q",
+			action,
+			ActiveProviderWorkContinue,
+		)
+	}
+}
