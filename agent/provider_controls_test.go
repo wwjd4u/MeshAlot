@@ -322,3 +322,66 @@ func TestProviderFiftyPercentSharing(t *testing.T) {
 		})
 	}
 }
+
+func TestProviderIncreaseToMaximumEarningsMode(t *testing.T) {
+	const gib = uint64(1024 * 1024 * 1024)
+
+	controls := ProviderResourceControls{
+		MaxGPUPercent:       50,
+		MaxVRAMBytes:        8 * gib,
+		MaxRAMBytes:         16 * gib,
+		MaxCPUPercent:       50,
+		AllowedStartHour:    0,
+		AllowedEndHour:      0,
+		ManualPause:         false,
+		Mode:                ProviderModeNormal,
+		LocalReturnBehavior: LocalReturnStopNewWork,
+	}
+
+	atLimit := ProviderWorkloadResources{
+		GPUPercent: 50,
+		VRAMBytes:  8 * gib,
+		RAMBytes:   16 * gib,
+		CPUPercent: 50,
+	}
+
+	if result := EvaluateProviderNewWorkWithActivity(
+		controls,
+		atLimit,
+		12,
+		false,
+	); !result.Allowed {
+		t.Fatalf(
+			"normal mode rejected workload at configured limits: %v",
+			result.Limitations,
+		)
+	}
+
+	controls.Mode = ProviderModeMaximumEarnings
+
+	if result := EvaluateProviderNewWorkWithActivity(
+		controls,
+		atLimit,
+		12,
+		false,
+	); !result.Allowed {
+		t.Fatalf(
+			"maximum-earnings mode rejected workload at configured limits: %v",
+			result.Limitations,
+		)
+	}
+
+	overLimit := atLimit
+	overLimit.GPUPercent = 51
+
+	if result := EvaluateProviderNewWorkWithActivity(
+		controls,
+		overLimit,
+		12,
+		false,
+	); result.Allowed {
+		t.Fatal(
+			"maximum-earnings mode accepted work above the owner's configured GPU limit",
+		)
+	}
+}
