@@ -441,3 +441,59 @@ func TestMaximumEarningsStopsNewWorkWhenLocalUserReturns(t *testing.T) {
 		)
 	}
 }
+
+func TestManualPauseStopsNewWorkButPreservesActiveWork(t *testing.T) {
+	const gib = uint64(1024 * 1024 * 1024)
+
+	controls := ProviderResourceControls{
+		MaxGPUPercent:       50,
+		MaxVRAMBytes:        8 * gib,
+		MaxRAMBytes:         16 * gib,
+		MaxCPUPercent:       50,
+		AllowedStartHour:    0,
+		AllowedEndHour:      0,
+		ManualPause:         false,
+		Mode:                ProviderModeMaximumEarnings,
+		LocalReturnBehavior: LocalReturnStopNewWork,
+	}
+
+	request := ProviderWorkloadResources{
+		GPUPercent: 25,
+		VRAMBytes:  4 * gib,
+		RAMBytes:   8 * gib,
+		CPUPercent: 25,
+	}
+
+	if result := EvaluateProviderNewWorkWithActivity(
+		controls,
+		request,
+		12,
+		false,
+	); !result.Allowed {
+		t.Fatalf(
+			"compatible work rejected before manual pause: %v",
+			result.Limitations,
+		)
+	}
+
+	controls.ManualPause = true
+
+	if result := EvaluateProviderNewWorkWithActivity(
+		controls,
+		request,
+		12,
+		false,
+	); result.Allowed {
+		t.Fatal(
+			"provider accepted new work while sharing was manually paused",
+		)
+	}
+
+	if action := EvaluateActiveProviderWork(false, false); action != ActiveProviderWorkContinue {
+		t.Fatalf(
+			"manual pause unexpectedly terminated active work: got %q, want %q",
+			action,
+			ActiveProviderWorkContinue,
+		)
+	}
+}
