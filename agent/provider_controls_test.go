@@ -222,3 +222,103 @@ func TestEvaluateActiveProviderWork(t *testing.T) {
 		})
 	}
 }
+
+
+func TestProviderFiftyPercentSharing(t *testing.T) {
+	const gib = uint64(1024 * 1024 * 1024)
+
+	controls := ProviderResourceControls{
+		MaxGPUPercent:       50,
+		MaxVRAMBytes:        8 * gib,
+		MaxRAMBytes:         16 * gib,
+		MaxCPUPercent:       50,
+		AllowedStartHour:    0,
+		AllowedEndHour:      0,
+		ManualPause:         false,
+		Mode:                ProviderModeNormal,
+		LocalReturnBehavior: LocalReturnStopNewWork,
+	}
+
+	atLimit := ProviderWorkloadResources{
+		GPUPercent: 50,
+		VRAMBytes:  8 * gib,
+		RAMBytes:   16 * gib,
+		CPUPercent: 50,
+	}
+
+	result := EvaluateProviderNewWorkWithActivity(
+		controls,
+		atLimit,
+		12,
+		false,
+	)
+	if !result.Allowed {
+		t.Fatalf(
+			"workload exactly at 50-percent sharing limit was rejected: %v",
+			result.Limitations,
+		)
+	}
+
+	tests := []struct {
+		name    string
+		request ProviderWorkloadResources
+	}{
+		{
+			name: "GPU exceeds shared amount",
+			request: ProviderWorkloadResources{
+				GPUPercent: 51,
+				VRAMBytes:  8 * gib,
+				RAMBytes:   16 * gib,
+				CPUPercent: 50,
+			},
+		},
+		{
+			name: "VRAM exceeds shared amount",
+			request: ProviderWorkloadResources{
+				GPUPercent: 50,
+				VRAMBytes:  8*gib + 1,
+				RAMBytes:   16 * gib,
+				CPUPercent: 50,
+			},
+		},
+		{
+			name: "RAM exceeds shared amount",
+			request: ProviderWorkloadResources{
+				GPUPercent: 50,
+				VRAMBytes:  8 * gib,
+				RAMBytes:   16*gib + 1,
+				CPUPercent: 50,
+			},
+		},
+		{
+			name: "CPU exceeds shared amount",
+			request: ProviderWorkloadResources{
+				GPUPercent: 50,
+				VRAMBytes:  8 * gib,
+				RAMBytes:   16 * gib,
+				CPUPercent: 51,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := EvaluateProviderNewWorkWithActivity(
+				controls,
+				test.request,
+				12,
+				false,
+			)
+			if result.Allowed {
+				t.Fatal(
+					"agent accepted workload exceeding owner's 50-percent sharing limit",
+				)
+			}
+			if len(result.Limitations) == 0 {
+				t.Fatal(
+					"rejected workload did not explain the exceeded provider limit",
+				)
+			}
+		})
+	}
+}
