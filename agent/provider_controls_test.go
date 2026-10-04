@@ -559,3 +559,108 @@ func TestProviderSharingCanBeReenabledAfterManualPause(t *testing.T) {
 		)
 	}
 }
+
+func TestProviderControlGoverningSequence(t *testing.T) {
+	const gib = uint64(1024 * 1024 * 1024)
+
+	controls := ProviderResourceControls{
+		MaxGPUPercent:       50,
+		MaxVRAMBytes:        8 * gib,
+		MaxRAMBytes:         16 * gib,
+		MaxCPUPercent:       50,
+		AllowedStartHour:    0,
+		AllowedEndHour:      0,
+		ManualPause:         false,
+		Mode:                ProviderModeNormal,
+		LocalReturnBehavior: LocalReturnStopNewWork,
+	}
+
+	atLimit := ProviderWorkloadResources{
+		GPUPercent: 50,
+		VRAMBytes:  8 * gib,
+		RAMBytes:   16 * gib,
+		CPUPercent: 50,
+	}
+
+	if result := EvaluateProviderNewWorkWithActivity(
+		controls,
+		atLimit,
+		12,
+		false,
+	); !result.Allowed {
+		t.Fatalf(
+			"50-percent sharing rejected workload at the configured limit: %v",
+			result.Limitations,
+		)
+	}
+
+	controls.Mode = ProviderModeMaximumEarnings
+	if result := EvaluateProviderNewWorkWithActivity(
+		controls,
+		atLimit,
+		12,
+		false,
+	); !result.Allowed {
+		t.Fatalf(
+			"maximum-earnings mode rejected workload at the configured limit: %v",
+			result.Limitations,
+		)
+	}
+
+	if result := EvaluateProviderNewWorkWithActivity(
+		controls,
+		atLimit,
+		12,
+		true,
+	); result.Allowed {
+		t.Fatal(
+			"local-user return did not stop new work",
+		)
+	}
+
+	controls.ManualPause = true
+	if result := EvaluateProviderNewWorkWithActivity(
+		controls,
+		atLimit,
+		12,
+		false,
+	); result.Allowed {
+		t.Fatal(
+			"manual pause did not stop new work",
+		)
+	}
+
+	controls.ManualPause = false
+	if result := EvaluateProviderNewWorkWithActivity(
+		controls,
+		atLimit,
+		12,
+		false,
+	); !result.Allowed {
+		t.Fatalf(
+			"re-enabled sharing did not resume compatible work: %v",
+			result.Limitations,
+		)
+	}
+
+	overLimit := atLimit
+	overLimit.GPUPercent = 51
+	if result := EvaluateProviderNewWorkWithActivity(
+		controls,
+		overLimit,
+		12,
+		false,
+	); result.Allowed {
+		t.Fatal(
+			"provider-control sequence ended with resource limits bypassed",
+		)
+	}
+
+	if action := EvaluateActiveProviderWork(false, false); action != ActiveProviderWorkContinue {
+		t.Fatalf(
+			"provider-control sequence unexpectedly terminated active work: got %q, want %q",
+			action,
+			ActiveProviderWorkContinue,
+		)
+	}
+}
