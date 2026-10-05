@@ -11,7 +11,10 @@ import (
 	"time"
 )
 
-const defaultRuntimeHTTPTimeout = 30 * time.Second
+const (
+	defaultRuntimeControlTimeout    = 10 * time.Second
+	defaultRuntimeCompletionTimeout = 15 * time.Minute
+)
 
 // LlamaCppAdapter implements RuntimeAdapter against llama-server's documented
 // loopback HTTP API.
@@ -28,7 +31,6 @@ func NewLlamaCppAdapter(config RuntimeConfig) (*LlamaCppAdapter, error) {
 	}
 
 	client := &http.Client{
-		Timeout: defaultRuntimeHTTPTimeout,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
@@ -66,6 +68,12 @@ func (a *LlamaCppAdapter) Kind() RuntimeKind {
 func (a *LlamaCppAdapter) Health(
 	ctx context.Context,
 ) (RuntimeHealthStatus, error) {
+	ctx, cancel := runtimeContextWithDefaultTimeout(
+		ctx,
+		defaultRuntimeControlTimeout,
+	)
+	defer cancel()
+
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
@@ -104,6 +112,12 @@ func (a *LlamaCppAdapter) Health(
 func (a *LlamaCppAdapter) Models(
 	ctx context.Context,
 ) ([]RuntimeModel, error) {
+	ctx, cancel := runtimeContextWithDefaultTimeout(
+		ctx,
+		defaultRuntimeControlTimeout,
+	)
+	defer cancel()
+
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
@@ -187,6 +201,12 @@ func (a *LlamaCppAdapter) Complete(
 		return CompletionResponse{}, err
 	}
 
+	ctx, cancel := runtimeContextWithDefaultTimeout(
+		ctx,
+		defaultRuntimeCompletionTimeout,
+	)
+	defer cancel()
+
 	body, err := json.Marshal(struct {
 		Model       string  `json:"model"`
 		Prompt      string  `json:"prompt"`
@@ -246,6 +266,18 @@ func (a *LlamaCppAdapter) Complete(
 		PromptTokens:     payload.Usage.PromptTokens,
 		CompletionTokens: payload.Usage.CompletionTokens,
 	}, nil
+}
+
+// runtimeContextWithDefaultTimeout applies the adapter's operation-specific
+// default only when the caller did not already supply a deadline.
+func runtimeContextWithDefaultTimeout(
+	ctx context.Context,
+	timeout time.Duration,
+) (context.Context, context.CancelFunc) {
+	if _, hasDeadline := ctx.Deadline(); hasDeadline {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, timeout)
 }
 
 func requireRuntimeStatus(
