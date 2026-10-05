@@ -1,6 +1,6 @@
 # Milestone 12 — llama.cpp Runtime Adapter
 
-Status: **IN PROGRESS — SOURCE IMPLEMENTATION COMPLETE; LIVE RUNTIME VALIDATION PENDING**
+Status: **IN PROGRESS — SOURCE VALIDATION PASSED; LIVE RUNTIME VALIDATION PENDING**
 
 ## Goal
 
@@ -60,7 +60,7 @@ Implementation:
 
 ## Source validation completed
 
-The source implementation has been exercised in isolated Go tests covering:
+The source implementation has been exercised in focused tests covering:
 
 1. accepted loopback forms: IPv4, IPv6, and localhost
 2. rejection of wildcard, LAN, public, credential-bearing, HTTPS, subpath, query, fragment, missing-port, and invalid-port runtime URLs
@@ -77,15 +77,37 @@ The source implementation has been exercised in isolated Go tests covering:
 13. MeshAlot agent completion path
 14. rejection of remote runtime URLs through the agent command path
 
-The isolated M12 package tests passed in the available local Go 1.23 validation environment. The repository declares Go 1.24.
+## Trusted MS-02 Go 1.24 validation
 
-## GitHub CI note
+Final source validation ran through the trusted GitHub self-hosted runner on the MS-02.
+
+Evidence:
+
+- GitHub Actions run: `37384908306`
+- Runner: `meshalot-ms02`
+- Host: `wwjd4u-MS-02-Ultra`
+- User: `jason_guynes`
+- Tested M12 commit: `daa9c2b0b927ac45a8e9eb4c476004afe176171f`
+- Go: `go1.24.13 linux/amd64`
+- Exact M12 branch scope check: **PASS**
+- Targeted M12 tests: **PASS**
+- Full repository `go test ./...`: **PASS**
+- Final runner worktree clean: **PASS**
+
+The final M12 branch scope at that validation contained only:
+
+- `agent/cmd/meshalot-agent/main.go`
+- `agent/cmd/meshalot-agent/runtime.go`
+- `agent/cmd/meshalot-agent/runtime_test.go`
+- `agent/runtime_adapter.go`
+- `agent/runtime_adapter_test.go`
+- `agent/runtime_llamacpp.go`
+- `agent/runtime_llamacpp_test.go`
+- `docs/milestone12.md`
 
 Pull request #3 is open on branch `m12-llama-runtime-adapter`.
 
-Connector-created pull request and branch updates did not trigger the repository's GitHub Actions workflow, so there is currently **no Go 1.24 CI result** for the M12 branch. This is treated as missing evidence, not a test failure.
-
-A temporary CI trigger change was added and then restored. Final branch scope contains no workflow-file difference from `main`.
+The ordinary PR workflow did not start for connector-created updates, so the trusted MS-02 gateway was used to obtain the required Go 1.24 validation evidence.
 
 ## Live validation still required
 
@@ -96,7 +118,6 @@ M12 must not be closed until the live runtime gate proves all of the following o
 3. stopping llama.cpp changes MeshAlot runtime health away from healthy
 4. restarting llama.cpp restores healthy state
 5. the llama.cpp listener is bound only to loopback and is not publicly or LAN exposed
-6. the complete repository Go 1.24 test suite passes for the M12 branch
 
 ## Production boundary
 
@@ -106,6 +127,6 @@ The V100 upgrade remains a separate track.
 
 ## Current result
 
-**SOURCE WORK READY FOR LIVE VALIDATION**
+**SOURCE VALIDATION PASS — LIVE RUNTIME GATE PENDING**
 
-Do not proceed to Milestone 13 until the M12 live runtime and Go 1.24 validation gates pass.
+Do not proceed to Milestone 13 until the M12 live runtime validation gate passes and M12 is formally closed.
