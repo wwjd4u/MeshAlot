@@ -1,0 +1,303 @@
+name: MS-02 Pre-V100 Compute Baseline
+
+on:
+  push:
+    branches:
+      - lab/ms02-v100-upgrade
+    paths:
+      - .github/workflows/ms02-v100-baseline.yml
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    name: Run clean pre-V100 MeshAlot baseline
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - meshalot
+      - ms02
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up repository Go toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Preflight and prepare evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MODEL="$HOME/models/Qwen3-30B-A3B-Instruct-2507/Qwen_Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf"
+          BENCH="$HOME/llama.cpp/build-sycl/bin/llama-bench"
+          SERVER="$HOME/llama.cpp/build-sycl/bin/llama-server"
+          EXPECTED_MODEL_SHA="382b4f5a164d200f93790ee0e339fae12852896d23485cfb203ce868fea33a95"
+          SERVICE="hermes-llama.service"
+          EVIDENCE_DIR="$HOME/meshalot-v100-evidence/pre-v100-$(date +%Y%m%d-%H%M%S)"
+
+          mkdir -p "$EVIDENCE_DIR"
+
+          {
+            echo "===== PRE-V100 BASELINE PREFLIGHT ====="
+            echo "EVIDENCE_DIR=$EVIDENCE_DIR"
+            echo "HOSTNAME=$(hostname)"
+            echo "RUNNER_NAME=$RUNNER_NAME"
+            echo "MAIN_SHA=$(git rev-parse HEAD)"
+            echo "GO_VERSION=$(go version)"
+            echo "KERNEL=$(uname -r)"
+            echo "MODEL=$MODEL"
+            echo "BENCH=$BENCH"
+            echo "SERVER=$SERVER"
+            echo
+            free -h
+            echo
+            lspci | grep -Ei 'vga|3d|display|nvidia|intel.*graphics' || true
+          } | tee "$EVIDENCE_DIR/preflight.txt"
+
+          MODEL_SHA="$(sha256sum "$MODEL" | awk '{print $1}')"
+          echo "MODEL_SHA256=$MODEL_SHA" | tee -a "$EVIDENCE_DIR/preflight.txt"
+          test "$MODEL_SHA" = "$EXPECTED_MODEL_SHA"
+
+          test -x "$BENCH"
+          test -x "$SERVER"
+          test -f /opt/intel/oneapi/setvars.sh
+          test "$(systemctl is-active "$SERVICE")" = "active"
+
+          if lspci | grep -qi nvidia; then
+            echo "ERROR: NVIDIA PCI device already present; refusing pre-V100 baseline." | tee -a "$EVIDENCE_DIR/preflight.txt"
+            exit 1
+          fi
+
+          OLLAMA_ACTIVE="$(
+            ollama ps 2>/dev/null |
+            tail -n +2 |
+            sed '/^[[:space:]]*$/d' |
+            wc -l |
+            tr -d ' '
+          )"
+          echo "OLLAMA_ACTIVE_MODEL_COUNT=$OLLAMA_ACTIVE" | tee -a "$EVIDENCE_DIR/preflight.txt"
+          test "$OLLAMA_ACTIVE" -eq 0
+
+          if ss -lnt | awk '{print $4}' | grep -Eq '[:.]18190$'; then
+            echo "ERROR: benchmark port 18190 already in use." | tee -a "$EVIDENCE_DIR/preflight.txt"
+            exit 1
+          fi
+
+          echo "EVIDENCE_DIR=$EVIDENCE_DIR" >> "$GITHUB_ENV"
+          echo "MODEL=$MODEL" >> "$GITHUB_ENV"
+          echo "BENCH=$BENCH" >> "$GITHUB_ENV"
+          echo "SERVER=$SERVER" >> "$GITHUB_ENV"
+          echo "SERVICE=$SERVICE" >> "$GITHUB_ENV"
+
+      - name: Build baseline runner
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          HELPER="$EVIDENCE_DIR/pre-v100-runner.go"
+          RUNNER="$EVIDENCE_DIR/pre-v100-runner"
+
+          cat > "$HELPER" <<'EOF'
+          package main
+
+          import (
+              "context"
+              "encoding/json"
+              "fmt"
+              "os"
+              "os/signal"
+              "syscall"
+              "time"
+
+              "github.com/wwjd4u/MeshAlot/agent"
+              "github.com/wwjd4u/MeshAlot/server"
+          )
+
+          func main() {
+              if len(os.Args) != 4 {
+                  fmt.Fprintln(os.Stderr, "usage: runner LLAMA_BENCH LLAMA_SERVER MODEL")
+                  os.Exit(2)
+              }
+
+              signalContext, stopSignals := signal.NotifyContext(
+                  context.Background(),
+                  os.Interrupt,
+                  syscall.SIGTERM,
+              )
+              defer stopSignals()
+
+              ctx, cancel := context.WithTimeout(signalContext, 20*time.Minute)
+              defer cancel()
+
+              benchmark, err := agent.ExecuteLinuxComputeBenchmark(
+                  ctx,
+                  agent.LinuxComputeBenchmarkExecutionOptions{
+                      CollectedAt:   time.Now().UTC(),
+                      Condition:     "pre-v100-baseline",
+                      Quantization:  "Q4_K_M",
+                      LlamaBenchPath:  os.Args[1],
+                      LlamaServerPath: os.Args[2],
+                      ModelPath:       os.Args[3],
+                  },
+              )
+              if err != nil {
+                  fmt.Fprintln(os.Stderr, "BENCHMARK_ERROR="+err.Error())
+                  os.Exit(1)
+              }
+
+              score := server.CalculateComputeScore(benchmark)
+
+              out := struct {
+                  Benchmark any                          `json:"benchmark"`
+                  Score     server.ComputeScoreBreakdown `json:"score"`
+              }{
+                  Benchmark: benchmark,
+                  Score:     score,
+              }
+
+              enc := json.NewEncoder(os.Stdout)
+              enc.SetIndent("", "  ")
+              if err := enc.Encode(out); err != nil {
+                  fmt.Fprintln(os.Stderr, "JSON_ERROR="+err.Error())
+                  os.Exit(1)
+              }
+          }
+          EOF
+
+          go build -o "$RUNNER" "$HELPER"
+
+          sha256sum "$HELPER" "$RUNNER" | tee "$EVIDENCE_DIR/runner-sha256.txt"
+
+      - name: Stop Hermes for clean baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "===== STOP HERMES =====" | tee "$EVIDENCE_DIR/hermes-stop.txt"
+          sudo -n /usr/bin/systemctl stop hermes-llama.service
+
+          for i in $(seq 1 60); do
+            STATE="$(systemctl is-active "$SERVICE" 2>/dev/null || true)"
+            PORT_COUNT="$(
+              ss -lnt |
+              awk '{print $4}' |
+              grep -Ec '[:.]8080$' || true
+            )"
+
+            if [ "$STATE" != "active" ] && [ "$PORT_COUNT" -eq 0 ]; then
+              echo "HERMES_STOPPED=PASS attempt=$i" | tee -a "$EVIDENCE_DIR/hermes-stop.txt"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "HERMES_STOPPED=FAIL" | tee -a "$EVIDENCE_DIR/hermes-stop.txt"
+          exit 1
+
+      - name: Run clean five-repetition baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RUNNER="$EVIDENCE_DIR/pre-v100-runner"
+          RESULT="$EVIDENCE_DIR/pre-v100-result.json"
+          STDERR="$EVIDENCE_DIR/pre-v100-runner.err"
+
+          echo "===== RUN PRE-V100 BASELINE ====="
+          echo "EVIDENCE_DIR=$EVIDENCE_DIR"
+
+          timeout --signal=INT --kill-after=30s 1250s \
+            "$RUNNER" "$BENCH" "$SERVER" "$MODEL" \
+            >"$RESULT" 2>"$STDERR"
+
+          cat "$STDERR"
+
+          python3 - "$RESULT" <<'PY'
+          import json
+          import statistics
+          import sys
+
+          path = sys.argv[1]
+          with open(path, "r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          b = data["benchmark"]
+          s = data["score"]
+          samples = b["samples"]
+          good = [x for x in samples if x.get("success") is True]
+
+          if b.get("schema_version") != "m9-v1":
+              raise SystemExit("SCHEMA_CHECK=FAIL")
+          if b.get("workload_id") != "m9-standard-v1":
+              raise SystemExit("WORKLOAD_CHECK=FAIL")
+          if b.get("model") != "Qwen_Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf":
+              raise SystemExit("MODEL_CHECK=FAIL")
+          if b.get("quantization") != "Q4_K_M":
+              raise SystemExit("QUANTIZATION_CHECK=FAIL")
+          if len(samples) != 5 or len(good) != 5:
+              raise SystemExit(f"RUN_COUNT_CHECK=FAIL total={len(samples)} success={len(good)}")
+
+          prompt = [x["prompt_tokens_per_second"] for x in good]
+          gen = [x["generation_tokens_per_second"] for x in good]
+          ttft = [x["time_to_first_token_ms"] for x in good]
+          ram = [x["peak_system_ram_bytes"] / 1024**3 for x in good]
+
+          print("SCHEMA_CHECK=PASS")
+          print("WORKLOAD_CHECK=PASS")
+          print("MODEL_CHECK=PASS")
+          print("QUANTIZATION_CHECK=PASS")
+          print("RUN_COUNT_CHECK=PASS")
+          print(f"RUNTIME_VERSION={b.get('runtime_version')}")
+          print(f"COMPUTE_SCORE={s['Score']}")
+          print(f"SUCCESSFUL_RUNS={s['SuccessfulRuns']}")
+          print(f"TOTAL_RUNS={s['TotalRuns']}")
+          print(f"MEDIAN_PROMPT_TPS={s['MedianPromptTokensPerSecond']:.6f}")
+          print(f"MEDIAN_GENERATION_TPS={s['MedianGenerationTokensPerSecond']:.6f}")
+          print(f"MEDIAN_TTFT_MS={s['MedianTimeToFirstTokenMs']:.6f}")
+          print(f"PROMPT_TPS_MEAN={statistics.mean(prompt):.6f}")
+          print(f"GEN_TPS_MEAN={statistics.mean(gen):.6f}")
+          print(f"TTFT_MS_MEAN={statistics.mean(ttft):.6f}")
+          print(f"PEAK_RAM_GIB_MAX={max(ram):.3f}")
+          print(f"VARIATION_COEFFICIENT={s['VariationCoefficient']:.9f}")
+          print(f"THROTTLING_OBSERVED={str(s['ThrottlingObserved']).lower()}")
+          print(f"LEGACY_M9_BASELINE_SCORE=43")
+          print(f"SCORE_DELTA_FROM_LEGACY={s['Score'] - 43:+d}")
+          PY
+
+          sha256sum "$RESULT" "$STDERR" | tee "$EVIDENCE_DIR/result-sha256.txt"
+
+      - name: Restore Hermes
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          echo "===== RESTORE HERMES ====="
+          sudo -n /usr/bin/systemctl start hermes-llama.service
+          START_RC=$?
+          echo "SYSTEMCTL_START_RC=$START_RC"
+
+          for i in $(seq 1 120); do
+            HTTP="$(
+              curl --silent --output /dev/null --write-out '%{http_code}' \
+                --max-time 2 http://127.0.0.1:8080/health 2>/dev/null
+            )"
+            if [ "$HTTP" = "200" ]; then
+              echo "HERMES_RESTORE=PASS attempt=$i"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "HERMES_RESTORE=FAIL"
+          exit 1
