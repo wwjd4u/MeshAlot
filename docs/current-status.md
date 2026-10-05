@@ -13,7 +13,7 @@ This file is the concise current-status pointer. The Google Drive **AI Mesh POC 
 - Milestone 8 — **PASSED**
 - Milestone 9 — **PASSED**
 - Milestone 10 — **PASSED**
-- Milestone 11 — **IN VALIDATION**
+- Milestone 11 — **PASSED**
 
 ## Milestone 4 reconciliation
 
@@ -53,9 +53,19 @@ Preserved M5 rollback directory: `/opt/meshalot/backups/bb7c75b4cd07-20260904-18
 
 See `docs/milestone6.md` for the detailed Milestone 6 implementation and release-gate evidence.
 
+## Milestone 11 completion
+
+Milestone 11 — Provider Resource Controls passed final validation on October 5, 2026.
+
+Final validation ran on the trusted `meshalot-ms02` GitHub self-hosted runner using Go 1.24.13. The targeted provider-control tests passed, the full repository test suite passed, branch scope matched the intended four M11 files, and the runner worktree was clean.
+
+M11 implementation merge SHA: `2165afc7927b79028ebf9c37219a360c2d7c604a`
+
+See `docs/milestone11.md` for the detailed validation and closeout evidence.
+
 ## Next work
 
-Milestone 11 — Provider Resource Controls is implemented on the `m11-provider-controls` feature branch and is in final validation. The governing provider-control sequence has been exercised, but Milestone 11 is not closed until the branch passes the targeted and full repository test suites under the repository's declared Go 1.24 toolchain on MS-02 and the verified branch is merged to `main`.
+Milestone 11 is closed. Before beginning Milestone 12, reconcile the next technical work against the governing **AI Mesh POC Build, Test, and Release Guide**.
 
 Milestone 10 remains closed with workload-aware eligibility preserving separate Compute, Network, Reliability, Availability, and Trust dimensions.
 
