@@ -1,6 +1,6 @@
 # Milestone 11 — Provider Resource Controls
 
-Status: **IN VALIDATION — final Go 1.24 verification pending**
+Status: **PASSED — 2026-10-05**
 
 ## Goal
 
@@ -49,25 +49,31 @@ The required behavior has been implemented and exercised in focused tests:
 
 An end-to-end governing-sequence test repeats those transitions in order and confirms the final state still rejects over-limit work.
 
-## Validation completed so far
+## Validation completed
 
 - Gates 1–8 provider-control contract and policy tests: passed earlier on MS-02.
 - Gate 9 50-percent sharing test: passed on MS-02.
 - Gates 10–14 transition behavior: passed in an isolated Go harness using the same provider-control semantics.
-- Feature-branch scope review: branch remained based on the Milestone 10 closeout commit and only the provider-control implementation/tests were changed before documentation was added.
+- Final validation ran on the trusted GitHub self-hosted runner `meshalot-ms02`, physically hosted by the MS-02.
+- Final validation used **Go 1.24.13** from the repository's declared Go 1.24 toolchain.
+- The targeted M11 provider-control test suite passed.
+- The full repository Go test suite passed.
+- Branch-scope validation confirmed the M11 branch changed only:
+  - `agent/provider_controls.go`
+  - `agent/provider_controls_test.go`
+  - `docs/current-status.md`
+  - `docs/milestone11.md`
+- The runner worktree was clean after validation.
+- GitHub Actions final-validation run: `37311263984`.
+- Pull request #2 merged the verified M11 branch into `main`.
+- M11 implementation merge SHA: `2165afc7927b79028ebf9c37219a360c2d7c604a`.
 - No production deployment, database migration, node re-enrollment, benchmark rerun, identity regeneration, or rollback-material change was performed.
 
-## Final validation still required
+## Final validation result
 
-Before Milestone 11 can be marked PASSED/CLOSED:
+**PASS**
 
-1. Check out the `m11-provider-controls` branch on MS-02 without overwriting any local untracked work.
-2. Run the targeted M11 provider-control tests under the repository's declared **Go 1.24** toolchain.
-3. Run the full repository Go test suite.
-4. Confirm the worktree/diff contains only the intended M11 changes.
-5. Merge the verified branch into `main` and record the final closeout SHA.
-
-Until those checks pass, this document intentionally does **not** claim Milestone 11 is closed.
+The required Go 1.24 MS-02 validation, branch-scope review, full repository test suite, and merge to `main` are complete.
 
 ## Production boundary
 
@@ -79,6 +85,8 @@ Production, node identities, M8/M9 benchmark evidence, M10 scoring history, and 
 
 The owner remains in control and the marketplace cannot silently exceed configured resource limits.
 
-## Do-not-proceed criterion
+## Result
 
-Do not proceed to Milestone 12 until provider controls are verified under Go 1.24 as enforced by the agent rather than only represented in UI or configuration.
+**PROCEED TO MILESTONE 12**
+
+Provider controls are verified under Go 1.24 as enforced by the agent rather than only represented in UI or configuration.
