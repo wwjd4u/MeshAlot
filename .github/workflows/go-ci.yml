@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - m11-provider-controls
+      - m12-llama-runtime-adapter
   pull_request:
     branches:
       - main
