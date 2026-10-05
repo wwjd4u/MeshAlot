@@ -1,0 +1,83 @@
+name: MS-02 M12 Source Validation
+
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m12-validation.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate-m12:
+    name: M12 source validation on meshalot-ms02
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - meshalot
+      - ms02
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out M12 branch
+        uses: actions/checkout@v4
+        with:
+          ref: m12-llama-runtime-adapter
+          fetch-depth: 0
+
+      - name: Set up repository Go 1.24 toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify MS-02 and Go version
+        shell: bash
+        run: |
+          echo "===== M12 SOURCE VALIDATION HOST ====="
+          echo "RUNNER_NAME=$RUNNER_NAME"
+          echo "HOSTNAME=$(hostname)"
+          echo "USER=$(whoami)"
+          go version
+          test "$(go env GOVERSION | cut -d. -f1,2)" = "go1.24"
+
+      - name: Verify M12 branch scope
+        shell: bash
+        run: |
+          echo "===== M12 BRANCH SCOPE ====="
+          git fetch origin main
+          git diff --check origin/main...HEAD
+          git diff --name-only origin/main...HEAD | sort | tee /tmp/m12-files.txt
+          cat > /tmp/m12-expected.txt <<'EOF'
+          agent/cmd/meshalot-agent/main.go
+          agent/cmd/meshalot-agent/runtime.go
+          agent/cmd/meshalot-agent/runtime_test.go
+          agent/runtime_adapter.go
+          agent/runtime_adapter_test.go
+          agent/runtime_llamacpp.go
+          agent/runtime_llamacpp_test.go
+          docs/milestone12.md
+          EOF
+          diff -u /tmp/m12-expected.txt /tmp/m12-files.txt
+
+      - name: Run targeted M12 tests
+        shell: bash
+        run: |
+          echo "===== TARGETED M12 TESTS ====="
+          go test ./agent ./agent/cmd/meshalot-agent -count=1 -v -run '^(TestValidateRuntimeConfigAcceptsLlamaCppLoopback|TestValidateRuntimeConfigRejectsUnsupportedRuntime|TestValidateLoopbackRuntimeURLRejectsNonLoopbackAndUnsafeForms|TestPermittedRuntimeOperationsAreExplicit|TestValidateCompletionRequest|TestNewLlamaCppAdapterRejectsNonLoopbackEndpoint|TestLlamaCppHealth|TestLlamaCppModelsAndCapabilities|TestLlamaCppCompletion|TestLlamaCppCompletionRejectsRuntimeError|TestLlamaCppAdapterDoesNotFollowRedirects|TestRunRuntimeHealth|TestRunRuntimeModels|TestRunRuntimeComplete|TestRunRuntimeRejectsRemoteURL)$'
+
+      - name: Run full repository test suite
+        shell: bash
+        run: |
+          echo "===== FULL REPOSITORY TEST SUITE ====="
+          go test ./... -count=1
+
+      - name: Verify clean runner worktree
+        shell: bash
+        run: |
+          echo "===== FINAL WORKTREE ====="
+          git status --short
+          test -z "$(git status --porcelain)"
