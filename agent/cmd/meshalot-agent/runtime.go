@@ -12,7 +12,11 @@ import (
 	"github.com/wwjd4u/MeshAlot/agent"
 )
 
-const defaultRuntimeURL = "http://127.0.0.1:8080"
+const (
+	defaultRuntimeURL               = "http://127.0.0.1:8080"
+	runtimeControlCommandTimeout    = 10 * time.Second
+	runtimeCompletionCommandTimeout = 15 * time.Minute
+)
 
 func runRuntime(args []string) error {
 	return runRuntimeWithOutput(args, io.Discard)
@@ -51,7 +55,10 @@ func runRuntimeHealth(args []string, output io.Writer) error {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		runtimeControlCommandTimeout,
+	)
 	defer cancel()
 
 	status, err := adapter.Health(ctx)
@@ -78,7 +85,10 @@ func runRuntimeModels(args []string, output io.Writer) error {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		runtimeControlCommandTimeout,
+	)
 	defer cancel()
 
 	capabilities, err := adapter.Capabilities(ctx)
@@ -128,7 +138,10 @@ func runRuntimeComplete(args []string, output io.Writer) error {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		runtimeCompletionCommandTimeout,
+	)
 	defer cancel()
 
 	response, err := adapter.Complete(
