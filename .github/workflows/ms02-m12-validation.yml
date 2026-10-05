@@ -1,5 +1,7 @@
 name: MS-02 M12 Source Validation
 
+# Re-run marker: validate slow-completion timeout fix.
+
 # Re-run marker: validate final documented M12 branch head.
 on:
   push:
