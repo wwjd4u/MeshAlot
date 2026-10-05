@@ -1,0 +1,98 @@
+name: MS-02 V100 Preflight
+
+on:
+  push:
+    branches:
+      - lab/ms02-v100-upgrade
+    paths:
+      - .github/workflows/ms02-v100-preflight.yml
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Capture pre-V100 MS-02 state
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - meshalot
+      - ms02
+    timeout-minutes: 10
+
+    steps:
+      - name: Host and memory baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "===== PRE-V100 HOST BASELINE ====="
+          echo "RUNNER_NAME=$RUNNER_NAME"
+          echo "HOSTNAME=$(hostname)"
+          echo "KERNEL=$(uname -r)"
+          echo
+          lscpu | grep -E '^(Model name|CPU\(s\)|Thread\(s\) per core|Core\(s\) per socket|Socket\(s\)):' || true
+          echo
+          free -h
+          echo
+          printf 'MEMTOTAL_BYTES='
+          awk '/MemTotal:/ {print $2 * 1024}' /proc/meminfo
+
+      - name: GPU baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "===== PRE-V100 GPU BASELINE ====="
+          lspci | grep -Ei 'vga|3d|display|nvidia|intel.*graphics' || true
+          echo
+          if command -v nvidia-smi >/dev/null 2>&1; then
+            echo "NVIDIA_SMI_PRESENT=yes"
+            nvidia-smi || true
+          else
+            echo "NVIDIA_SMI_PRESENT=no"
+          fi
+          echo
+          if lspci | grep -qi nvidia; then
+            echo "NVIDIA_PCI_PRESENT=yes"
+            echo "ERROR: NVIDIA hardware is already visible; this is not a valid pre-V100 baseline."
+            exit 1
+          else
+            echo "NVIDIA_PCI_PRESENT=no"
+          fi
+
+      - name: Find M9 benchmark runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "===== M9 RUNTIME DISCOVERY ====="
+          echo "ONEAPI_SETVARS=$([ -f /opt/intel/oneapi/setvars.sh ] && echo present || echo missing)"
+          echo
+          echo "--- llama-bench candidates ---"
+          {
+            command -v llama-bench 2>/dev/null || true
+            find "$HOME" /opt /usr/local -maxdepth 7 -type f -name 'llama-bench' -perm -u+x 2>/dev/null || true
+          } | awk '!seen[$0]++'
+          echo
+          echo "--- llama-server candidates ---"
+          {
+            command -v llama-server 2>/dev/null || true
+            find "$HOME" /opt /usr/local -maxdepth 7 -type f -name 'llama-server' -perm -u+x 2>/dev/null || true
+          } | awk '!seen[$0]++'
+          echo
+          echo "--- M9 model candidates ---"
+          find "$HOME" /opt /mnt -maxdepth 8 -type f \
+            -name 'Qwen_Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf' \
+            -printf '%p\t%s bytes\n' 2>/dev/null | head -20 || true
+
+      - name: Ollama state
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "===== OLLAMA STATE ====="
+          if command -v ollama >/dev/null 2>&1; then
+            ollama --version || true
+            ollama ps || true
+            ollama list || true
+          else
+            echo "ollama not found"
+          fi
