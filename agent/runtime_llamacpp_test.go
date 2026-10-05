@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNewLlamaCppAdapterRejectsNonLoopbackEndpoint(t *testing.T) {
@@ -16,6 +17,51 @@ func TestNewLlamaCppAdapterRejectsNonLoopbackEndpoint(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected non-loopback runtime endpoint to be rejected")
+	}
+}
+
+func TestRuntimeDefaultTimeoutPolicy(t *testing.T) {
+	if defaultRuntimeCompletionTimeout <= defaultRuntimeControlTimeout {
+		t.Fatalf(
+			"completion timeout %s must exceed control timeout %s",
+			defaultRuntimeCompletionTimeout,
+			defaultRuntimeControlTimeout,
+		)
+	}
+	if defaultRuntimeCompletionTimeout < 5*time.Minute {
+		t.Fatalf(
+			"completion timeout %s is too short for slow local models",
+			defaultRuntimeCompletionTimeout,
+		)
+	}
+
+	parent, cancelParent := context.WithTimeout(
+		context.Background(),
+		30*time.Second,
+	)
+	defer cancelParent()
+
+	parentDeadline, ok := parent.Deadline()
+	if !ok {
+		t.Fatal("parent context missing deadline")
+	}
+
+	child, cancelChild := runtimeContextWithDefaultTimeout(
+		parent,
+		defaultRuntimeCompletionTimeout,
+	)
+	defer cancelChild()
+
+	childDeadline, ok := child.Deadline()
+	if !ok {
+		t.Fatal("child context missing deadline")
+	}
+	if !childDeadline.Equal(parentDeadline) {
+		t.Fatalf(
+			"caller deadline changed: parent=%v child=%v",
+			parentDeadline,
+			childDeadline,
+		)
 	}
 }
 
