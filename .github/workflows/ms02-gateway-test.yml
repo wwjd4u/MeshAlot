@@ -1,0 +1,41 @@
+name: MS-02 Trusted Gateway Test
+
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ms02-gateway-test:
+    name: Verify trusted MS-02 execution
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - meshalot
+      - ms02
+    timeout-minutes: 5
+
+    steps:
+      - name: Verify runner identity
+        shell: bash
+        run: |
+          echo "===== MESHALOT MS-02 GATEWAY TEST ====="
+          echo "RUNNER_NAME=$RUNNER_NAME"
+          echo "RUNNER_OS=$RUNNER_OS"
+          echo "RUNNER_ARCH=$RUNNER_ARCH"
+          echo "HOSTNAME=$(hostname)"
+          echo "USER=$(whoami)"
+          echo "PWD=$(pwd)"
+
+      - name: Verify local toolchain visibility
+        shell: bash
+        run: |
+          echo "===== LOCAL TOOLCHAIN ====="
+          git --version
+          go version
+          uname -a
