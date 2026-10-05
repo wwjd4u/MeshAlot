@@ -1,0 +1,273 @@
+name: MS-02 M12 Live Runtime Validation
+
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m12-live-validation.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate-live-runtime:
+    name: M12 live llama.cpp validation on meshalot-ms02
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - meshalot
+      - ms02
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out M12 branch
+        uses: actions/checkout@v4
+        with:
+          ref: m12-llama-runtime-adapter
+          fetch-depth: 0
+
+      - name: Set up repository Go 1.24 toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Prepare isolated M12 live test
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SERVER="$HOME/llama.cpp/build/bin/llama-server"
+          MODEL="$HOME/models/Qwen3-30B-A3B-Instruct-2507/Qwen_Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf"
+          PORT=18192
+          LOG="$RUNNER_TEMP/m12-llama-server.log"
+          PIDFILE="$RUNNER_TEMP/m12-llama-server.pid"
+          AGENT_BIN="$RUNNER_TEMP/meshalot-agent-m12"
+
+          test -x "$SERVER"
+          test -f "$MODEL"
+          test "$(systemctl is-enabled hermes-llama.service 2>/dev/null || true)" = "disabled"
+          test "$(systemctl is-active hermes-llama.service 2>/dev/null || true)" = "inactive"
+
+          if ss -ltn | awk '{print $4}' | grep -Eq '(^|:)18192$'; then
+            echo "ERROR: port 18192 already in use"
+            exit 1
+          fi
+
+          go build -o "$AGENT_BIN" ./agent/cmd/meshalot-agent
+          "$AGENT_BIN" version
+
+          echo "SERVER=$SERVER" >> "$GITHUB_ENV"
+          echo "MODEL=$MODEL" >> "$GITHUB_ENV"
+          echo "PORT=$PORT" >> "$GITHUB_ENV"
+          echo "LOG=$LOG" >> "$GITHUB_ENV"
+          echo "PIDFILE=$PIDFILE" >> "$GITHUB_ENV"
+          echo "AGENT_BIN=$AGENT_BIN" >> "$GITHUB_ENV"
+
+      - name: Start loopback-only llama.cpp server
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          "$SERVER" \
+            --host 127.0.0.1 \
+            --port "$PORT" \
+            --model "$MODEL" \
+            --ctx-size 1024 \
+            --n-gpu-layers 0 \
+            >"$LOG" 2>&1 &
+          SERVER_PID=$!
+          echo "$SERVER_PID" > "$PIDFILE"
+
+          for i in $(seq 1 240); do
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo "ERROR: llama-server exited before becoming healthy"
+              tail -200 "$LOG" || true
+              exit 1
+            fi
+
+            HTTP="$(curl -sS -o /tmp/m12-health.json -w '%{http_code}' --max-time 2 "http://127.0.0.1:$PORT/health" 2>/dev/null || true)"
+            if [ "$HTTP" = "200" ]; then
+              echo "LLAMA_START=PASS attempt=$i pid=$SERVER_PID"
+              cat /tmp/m12-health.json
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "ERROR: llama-server did not become healthy"
+          tail -200 "$LOG" || true
+          exit 1
+
+      - name: Prove loopback-only listener
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "===== LISTENER ====="
+          ss -ltnp | tee /tmp/m12-listeners.txt
+          grep -E "127\.0\.0\.1:$PORT[[:space:]]" /tmp/m12-listeners.txt
+          if grep -E "0\.0\.0\.0:$PORT|\[::\]:$PORT|:::$PORT" /tmp/m12-listeners.txt; then
+            echo "ERROR: M12 llama.cpp listener is exposed beyond loopback"
+            exit 1
+          fi
+          echo "LOOPBACK_ONLY=PASS"
+
+      - name: Direct llama.cpp model discovery and completion
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          curl -fsS "http://127.0.0.1:$PORT/v1/models" > /tmp/m12-models.json
+          cat /tmp/m12-models.json
+
+          MODEL_ID="$(python3 - <<'PY'
+          import json
+          with open('/tmp/m12-models.json', 'r', encoding='utf-8') as f:
+              data=json.load(f)
+          items=data.get('data') or []
+          if not items or not str(items[0].get('id','')).strip():
+              raise SystemExit('no model id returned')
+          print(items[0]['id'])
+          PY
+          )"
+          echo "MODEL_ID=$MODEL_ID" >> "$GITHUB_ENV"
+          echo "MODEL_ID=$MODEL_ID"
+
+          python3 - "$MODEL_ID" > /tmp/m12-direct-request.json <<'PY'
+          import json,sys
+          print(json.dumps({
+              "model": sys.argv[1],
+              "prompt": "Respond with one short sentence confirming the runtime is ready.",
+              "max_tokens": 24,
+              "temperature": 0,
+              "stream": False,
+          }))
+          PY
+
+          curl -fsS \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/m12-direct-request.json \
+            "http://127.0.0.1:$PORT/v1/completions" \
+            > /tmp/m12-direct-response.json
+
+          python3 - <<'PY'
+          import json
+          with open('/tmp/m12-direct-response.json','r',encoding='utf-8') as f:
+              data=json.load(f)
+          choices=data.get('choices') or []
+          if not choices or not str(choices[0].get('text','')).strip():
+              raise SystemExit('direct completion text missing')
+          print("DIRECT_COMPLETION=PASS")
+          print("DIRECT_TEXT="+str(choices[0]['text']).strip().replace("\n"," "))
+          usage=data.get('usage') or {}
+          print("DIRECT_PROMPT_TOKENS="+str(usage.get('prompt_tokens')))
+          print("DIRECT_COMPLETION_TOKENS="+str(usage.get('completion_tokens')))
+          PY
+
+      - name: Validate completion through MeshAlot agent
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE_URL="http://127.0.0.1:$PORT"
+
+          "$AGENT_BIN" runtime health --url "$BASE_URL" | tee /tmp/m12-agent-health.txt
+          grep -F 'health=healthy' /tmp/m12-agent-health.txt
+
+          "$AGENT_BIN" runtime models --url "$BASE_URL" | tee /tmp/m12-agent-models.txt
+          grep -F 'operations=completion' /tmp/m12-agent-models.txt
+
+          "$AGENT_BIN" runtime complete \
+            --url "$BASE_URL" \
+            --model "$MODEL_ID" \
+            --prompt "Respond with one short sentence confirming the runtime is ready." \
+            --max-tokens 24 \
+            --temperature 0 \
+            | tee /tmp/m12-agent-completion.txt
+
+          grep -E '^prompt_tokens=[0-9]+ completion_tokens=[0-9]+$' /tmp/m12-agent-completion.txt
+          sed '$d' /tmp/m12-agent-completion.txt | grep -q '[^[:space:]]'
+          echo "AGENT_COMPLETION=PASS"
+
+      - name: Prove health changes when runtime stops
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SERVER_PID="$(cat "$PIDFILE")"
+          kill "$SERVER_PID"
+          for i in $(seq 1 60); do
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          if kill -0 "$SERVER_PID" 2>/dev/null; then
+            echo "ERROR: llama-server did not stop"
+            exit 1
+          fi
+
+          if "$AGENT_BIN" runtime health --url "http://127.0.0.1:$PORT" >/tmp/m12-agent-stopped.out 2>/tmp/m12-agent-stopped.err; then
+            echo "ERROR: agent still reported a usable runtime after server stop"
+            cat /tmp/m12-agent-stopped.out
+            exit 1
+          fi
+
+          echo "AGENT_HEALTH_AFTER_STOP=NON_HEALTHY"
+          cat /tmp/m12-agent-stopped.err
+
+      - name: Restart runtime and prove health recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          "$SERVER" \
+            --host 127.0.0.1 \
+            --port "$PORT" \
+            --model "$MODEL" \
+            --ctx-size 1024 \
+            --n-gpu-layers 0 \
+            >"$LOG" 2>&1 &
+          SERVER_PID=$!
+          echo "$SERVER_PID" > "$PIDFILE"
+
+          for i in $(seq 1 240); do
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo "ERROR: llama-server exited during restart"
+              tail -200 "$LOG" || true
+              exit 1
+            fi
+            if "$AGENT_BIN" runtime health --url "http://127.0.0.1:$PORT" 2>/dev/null | grep -q 'health=healthy'; then
+              echo "AGENT_HEALTH_RECOVERY=PASS attempt=$i"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "ERROR: MeshAlot health did not recover"
+          tail -200 "$LOG" || true
+          exit 1
+
+      - name: Cleanup isolated runtime
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [ -f "$PIDFILE" ]; then
+            PID="$(cat "$PIDFILE")"
+            kill "$PID" 2>/dev/null || true
+            for i in $(seq 1 30); do
+              kill -0 "$PID" 2>/dev/null || break
+              sleep 1
+            done
+            kill -9 "$PID" 2>/dev/null || true
+          fi
+
+          echo "===== FINAL STATE ====="
+          echo "HERMES_ENABLED=$(systemctl is-enabled hermes-llama.service 2>/dev/null || true)"
+          echo "HERMES_ACTIVE=$(systemctl is-active hermes-llama.service 2>/dev/null || true)"
+          echo "OLLAMA_ACTIVE=$(systemctl is-active ollama 2>/dev/null || true)"
+          ss -ltnp 2>/dev/null | grep -E '(:18192|:8080)' || true
