@@ -1,0 +1,195 @@
+name: MS-02 Pre-V100 Ollama Practical Baseline
+
+on:
+  push:
+    branches:
+      - lab/ms02-v100-upgrade
+    paths:
+      - .github/workflows/ms02-v100-ollama-baseline.yml
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: Run five-repetition Ollama practical baseline
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - meshalot
+      - ms02
+    timeout-minutes: 20
+
+    steps:
+      - name: Run practical baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MODEL="qwen3:30b-a3b-instruct-2507-q4_K_M"
+          EVIDENCE_DIR="$HOME/meshalot-v100-evidence/ollama-pre-v100-$(date +%Y%m%d-%H%M%S)"
+          mkdir -p "$EVIDENCE_DIR"
+
+          python3 - "$MODEL" "$EVIDENCE_DIR" <<'PY'
+          import json
+          import statistics
+          import sys
+          import time
+          import urllib.request
+
+          model = sys.argv[1]
+          evidence_dir = sys.argv[2]
+          url = "http://127.0.0.1:11434/api/generate"
+
+          sentence = (
+              "MeshAlot measures useful local AI inference performance with a repeatable "
+              "workload so provider hardware upgrades can be compared fairly over time. "
+          )
+          prompt = (sentence * 64).strip()
+
+          def request(payload, stream=True):
+              data = json.dumps(payload).encode("utf-8")
+              req = urllib.request.Request(
+                  url,
+                  data=data,
+                  headers={"Content-Type": "application/json"},
+                  method="POST",
+              )
+              start = time.perf_counter()
+              first_token = None
+              final = None
+              with urllib.request.urlopen(req, timeout=600) as resp:
+                  for raw in resp:
+                      line = raw.decode("utf-8").strip()
+                      if not line:
+                          continue
+                      obj = json.loads(line)
+                      if first_token is None and obj.get("response"):
+                          first_token = time.perf_counter()
+                      if obj.get("done"):
+                          final = obj
+              if final is None:
+                  raise RuntimeError("Ollama response ended without done=true")
+              if first_token is None:
+                  first_token = time.perf_counter()
+              return final, (first_token - start) * 1000.0
+
+          base = {
+              "model": model,
+              "prompt": prompt,
+              "stream": True,
+              "keep_alive": "10m",
+              "options": {
+                  "num_ctx": 4096,
+                  "num_predict": 128,
+                  "temperature": 0,
+                  "seed": 1234,
+              },
+          }
+
+          print("===== OLLAMA PRE-V100 PRACTICAL BASELINE =====")
+          print(f"MODEL={model}")
+
+          # One warmup request; deliberately excluded from measurements.
+          warm = dict(base)
+          warm["options"] = dict(base["options"])
+          warm["options"]["num_predict"] = 8
+          request(warm)
+          print("WARMUP=PASS")
+
+          runs = []
+          for i in range(1, 6):
+              final, ttft_ms = request(base)
+
+              prompt_count = int(final.get("prompt_eval_count", 0))
+              prompt_duration = int(final.get("prompt_eval_duration", 0))
+              eval_count = int(final.get("eval_count", 0))
+              eval_duration = int(final.get("eval_duration", 0))
+
+              prompt_tps = (
+                  prompt_count / (prompt_duration / 1e9)
+                  if prompt_count > 0 and prompt_duration > 0
+                  else 0.0
+              )
+              gen_tps = (
+                  eval_count / (eval_duration / 1e9)
+                  if eval_count > 0 and eval_duration > 0
+                  else 0.0
+              )
+
+              run = {
+                  "run": i,
+                  "prompt_eval_count": prompt_count,
+                  "prompt_eval_duration_ns": prompt_duration,
+                  "prompt_tps": prompt_tps,
+                  "eval_count": eval_count,
+                  "eval_duration_ns": eval_duration,
+                  "generation_tps": gen_tps,
+                  "ttft_ms": ttft_ms,
+                  "load_duration_ns": int(final.get("load_duration", 0)),
+                  "total_duration_ns": int(final.get("total_duration", 0)),
+              }
+              runs.append(run)
+              print(
+                  f"RUN_{i} prompt_tokens={prompt_count} "
+                  f"prompt_tps={prompt_tps:.6f} "
+                  f"gen_tokens={eval_count} "
+                  f"gen_tps={gen_tps:.6f} "
+                  f"ttft_ms={ttft_ms:.3f}"
+              )
+
+          prompts = [r["prompt_tps"] for r in runs]
+          gens = [r["generation_tps"] for r in runs]
+          ttfts = [r["ttft_ms"] for r in runs]
+
+          def cv(values):
+              mean = statistics.mean(values)
+              return statistics.pstdev(values) / mean if mean else 0.0
+
+          summary = {
+              "schema": "meshalot-v100-practical-v1",
+              "condition": "pre-v100",
+              "model": model,
+              "repetitions": 5,
+              "prompt_eval_count": runs[0]["prompt_eval_count"],
+              "prompt_tps_mean": statistics.mean(prompts),
+              "prompt_tps_median": statistics.median(prompts),
+              "prompt_tps_cv": cv(prompts),
+              "generation_tps_mean": statistics.mean(gens),
+              "generation_tps_median": statistics.median(gens),
+              "generation_tps_cv": cv(gens),
+              "ttft_ms_mean": statistics.mean(ttfts),
+              "ttft_ms_median": statistics.median(ttfts),
+              "ttft_ms_cv": cv(ttfts),
+              "runs": runs,
+          }
+
+          path = evidence_dir + "/ollama-pre-v100.json"
+          with open(path, "w", encoding="utf-8") as f:
+              json.dump(summary, f, indent=2)
+              f.write("\n")
+
+          print("===== SUMMARY =====")
+          print(f"PROMPT_TPS_MEAN={summary['prompt_tps_mean']:.6f}")
+          print(f"PROMPT_TPS_MEDIAN={summary['prompt_tps_median']:.6f}")
+          print(f"PROMPT_TPS_CV={summary['prompt_tps_cv']:.6f}")
+          print(f"GEN_TPS_MEAN={summary['generation_tps_mean']:.6f}")
+          print(f"GEN_TPS_MEDIAN={summary['generation_tps_median']:.6f}")
+          print(f"GEN_TPS_CV={summary['generation_tps_cv']:.6f}")
+          print(f"TTFT_MS_MEAN={summary['ttft_ms_mean']:.3f}")
+          print(f"TTFT_MS_MEDIAN={summary['ttft_ms_median']:.3f}")
+          print(f"TTFT_MS_CV={summary['ttft_ms_cv']:.6f}")
+          print(f"EVIDENCE_FILE={path}")
+          PY
+
+          sha256sum "$EVIDENCE_DIR/ollama-pre-v100.json"
+
+          # Unload the model so the machine returns to its pre-test idle state.
+          curl -sS http://127.0.0.1:11434/api/generate \
+            -H 'Content-Type: application/json' \
+            -d "{\"model\":\"$MODEL\",\"keep_alive\":0}" >/dev/null
+
+          echo
+          echo "===== OLLAMA AFTER ====="
+          ollama ps || true
