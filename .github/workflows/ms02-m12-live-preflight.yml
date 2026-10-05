@@ -1,0 +1,70 @@
+name: MS-02 M12 Live Preflight
+
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m12-live-preflight.yml
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: M12 live runtime preflight on meshalot-ms02
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - meshalot
+      - ms02
+    timeout-minutes: 10
+
+    steps:
+      - name: Verify host and current services
+        shell: bash
+        run: |
+          set -u
+          echo "===== HOST ====="
+          echo "RUNNER_NAME=$RUNNER_NAME"
+          echo "HOSTNAME=$(hostname)"
+          echo "USER=$(whoami)"
+          echo
+          echo "===== SERVICES ====="
+          printf "hermes-enabled="; systemctl is-enabled hermes-llama.service 2>/dev/null || true
+          printf "hermes-active="; systemctl is-active hermes-llama.service 2>/dev/null || true
+          printf "ollama-active="; systemctl is-active ollama 2>/dev/null || true
+          echo
+          echo "===== LISTENERS ====="
+          ss -ltnp 2>/dev/null | grep -E '(:8080|:8081|:11434)' || true
+
+      - name: Locate llama.cpp binaries and source trees
+        shell: bash
+        run: |
+          set -u
+          echo "===== LLAMA BINARIES ====="
+          command -v llama-server || true
+          find "$HOME" /opt /usr/local -maxdepth 6 -type f -name 'llama-server' -executable -print 2>/dev/null | sort -u | head -30
+          echo
+          echo "===== LLAMA SOURCE TREES ====="
+          find "$HOME" /opt -maxdepth 5 -type f -name 'CMakeLists.txt' -path '*llama*' -printf '%h\n' 2>/dev/null | sort -u | head -20
+
+      - name: Locate candidate GGUF models
+        shell: bash
+        run: |
+          set -u
+          echo "===== GGUF MODELS ====="
+          find "$HOME" /opt -maxdepth 7 -type f -name '*.gguf' -printf '%s %p\n' 2>/dev/null | sort -n | head -40
+
+      - name: Inspect candidate llama-server linkages
+        shell: bash
+        run: |
+          set -u
+          echo "===== BINARY LINKAGE ====="
+          while IFS= read -r bin; do
+            [ -n "$bin" ] || continue
+            echo "--- $bin ---"
+            file "$bin" || true
+            ldd "$bin" 2>/dev/null | grep -Ei 'sycl|ze_loader|cuda|cudart|ggml|mkl|opencl' || true
+          done < <(find "$HOME" /opt /usr/local -maxdepth 6 -type f -name 'llama-server' -executable -print 2>/dev/null | sort -u | head -10)
