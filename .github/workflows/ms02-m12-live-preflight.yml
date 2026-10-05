@@ -12,59 +12,78 @@ permissions:
 
 jobs:
   preflight:
-    name: M12 live runtime preflight on meshalot-ms02
+    name: M12 targeted live runtime preflight on meshalot-ms02
     runs-on:
       - self-hosted
       - Linux
       - X64
       - meshalot
       - ms02
-    timeout-minutes: 10
+    timeout-minutes: 5
 
     steps:
-      - name: Verify host and current services
+      - name: Verify current service boundary
         shell: bash
         run: |
-          set -u
-          echo "===== HOST ====="
-          echo "RUNNER_NAME=$RUNNER_NAME"
-          echo "HOSTNAME=$(hostname)"
-          echo "USER=$(whoami)"
-          echo
+          set -euo pipefail
           echo "===== SERVICES ====="
-          printf "hermes-enabled="; systemctl is-enabled hermes-llama.service 2>/dev/null || true
-          printf "hermes-active="; systemctl is-active hermes-llama.service 2>/dev/null || true
-          printf "ollama-active="; systemctl is-active ollama 2>/dev/null || true
+          echo "HERMES_ENABLED=$(systemctl is-enabled hermes-llama.service 2>/dev/null || true)"
+          echo "HERMES_ACTIVE=$(systemctl is-active hermes-llama.service 2>/dev/null || true)"
+          echo "OLLAMA_ACTIVE=$(systemctl is-active ollama 2>/dev/null || true)"
           echo
-          echo "===== LISTENERS ====="
-          ss -ltnp 2>/dev/null | grep -E '(:8080|:8081|:11434)' || true
+          echo "===== RELEVANT LISTENERS ====="
+          ss -ltnp 2>/dev/null | grep -E '(:8080|:18192|:11434)' || true
 
-      - name: Locate llama.cpp binaries and source trees
+      - name: Verify known llama.cpp runtime and model
         shell: bash
         run: |
-          set -u
-          echo "===== LLAMA BINARIES ====="
-          command -v llama-server || true
-          find "$HOME" /opt /usr/local -maxdepth 6 -type f -name 'llama-server' -executable -print 2>/dev/null | sort -u | head -30
+          set -euo pipefail
+          CPU_SERVER="$HOME/llama.cpp/build/bin/llama-server"
+          SYCL_SERVER="$HOME/llama.cpp/build-sycl/bin/llama-server"
+          MODEL="$HOME/models/Qwen3-30B-A3B-Instruct-2507/Qwen_Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf"
+          EXPECTED_MODEL_SHA="382b4f5a164d200f93790ee0e339fae12852896d23485cfb203ce868fea33a95"
+
+          test -x "$CPU_SERVER"
+          test -x "$SYCL_SERVER"
+          test -f "$MODEL"
+
+          echo "CPU_SERVER=$CPU_SERVER"
+          echo "SYCL_SERVER=$SYCL_SERVER"
+          echo "MODEL=$MODEL"
+          ls -lh "$CPU_SERVER" "$SYCL_SERVER" "$MODEL"
+
+          MODEL_SHA="$(sha256sum "$MODEL" | awk '{print $1}')"
+          echo "MODEL_SHA256=$MODEL_SHA"
+          test "$MODEL_SHA" = "$EXPECTED_MODEL_SHA"
+
+      - name: Inspect non-SYCL llama-server
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVER="$HOME/llama.cpp/build/bin/llama-server"
+
+          echo "===== VERSION ====="
+          "$SERVER" --version
+
           echo
-          echo "===== LLAMA SOURCE TREES ====="
-          find "$HOME" /opt -maxdepth 5 -type f -name 'CMakeLists.txt' -path '*llama*' -printf '%h\n' 2>/dev/null | sort -u | head -20
+          echo "===== LINKAGE ====="
+          file "$SERVER"
+          ldd "$SERVER" | tee /tmp/m12-llama-ldd.txt
+          if grep -Eqi 'sycl|ze_loader|libpi_|level.?zero|cuda|cudart' /tmp/m12-llama-ldd.txt; then
+            echo "ERROR: non-SYCL candidate unexpectedly links accelerator runtime"
+            exit 1
+          fi
 
-      - name: Locate candidate GGUF models
+          echo
+          echo "===== REQUIRED CLI OPTIONS ====="
+          "$SERVER" --help 2>&1 | grep -E -- '--host|--port|--model|-m,|--ctx-size|-c,' | head -30 || true
+
+      - name: Verify isolated test port is free
         shell: bash
         run: |
-          set -u
-          echo "===== GGUF MODELS ====="
-          find "$HOME" /opt -maxdepth 7 -type f -name '*.gguf' -printf '%s %p\n' 2>/dev/null | sort -n | head -40
-
-      - name: Inspect candidate llama-server linkages
-        shell: bash
-        run: |
-          set -u
-          echo "===== BINARY LINKAGE ====="
-          while IFS= read -r bin; do
-            [ -n "$bin" ] || continue
-            echo "--- $bin ---"
-            file "$bin" || true
-            ldd "$bin" 2>/dev/null | grep -Ei 'sycl|ze_loader|cuda|cudart|ggml|mkl|opencl' || true
-          done < <(find "$HOME" /opt /usr/local -maxdepth 6 -type f -name 'llama-server' -executable -print 2>/dev/null | sort -u | head -10)
+          set -euo pipefail
+          if ss -ltn | awk '{print $4}' | grep -Eq '(^|:)18192$'; then
+            echo "ERROR: port 18192 is already in use"
+            exit 1
+          fi
+          echo "PORT_18192_FREE=PASS"
