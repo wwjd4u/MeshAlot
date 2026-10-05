@@ -1,0 +1,71 @@
+name: MS-02 SYCL Recovery Diagnostics
+
+on:
+  push:
+    branches:
+      - lab/ms02-v100-upgrade
+    paths:
+      - .github/workflows/ms02-sycl-recovery-diagnostics.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Diagnose MS-02 SYCL runtime failure
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - meshalot
+      - ms02
+    timeout-minutes: 5
+
+    steps:
+      - name: Stop Hermes restart loop
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo -n /usr/bin/systemctl stop hermes-llama.service
+          echo "HERMES_STATE=$(systemctl is-active hermes-llama.service 2>/dev/null || true)"
+
+      - name: Inspect unit, startup script, journal, and SYCL devices
+        shell: bash
+        run: |
+          set +e
+
+          echo "===== SYSTEMD UNIT ====="
+          systemctl cat hermes-llama.service || true
+
+          echo
+          echo "===== START SCRIPT ====="
+          sed -n '1,220p' "$HOME/llama.cpp/start-hermes-sycl.sh" || true
+
+          echo
+          echo "===== RECENT JOURNAL ====="
+          journalctl -u hermes-llama.service -n 120 --no-pager -o short-precise || true
+
+          echo
+          echo "===== DEVICE FILES ====="
+          ls -l /dev/dri 2>/dev/null || true
+          id
+
+          echo
+          echo "===== ONEAPI / SYCL ====="
+          if [ -f /opt/intel/oneapi/setvars.sh ]; then
+            /bin/bash -c 'source /opt/intel/oneapi/setvars.sh >/dev/null 2>&1; command -v sycl-ls; sycl-ls' || true
+          fi
+
+          echo
+          echo "===== LLAMA VERSION / DEVICES ====="
+          /bin/bash -c 'source /opt/intel/oneapi/setvars.sh >/dev/null 2>&1; "$HOME/llama.cpp/build-sycl/bin/llama-server" --version' || true
+          /bin/bash -c 'source /opt/intel/oneapi/setvars.sh >/dev/null 2>&1; "$HOME/llama.cpp/build-sycl/bin/llama-server" --list-devices' || true
+
+          echo
+          echo "===== LLAMA-BENCH VERSION ====="
+          /bin/bash -c 'source /opt/intel/oneapi/setvars.sh >/dev/null 2>&1; "$HOME/llama.cpp/build-sycl/bin/llama-bench" --version' || true
+
+          echo
+          echo "===== KERNEL / INTEL GPU ====="
+          uname -a
+          lspci -nnk | grep -A5 -Ei 'VGA|Display|3D' || true
