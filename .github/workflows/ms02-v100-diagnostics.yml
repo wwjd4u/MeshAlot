@@ -1,0 +1,63 @@
+name: MS-02 V100 Baseline Diagnostics
+
+on:
+  push:
+    branches:
+      - lab/ms02-v100-upgrade
+    paths:
+      - .github/workflows/ms02-v100-diagnostics.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Diagnose failed pre-V100 baseline
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - meshalot
+      - ms02
+    timeout-minutes: 5
+
+    steps:
+      - name: Inspect preserved baseline evidence
+        shell: bash
+        run: |
+          set +e
+          echo "===== PRESERVED EVIDENCE ====="
+          EVIDENCE_DIR="$HOME/meshalot-v100-evidence/pre-v100-20261005-081127"
+          ls -lah "$EVIDENCE_DIR"
+          echo
+          echo "===== RUNNER STDERR ====="
+          cat "$EVIDENCE_DIR/pre-v100-runner.err" 2>/dev/null || true
+          echo
+          echo "===== RESULT FILE ====="
+          cat "$EVIDENCE_DIR/pre-v100-result.json" 2>/dev/null || true
+          echo
+          echo "===== HERMES SERVICE ====="
+          systemctl --no-pager -l status hermes-llama.service || true
+          echo
+          echo "===== HERMES SHOW ====="
+          systemctl show hermes-llama.service -p ActiveState -p SubState -p MainPID -p ExecMainStatus -p ExecMainCode || true
+          echo
+          echo "===== PORTS ====="
+          ss -lntp 2>/dev/null | grep -E ':8080|:11434|:18190' || true
+          echo
+          echo "===== PROCESSES ====="
+          ps -eo pid,ppid,user,stat,etime,cmd | grep -E 'llama-server|ollama|hermes' | grep -v grep || true
+          echo
+          echo "===== HEALTH PROBES ====="
+          for url in \
+            http://127.0.0.1:8080/health \
+            http://127.0.0.1:8080/v1/models \
+            http://127.0.0.1:11434/api/tags
+          do
+            code="$(curl -sS -o /tmp/meshalot-health.out -w '%{http_code}' --max-time 3 "$url" 2>/tmp/meshalot-health.err)"
+            echo "URL=$url HTTP=$code"
+            head -c 500 /tmp/meshalot-health.out 2>/dev/null || true
+            echo
+            cat /tmp/meshalot-health.err 2>/dev/null || true
+            echo
+          done
