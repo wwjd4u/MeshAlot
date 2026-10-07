@@ -1,0 +1,113 @@
+name: MS-02 V100 Evidence Preservation
+
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-v100-evidence.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ms02-v100-evidence
+  cancel-in-progress: false
+
+jobs:
+  preserve-evidence:
+    if: github.repository == 'wwjd4u/MeshAlot' && github.actor == 'wwjd4u'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 5
+    steps:
+      - name: Pull and verify the exact pushed commit in a temporary checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          CHECKOUT_DIR="$(mktemp -d "$RUNNER_TEMP/v100-evidence-checkout.XXXXXX")"
+          trap 'rm -rf "$CHECKOUT_DIR"' EXIT
+          git init --quiet "$CHECKOUT_DIR"
+          git -C "$CHECKOUT_DIR" fetch --quiet --depth=1 https://github.com/wwjd4u/MeshAlot.git "$GITHUB_SHA"
+          git -C "$CHECKOUT_DIR" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$CHECKOUT_DIR" rev-parse HEAD)" = "$GITHUB_SHA"
+          test -f "$CHECKOUT_DIR/.github/workflows/ms02-v100-evidence.yml"
+          printf 'RUNNER_NAME=%s\nPULLED_COMMIT=%s\nPUSH_PULL_PROOF=PASS\n' "$RUNNER_NAME" "$GITHUB_SHA"
+
+      - name: Preserve and verify the existing post-V100 evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import math
+          import os
+          from pathlib import Path
+          import subprocess
+
+          evidence = Path("/home/jason_guynes/meshalot-v100-evidence/post-v100-20261006-134015")
+          names = ("nvidia-before.txt", "llama-bench-v100.json", "nvidia-after.txt")
+          if not evidence.is_dir() or evidence.is_symlink():
+              raise SystemExit("Expected evidence directory missing or symlinked")
+          original = {}
+          for name in names:
+              path = evidence / name
+              if not path.is_file() or path.is_symlink() or path.stat().st_size == 0:
+                  raise SystemExit("Missing, empty, or symlinked evidence file: " + name)
+              original[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+
+          benchmark = json.loads((evidence / names[1]).read_text())
+          if not isinstance(benchmark, list):
+              raise SystemExit("Unexpected llama-bench JSON structure")
+          prompt = [row for row in benchmark if row.get("n_prompt") == 512 and row.get("n_gen") == 0]
+          generation = [row for row in benchmark if row.get("n_prompt") == 0 and row.get("n_gen") == 128]
+          if len(prompt) != 1 or len(generation) != 1:
+              raise SystemExit("Expected prompt and generation rows missing")
+          for row, expected in ((prompt[0], 1098.282826), (generation[0], 131.700661)):
+              if not math.isclose(float(row["avg_ts"]), expected, rel_tol=0, abs_tol=0.00001):
+                  raise SystemExit("Benchmark does not match verified handoff")
+
+          manifest = evidence / "SHA256SUMS.txt"
+          if manifest.is_symlink():
+              raise SystemExit("Existing hash manifest is symlinked")
+          if manifest.exists():
+              if not manifest.is_file():
+                  raise SystemExit("Hash manifest is not a regular file")
+              print("MANIFEST_ACTION=existing-preserved", flush=True)
+          else:
+              content = "".join(original[name] + "  " + str(evidence / name) + "\n" for name in sorted(names))
+              with manifest.open("x", encoding="utf-8") as handle:
+                  handle.write(content)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              print("MANIFEST_ACTION=created-exclusive", flush=True)
+
+          entries = {}
+          for line in manifest.read_text().splitlines():
+              digest, separator, filename = line.partition("  ")
+              if not separator:
+                  digest, separator, filename = line.partition(" *")
+              if separator:
+                  path = Path(filename)
+                  if not path.is_absolute():
+                      path = evidence / path
+                  entries[str(path)] = digest
+          for name in names:
+              if entries.get(str(evidence / name)) != original[name]:
+                  raise SystemExit("Manifest missing or mismatched required evidence: " + name)
+          subprocess.run(["sha256sum", "--check", "--strict", str(manifest)], cwd=evidence, check=True)
+          for name in names:
+              if hashlib.sha256((evidence / name).read_bytes()).hexdigest() != original[name]:
+                  raise SystemExit("Evidence changed during preservation: " + name)
+
+          print("BEGIN_VERIFIED_EVIDENCE")
+          for name in sorted(names):
+              print(original[name] + "  " + name)
+          print(hashlib.sha256(manifest.read_bytes()).hexdigest() + "  SHA256SUMS.txt")
+          print("PROMPT_TOK_S=" + str(prompt[0]["avg_ts"]))
+          print("GENERATION_TOK_S=" + str(generation[0]["avg_ts"]))
+          print("EVIDENCE_UNCHANGED=PASS")
+          print("EVIDENCE_HASH_VERIFICATION=PASS")
+          print("END_VERIFIED_EVIDENCE")
+          PY
