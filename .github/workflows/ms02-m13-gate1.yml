@@ -1,0 +1,32 @@
+name: MS-02 M13 Gate 1 Validation
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate1.yml
+permissions:
+  contents: read
+jobs:
+  validate-m13:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 10
+    steps:
+      - name: Fetch exact M13 commit to isolated temporary checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          TEST_DIR="$(mktemp -d "$RUNNER_TEMP/m13-gate1.XXXXXX")"
+          trap 'rm -rf "$TEST_DIR"' EXIT
+          git init -q "$TEST_DIR"
+          git -C "$TEST_DIR" fetch -q --depth=1 https://github.com/wwjd4u/MeshAlot.git b2ffe3a8927f79226a94765ecb270b98286d88c5
+          git -C "$TEST_DIR" checkout -q --detach FETCH_HEAD
+          test "$(git -C "$TEST_DIR" rev-parse HEAD)" = "b2ffe3a8927f79226a94765ecb270b98286d88c5"
+          cd "$TEST_DIR"
+          echo "M13_COMMIT=$(git rev-parse HEAD)"
+          echo "RUNNER=$RUNNER_NAME"
+          go test ./protocol/v1 -count=1 -v
+          go test ./... -count=1
+          echo "M13_GATE1_VALIDATION=PASS"
