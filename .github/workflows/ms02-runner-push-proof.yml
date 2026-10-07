@@ -1,0 +1,88 @@
+name: MS-02 Runner Git Push Proof
+
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-runner-push-proof.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ms02-runner-push-proof
+  cancel-in-progress: false
+
+jobs:
+  runner-push-proof:
+    if: github.repository == 'wwjd4u/MeshAlot' && github.actor == 'wwjd4u'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Commit and push a proof file from an isolated checkout
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$GITHUB_REPOSITORY" = "wwjd4u/MeshAlot"
+          TEST_DIR="$(mktemp -d "$RUNNER_TEMP/runner-push-proof.XXXXXX")"
+          trap 'rm -rf "$TEST_DIR"' EXIT
+
+          AUTH_SCRIPT="$TEST_DIR/git-askpass.sh"
+          cat > "$AUTH_SCRIPT" <<'SH'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *Password*) printf '%s\n' "$GH_TOKEN" ;;
+            *) exit 1 ;;
+          esac
+          SH
+          chmod 700 "$AUTH_SCRIPT"
+          export GIT_ASKPASS="$AUTH_SCRIPT"
+          export GIT_TERMINAL_PROMPT=0
+
+          CHECKOUT_DIR="$TEST_DIR/repo"
+          git init --quiet "$CHECKOUT_DIR"
+          cd "$CHECKOUT_DIR"
+          git config credential.helper ""
+          git remote add origin https://github.com/wwjd4u/MeshAlot.git
+          git fetch --quiet --depth=1 origin main
+          BASE_SHA="$(git rev-parse FETCH_HEAD)"
+          test "$BASE_SHA" = "1016c9b058690f34058dfab9cde7927e421fa469"
+
+          PROOF_BRANCH="runner-proof/ms02-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          git checkout --quiet -b "$PROOF_BRANCH" FETCH_HEAD
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          mkdir -p docs
+          cat > docs/ms02-runner-push-proof.md <<EOF
+          # MS-02 runner Git push proof
+
+          This file was written, committed, and pushed by the MS-02 self-hosted runner.
+
+          - Runner: $RUNNER_NAME
+          - Run ID: $GITHUB_RUN_ID
+          - Attempt: $GITHUB_RUN_ATTEMPT
+          - Workflow source commit: $GITHUB_SHA
+          - Base main commit: $BASE_SHA
+          - Proof branch: $PROOF_BRANCH
+          - UTC timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          Authentication used the job-scoped GitHub Actions token with contents:write.
+          This isolated proof does not modify main, M13, the user's working checkout, or V100 evidence.
+          EOF
+          git add -- docs/ms02-runner-push-proof.md
+          test "$(git diff --cached --name-only)" = "docs/ms02-runner-push-proof.md"
+          git diff --cached --check
+          git commit --quiet -m "Prove MS-02 runner can commit and push remotely"
+          PROOF_SHA="$(git rev-parse HEAD)"
+          git push --porcelain origin "HEAD:refs/heads/$PROOF_BRANCH"
+          REMOTE_SHA="$(git ls-remote --heads origin "refs/heads/$PROOF_BRANCH" | cut -f1)"
+          test "$REMOTE_SHA" = "$PROOF_SHA"
+          printf 'RUNNER_PUSH=PASS\nPROOF_BRANCH=%s\nPROOF_COMMIT=%s\nBASE_MAIN=%s\n' "$PROOF_BRANCH" "$PROOF_SHA" "$BASE_SHA"
