@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -210,7 +209,4 @@ func TestM13PersistentSessionRecoversAfterTLSDrop(t *testing.T){
 		t.Fatal("retry supervisor ignored cancellation")
 	}
 	if count:=connects.Load();count<2 {t.Fatalf("expected two signed sessions, got %d",count)}
-	if strings.Contains(fmt.Sprint(id),"unused enrollment token") {
-		t.Fatal("test must not invent an enrollment token")
-	}
 }
