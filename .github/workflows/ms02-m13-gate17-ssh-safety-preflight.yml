@@ -1,0 +1,85 @@
+name: MS-02 M13 Dedicated SSH Access Safety Preflight
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate17-ssh-safety-preflight.yml
+permissions:
+  contents: read
+jobs:
+  preflight:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 6
+    steps:
+      - name: Check exact-VM SSH metadata and existing login matches, without printing keys
+        shell: bash
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+          CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+          CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          test -x "$GCLOUD"
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-ssh-safety.XXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          "$GCLOUD" compute instances describe meshalot-control-01 --zone us-south1-a \
+            --project meshalot-poc --format=json > "$WORK/vm.json" 2>"$WORK/vm-error"
+          "$GCLOUD" compute project-info describe --project meshalot-poc \
+            --format=json > "$WORK/project.json" 2>"$WORK/project-error"
+          "$GCLOUD" auth list --filter=status:ACTIVE --format=json > "$WORK/accounts.json" 2>"$WORK/auth-error"
+          python3 - "$WORK/vm.json" "$WORK/project.json" "$WORK/accounts.json" <<'PY'
+          import json,sys
+          from pathlib import Path
+          vm, project, accounts = [json.loads(Path(p).read_text()) for p in sys.argv[1:]]
+          assert vm.get("name") == "meshalot-control-01"
+          assert str(vm.get("zone","")).endswith("/us-south1-a")
+          assert vm.get("status") == "RUNNING"
+          assert len(accounts) == 1 and accounts[0].get("status")=="ACTIVE"
+          def pairs(meta):
+              return {x.get("key"):x.get("value","") for x in ((meta or {}).get("items") or [])}
+          im = pairs(vm.get("metadata"))
+          pm = pairs(project.get("commonInstanceMetadata"))
+          assert im.get("enable-oslogin",pm.get("enable-oslogin","false")).lower() != "true", "OS Login enabled; no metadata write"
+          assert "ssh-keys" not in im, "existing per-VM ssh-keys present; STOP no overwrites"
+          assert im.get("block-project-ssh-keys",pm.get("block-project-ssh-keys","false")).lower() != "true", "project SSH keys blocked; STOP"
+          raw = pm.get("ssh-keys","")
+          assert raw, "no project-wide SSH key metadata"
+          users = sorted({line.split(":",1)[0].strip() for line in raw.splitlines()
+                          if ":" in line and line.split(":",1)[0].strip()})
+          account=accounts[0].get("account","").strip().lower()
+          assert "@" in account, "unexpected active account format"
+          base=account.split("@",1)[0]
+          candidates={base,base.replace(".","_"),account.replace("@","_").replace(".","_"),
+                      "jason_guynes","jasonguynes","jguynes74"}
+          matched=sorted(set(users)&candidates)
+          print("M13_PROJECT_EXISTING_SSH_USER_COUNT="+str(len(users)))
+          print("M13_MATCHING_KNOWN_SSH_USER_COUNT="+str(len(matched)))
+          print("M13_INSTANCE_SSH_METADATA=ABSENT")
+          print("M13_PROJECT_SSH_KEYS=WILL_NOT_BE_MODIFIED")
+          print("M13_VM_RUNNING_AND_OSLOGIN_METADATA=PASS")
+          print("M13_VM_OWN_INSTANCE_SSH_FIELD_SAFE_TO_CREATE=PASS")
+          if len(matched)==1:
+              print("M13_EXISTING_VM_LOGIN_MATCH=UNIQUE")
+          elif len(matched)==0:
+              print("M13_EXISTING_VM_LOGIN_MATCH=NONE_REQUIRES_REVIEW")
+          else:
+              print("M13_EXISTING_VM_LOGIN_MATCH=MULTIPLE_REQUIRES_REVIEW")
+          PY
+          for path in \
+            "$HOME/.local/share/meshalot-access/m13-audit" \
+            "$HOME/.ssh/meshalot-control-m13-audit_ed25519"; do
+            if test -e "$path" || test -L "$path"; then
+              echo "M13_DEDICATED_LOCAL_KEY_PATH=EXISTS_STOP_BEFORE_WRITE"
+              exit 1
+            fi
+          done
+          echo "M13_DEDICATED_KEY_PATHS=NOT_PRESENT"
+          echo "M13_VM_SSH_SAFETY_PREFLIGHT=READ_ONLY_COMPLETE"
