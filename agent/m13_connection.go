@@ -24,16 +24,16 @@ const (
 type M13HeartbeatSampler func(context.Context) (protocol.M13Heartbeat, error)
 
 type m13AgentChallenge struct {
-	Type string `json:"type"`
+	Type      string `json:"type"`
 	Challenge string `json:"challenge"`
 }
 type m13AgentProof struct {
-	Type string `json:"type"`
-	NodeID string `json:"node_id"`
+	Type      string `json:"type"`
+	NodeID    string `json:"node_id"`
 	Signature string `json:"signature"`
 }
 type m13AgentAuthResponse struct {
-	Type string `json:"type"`
+	Type   string `json:"type"`
 	NodeID string `json:"node_id"`
 }
 type m13AgentHeartbeatAck struct {
@@ -119,7 +119,7 @@ func RunM13Session(ctx context.Context, controlURL string, identity Identity,
 	}
 	_ = ws.SetWriteDeadline(time.Now().Add(m13ClientWriteTimeout))
 	if err = ws.WriteJSON(m13AgentProof{
-		Type:"authenticate", NodeID:identity.NodeID, Signature:signature,
+		Type: "authenticate", NodeID: identity.NodeID, Signature: signature,
 	}); err != nil {
 		return fmt.Errorf("send agent authentication: %w", err)
 	}
@@ -136,7 +136,9 @@ func RunM13Session(ctx context.Context, controlURL string, identity Identity,
 		}
 		heartbeat, sampleErr := sample(ctx)
 		if sampleErr != nil {
-			if ctx.Err() != nil { return nil }
+			if ctx.Err() != nil {
+				return nil
+			}
 			return fmt.Errorf("collect heartbeat: %w", sampleErr)
 		}
 		if err = heartbeat.Validate(time.Now().UTC()); err != nil {
@@ -144,13 +146,17 @@ func RunM13Session(ctx context.Context, controlURL string, identity Identity,
 		}
 		_ = ws.SetWriteDeadline(time.Now().Add(m13ClientWriteTimeout))
 		if err = ws.WriteJSON(heartbeat); err != nil {
-			if ctx.Err() != nil { return nil }
+			if ctx.Err() != nil {
+				return nil
+			}
 			return fmt.Errorf("send heartbeat: %w", err)
 		}
 		_ = ws.SetReadDeadline(time.Now().Add(m13ClientAckTimeout))
 		var ack m13AgentHeartbeatAck
 		if err = ws.ReadJSON(&ack); err != nil {
-			if ctx.Err() != nil { return nil }
+			if ctx.Err() != nil {
+				return nil
+			}
 			return fmt.Errorf("heartbeat acknowledgement failed: %w", err)
 		}
 		if ack.Type != "heartbeat_ack" {
