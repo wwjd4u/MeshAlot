@@ -1,0 +1,65 @@
+name: MS-02 M13 Gate 17 Step 2 Access Preflight
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate17-step2-access.yml
+permissions:
+  contents: read
+jobs:
+  access-preflight:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 5
+    steps:
+      - name: Check existing read-only cloud audit access capabilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          echo "M13_GATE17_STEP2_ACCESS_PREFLIGHT=START"
+          if command -v ssh >/dev/null 2>&1; then
+            echo "SSH_CLIENT=AVAILABLE"
+          else
+            echo "SSH_CLIENT=NOT_INSTALLED"
+          fi
+          if command -v gcloud >/dev/null 2>&1; then
+            GCLOUD="$(command -v gcloud)"
+          elif test -x "$HOME/google-cloud-sdk/bin/gcloud"; then
+            GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          else
+            GCLOUD=""
+          fi
+          if test -n "$GCLOUD"; then
+            echo "GOOGLE_CLOUD_CLI=AVAILABLE"
+            if "$GCLOUD" auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | grep -q .; then
+              echo "EXISTING_GCLOUD_LOGIN=AVAILABLE"
+            else
+              echo "EXISTING_GCLOUD_LOGIN=NOT_AUTHENTICATED"
+            fi
+            if "$GCLOUD" projects describe meshalot-poc --format='value(projectId)' 2>/dev/null | grep -Fxq meshalot-poc; then
+              echo "MESHALOT_PROJECT_ACCESS=AVAILABLE"
+            else
+              echo "MESHALOT_PROJECT_ACCESS=UNAVAILABLE"
+            fi
+          else
+            echo "GOOGLE_CLOUD_CLI=NOT_INSTALLED"
+            echo "EXISTING_GCLOUD_LOGIN=UNKNOWN"
+            echo "MESHALOT_PROJECT_ACCESS=UNKNOWN"
+          fi
+          if test -r "$HOME/.ssh/google_compute_engine"; then
+            echo "KNOWN_GCP_SSH_KEY=AVAILABLE_NO_CONTENT_READ"
+          else
+            echo "KNOWN_GCP_SSH_KEY=NOT_FOUND"
+          fi
+          if test -r "$HOME/.ssh/config"; then
+            if grep -Eq '^[[:space:]]*Host[[:space:]].*(meshalot-control-01|meshalot-poc)' "$HOME/.ssh/config"; then
+              echo "CONTROL_SERVER_SSH_ALIAS=PRESENT"
+            else
+              echo "CONTROL_SERVER_SSH_ALIAS=NOT_FOUND"
+            fi
+          else
+            echo "CONTROL_SERVER_SSH_ALIAS=NOT_FOUND"
+          fi
+          echo "M13_GATE17_STEP2_NO_PRODUCTION_CHANGES=PASS"
