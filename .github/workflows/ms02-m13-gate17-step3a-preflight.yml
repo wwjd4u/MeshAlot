@@ -1,0 +1,122 @@
+name: MS-02 M13 Gate 17 Step 3A Backup Readiness
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths: [.github/workflows/ms02-m13-gate17-step3a-preflight.yml]
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-backup-recovery
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 8
+    steps:
+      - name: Check read-only production pg_dump access and isolated local restore capacity
+        shell: bash
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+          CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+          CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          KEYDIR="$HOME/.local/share/meshalot-m13-iap-ssh"
+          test -x "$GCLOUD"
+          test -r "$KEYDIR/id_ed25519" && test -r "$KEYDIR/known_hosts"
+          test "$(stat -c %a "$KEYDIR/id_ed25519")" = "600"
+          test "$(stat -c %a "$KEYDIR/known_hosts")" = "600"
+          command -v gpg >/dev/null
+          command -v docker >/dev/null
+          command -v sha256sum >/dev/null
+          docker info >/dev/null
+          docker image inspect postgres:16-alpine >/dev/null
+          echo "M13_STEP3A_LOCAL_BACKUP_AND_ISOLATED_RESTORE_TOOLS=PASS"
+          ROOT="$HOME/.local/share/meshalot-m13-private-backups"
+          if test -e "$ROOT" || test -L "$ROOT"; then
+            test -d "$ROOT" && test ! -L "$ROOT"
+            test "$(stat -c %a "$ROOT")" = 700
+            test "$(stat -c %u "$ROOT")" = "$(id -u)"
+          fi
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-backup-preflight.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          python3 - "$KEYDIR/registration.json" "$WORK/user" <<'PY'
+          import datetime,json,re,sys
+          from pathlib import Path
+          x=json.loads(Path(sys.argv[1]).read_text())
+          assert x.get('target')=='meshalot-control-01'
+          assert x.get('project')=='meshalot-poc' and x.get('zone')=='us-south1-a'
+          assert re.fullmatch(r'[a-z_][a-z0-9_-]{0,30}',x['username'])
+          expiry=datetime.datetime.strptime(x['expires'],'%Y-%m-%dT%H:%M:%S%z')
+          assert expiry>datetime.datetime.now(datetime.timezone.utc)
+          Path(sys.argv[2]).write_text(x['username'])
+          print("M13_STEP3A_SCOPED_SSH_KEY_VALID=PASS")
+          PY
+          cat >"$WORK/probe.sh" <<'SH'
+          #!/bin/bash
+          set -euo pipefail
+          test "$(hostname -s)" = "meshalot-control-01" || exit 9
+          command -v pg_dump >/dev/null
+          command -v psql >/dev/null
+          sudo -n -u postgres pg_dump --version
+          sudo -n -u postgres psql -X -qAt -v ON_ERROR_STOP=1 --no-password \
+            --dbname=meshalot <<'SQL'
+          BEGIN READ ONLY;
+          SELECT 'DB_SIZE_BYTES=' || pg_database_size(current_database());
+          SELECT 'DB_SERVER_MAJOR=' || current_setting('server_version_num')::integer/10000;
+          SELECT 'MIGRATION_MAX=' || max(version) FROM meshalot_meta.schema_migrations;
+          ROLLBACK;
+          SQL
+          echo "PROD_DATABASE_READONLY_ACCESS=PASS"
+          SH
+          bash -n "$WORK/probe.sh"
+          PROXY="$GCLOUD compute start-iap-tunnel %h %p --project=meshalot-poc --zone=us-south1-a --listen-on-stdin --quiet --verbosity=error"
+          USER="$(cat "$WORK/user")"
+          set +e
+          timeout --signal=TERM --kill-after=5s 85 ssh \
+            -F /dev/null -T -o "ProxyCommand=$PROXY" \
+            -o BatchMode=yes -o ConnectTimeout=30 -o ConnectionAttempts=1 \
+            -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$KEYDIR/known_hosts" \
+            -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no \
+            -o LogLevel=ERROR -i "$KEYDIR/id_ed25519" \
+            "$USER@meshalot-control-01" 'bash -s' \
+            <"$WORK/probe.sh" >"$WORK/probe.out" 2>"$WORK/probe.err"
+          RC="$?"
+          set -e
+          if test "$RC" -ne 0; then
+            echo "M13_STEP3A_PRODUCTION_PGDUMP_ACCESS=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          grep -Fxq 'PROD_DATABASE_READONLY_ACCESS=PASS' "$WORK/probe.out"
+          python3 - "$WORK/probe.out" "$HOME" <<'PY'
+          import re,shutil,sys
+          from pathlib import Path
+          lines=Path(sys.argv[1]).read_text().splitlines()
+          def value(key):
+              values=[x[len(key)+1:] for x in lines if x.startswith(key+"=")]
+              assert len(values)==1 and values[0].isdigit()
+              return int(values[0])
+          n=value("DB_SIZE_BYTES")
+          major=value("DB_SERVER_MAJOR")
+          mig=value("MIGRATION_MAX")
+          assert major==16, "Postgres major version mismatch: stop, don't restore to older version"
+          assert mig==8, "Production migration version unexpectedly changed"
+          assert 0<n<2*1024**3, "DB size exceeds planned 2-GiB safe capacity"
+          free=shutil.disk_usage(sys.argv[2]).free
+          assert free>max(8*1024**3,5*n), "insufficient backup/restore disk headroom"
+          print("M13_STEP3A_POSTGRES_MAJOR16=PASS")
+          print("M13_STEP3A_PRODUCTION_SCHEMA_VERSION8=PASS")
+          print("M13_STEP3A_BACKUP_SIZE_UNDER_2GIB=PASS")
+          print("M13_STEP3A_LOCAL_DISK_HEADROOM=PASS")
+          PY
+          echo "M13_STEP3A_NO_PRODUCTION_CHANGES=PASS"
+          echo "M13_GATE17_STEP3A_READONLY_PREFLIGHT=PASS"
