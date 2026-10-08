@@ -1,0 +1,153 @@
+name: MS-02 M13 Gate 17 Private Read-only Production Audit
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate17-prod-readonly-audit.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-control-readonly-audit
+  cancel-in-progress: false
+jobs:
+  audit:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 10
+    steps:
+      - name: Check out previously validated read-only audit source
+        uses: actions/checkout@v4
+        with:
+          ref: c439b160585017e984854ec69c098ecb24dcc557
+          persist-credentials: false
+      - name: Use verified IAP host key and execute only read-only checks
+        shell: bash
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+          CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+          CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$(git rev-parse HEAD)" = "c439b160585017e984854ec69c098ecb24dcc557"
+          SRC="deployments/google/m13-gate17-step2-readonly-audit.sh"
+          test -f "$SRC"
+          bash -n "$SRC"
+          grep -Fq 'M13_GATE17_STEP2=REFUSED_WRONG_HOST' "$SRC"
+          grep -Fq 'BEGIN READ ONLY;' "$SRC"
+          grep -Fq 'ROLLBACK;' "$SRC"
+
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          DIR="$HOME/.local/share/meshalot-m13-iap-ssh"
+          KEY="$DIR/id_ed25519"
+          KNOWN="$DIR/known_hosts"
+          test -x "$GCLOUD"
+          test -f "$KEY" && test -f "$KNOWN"
+          test ! -L "$KEY" && test ! -L "$KNOWN"
+          test "$(stat -c %a "$KEY")" = 600
+          test "$(stat -c %a "$KNOWN")" = 600
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-private-host-audit.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          python3 - "$DIR/registration.json" "$WORK/remote-user" <<'PY'
+          import json,re,sys,datetime
+          from pathlib import Path
+          info=json.loads(Path(sys.argv[1]).read_text())
+          assert info["target"]=="meshalot-control-01"
+          assert info["project"]=="meshalot-poc" and info["zone"]=="us-south1-a"
+          name=info["username"]
+          assert re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}",name)
+          expires=datetime.datetime.strptime(info["expires"],"%Y-%m-%dT%H:%M:%S%z")
+          assert expires>datetime.datetime.now(datetime.timezone.utc)
+          Path(sys.argv[2]).write_text(name)
+          print("M13_REMOTE_ACCESS_CONFIG=VERIFIED")
+          PY
+          REMOTE_USER="$(cat "$WORK/remote-user")"
+          ROOT="$HOME/.local/share/meshalot-m13-private-audits"
+          if test -e "$ROOT" || test -L "$ROOT"; then
+            test -d "$ROOT" && test ! -L "$ROOT"
+            test "$(stat -c %u "$ROOT")" = "$(id -u)"
+            test "$(stat -c %a "$ROOT")" = 700
+          else
+            mkdir -m 700 -- "$ROOT"
+          fi
+          REPORT="$ROOT/step2-control-$(date -u +%Y%m%dT%H%M%SZ)-run-$GITHUB_RUN_ID.txt"
+          test ! -e "$REPORT" && test ! -L "$REPORT"
+          PROXY="$GCLOUD compute start-iap-tunnel %h %p --project=meshalot-poc --zone=us-south1-a --listen-on-stdin --quiet --verbosity=error"
+
+          echo "M13_PRODUCTION_READONLY_AUDIT=START"
+          set +e
+          timeout --signal=TERM --kill-after=5s 120 ssh \
+            -F /dev/null \
+            -T \
+            -o "ProxyCommand=$PROXY" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=30 \
+            -o ConnectionAttempts=1 \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$KNOWN" \
+            -o GlobalKnownHostsFile=/dev/null \
+            -o UpdateHostKeys=no \
+            -o LogLevel=ERROR \
+            -i "$KEY" "$REMOTE_USER@meshalot-control-01" 'bash -s' \
+            <"$SRC" >"$REPORT" 2>"$WORK/ssh-error"
+          RC="$?"
+          set -e
+          chmod 600 "$REPORT"
+          if test "$RC" -ne 0; then
+            echo "M13_PRODUCTION_READONLY_AUDIT=FAILED_PRIVATE_REPORT_PRESERVED"
+            exit 1
+          fi
+          test -s "$REPORT"
+          grep -Fxq 'M13_GATE17_STEP2_HOSTNAME_CONFIRMED=PASS' "$REPORT"
+          grep -Fxq 'M13_GATE17_STEP2_READ_ONLY_AUDIT_COMPLETE=YES' "$REPORT"
+          grep -Fxq 'M13_GATE17_STEP2_PRODUCTION_CHANGES=NONE' "$REPORT"
+          echo "M13_PRODUCTION_HOST_READONLY_SCRIPT=PASS"
+          python3 - "$REPORT" <<'PY'
+          from pathlib import Path
+          import re,sys
+          txt=Path(sys.argv[1]).read_text()
+          lines=txt.splitlines()
+          def exists(prefix,value):
+              return prefix+value in lines
+          def count_prefix(prefix):
+              return sum(1 for line in lines if line.startswith(prefix))
+          migrations=[]
+          for line in lines:
+              if line.startswith("MIGRATION="):
+                  first=line[10:].split(":",1)[0]
+                  if first.isdecimal(): migrations.append(int(first))
+          print("M13_PROD_AUDIT_SYSTEMD_UNITS_SEEN="+str(count_prefix("UNIT_NAME=")))
+          print("M13_PROD_AUDIT_RELEASE_LINKS_SEEN="+str(count_prefix("RELEASE_LINK=")))
+          print("M13_PROD_AUDIT_BINARY_HASHES_SEEN="+str(count_prefix("ACTIVE_BINARY=")))
+          print("M13_PROD_AUDIT_CADDY_REVERSE_PROXY="+("PRESENT" if exists("CADDY_REVERSE_PROXY_DIRECTIVE=","PRESENT") else "NOT_VERIFIED"))
+          print("M13_PROD_AUDIT_CADDY_API_PATH="+("PRESENT" if exists("CADDY_API_PATH_REFERENCE=","PRESENT") else "NOT_VERIFIED"))
+          print("M13_PROD_AUDIT_CADDY_LOOPBACK="+("PRESENT" if exists("CADDY_LOOPBACK_UPSTREAM_REFERENCE=","PRESENT") else "NOT_VERIFIED"))
+          print("M13_PROD_AUDIT_MIGRATION_QUERY="+("PASS_READ_ONLY" if exists("M13_GATE17_STEP2_MIGRATION_QUERY=","PASS_READ_ONLY") else "UNAVAILABLE"))
+          if migrations:
+              print("M13_PROD_AUDIT_MIGRATION_COUNT="+str(len(migrations)))
+              print("M13_PROD_AUDIT_MIGRATION_MAX_VERSION="+str(max(migrations)))
+              print("M13_PROD_AUDIT_MIGRATION_CONTIGUOUS="+str(sorted(migrations)==list(range(1,max(migrations)+1))))
+          else:
+              print("M13_PROD_AUDIT_MIGRATION_COUNT=NOT_VERIFIED")
+          print("M13_PROD_AUDIT_BACKUP_DIRECTORIES_SEEN="+str(count_prefix("BACKUP_DIR=")))
+          print("M13_PROD_AUDIT_BACKUP_LIST="+("PASS" if exists("BACKUP_INVENTORY=","LISTED_READ_ONLY") else "UNAVAILABLE"))
+          print("M13_PROD_AUDIT_SOURCE_HEAD="+("AVAILABLE_IN_PRIVATE_REPORT" if count_prefix("PRODUCTION_SOURCE_HEAD=")>0 else "UNAVAILABLE"))
+          code=[line for line in lines if line.startswith("LOCAL_BACKEND_HEALTH_HTTP=")]
+          health=code[0].split("=",1)[1].strip() if code else "UNAVAILABLE"
+          if health not in ("200","503","404","502","000"):health="OTHER"
+          print("M13_PROD_AUDIT_LOOPBACK_HEALTH_HTTP="+health)
+          print("M13_PROD_AUDIT_DETAILS=PRIVATE_LOCAL_ONLY")
+          PY
+          sha256sum "$REPORT" >"$REPORT.sha256"
+          chmod 600 "$REPORT.sha256"
+          (cd "$ROOT"; sha256sum --check --status "$(basename "$REPORT").sha256")
+          echo "M13_PROD_AUDIT_PRIVATE_REPORT_CHECKSUM=PASS"
+          echo "M13_PROD_AUDIT_PRIVATE_REPORT_LOCATION=$REPORT"
+          echo "M13_PROD_AUDIT_APP_DB_CADDY_CHANGES=NONE"
+          echo "M13_GATE17_STEP2_REMOTE_READONLY_AUDIT_EXECUTED=PASS"
