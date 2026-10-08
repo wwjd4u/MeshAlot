@@ -1,0 +1,47 @@
+name: MS-02 M13 Google CLI Account State Count
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gcloud-account-count.yml
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 5
+    steps:
+      - name: Count stored CLI accounts and active configuration without names/tokens
+        shell: bash
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
+          CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: "true"
+          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: "true"
+          CLOUDSDK_CORE_DISABLE_COLOR: "true"
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(id -un)" = "jason_guynes"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          WORK="$(mktemp -d "$RUNNER_TEMP/ms02-auth-count.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          "$GCLOUD" auth list --format=json >"$WORK/accounts.json" 2>"$WORK/err"
+          "$GCLOUD" config configurations list --format=json >"$WORK/configs.json" 2>"$WORK/config-err"
+          "$GCLOUD" info --format="value(config.paths.global_config_dir)" >"$WORK/config-path" 2>"$WORK/info-err"
+          python3 - "$WORK/accounts.json" "$WORK/configs.json" "$WORK/config-path" <<'PY'
+          import json, sys
+          from pathlib import Path
+          accounts=json.loads(Path(sys.argv[1]).read_text())
+          configs=json.loads(Path(sys.argv[2]).read_text())
+          confpath=Path(sys.argv[3]).read_text().strip()
+          assert isinstance(accounts,list) and isinstance(configs,list)
+          print("GCLOUD_STORED_ACCOUNT_COUNT="+str(len(accounts)))
+          print("GCLOUD_STORED_ACTIVE_ACCOUNT_COUNT="+str(sum(str(a.get('status','')).upper()=='ACTIVE' for a in accounts)))
+          print("GCLOUD_CONFIGURATION_COUNT="+str(len(configs)))
+          print("GCLOUD_CONFIGURATIONS_WITH_ACCOUNT="+str(sum(bool((c.get('properties') or {}).get('core',{}).get('account')) for c in configs)))
+          print("GCLOUD_CONFIG_DIR_IS_EXPECTED="+str(confpath=="/home/jason_guynes/.config/gcloud"))
+          print("M13_GCLOUD_PRIVATE_ACCOUNT_STATE_CHECK=PASS")
+          PY
