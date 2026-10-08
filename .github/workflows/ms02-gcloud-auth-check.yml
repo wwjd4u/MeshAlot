@@ -1,0 +1,52 @@
+name: MS-02 M13 Google Cloud Authentication Read-only Check
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-gcloud-auth-check.yml
+permissions:
+  contents: read
+jobs:
+  auth-status:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 5
+    steps:
+      - name: Check existing user-local gcloud authentication without logging account details
+        shell: bash
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+          CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+          CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(id -un)" = "jason_guynes"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          test -x "$GCLOUD"
+          WORK="$(mktemp -d "$RUNNER_TEMP/meshalot-gcloud-auth-check.XXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          if "$GCLOUD" auth list --filter='status:ACTIVE' \
+            --format='value(account)' >"$WORK/active-accounts" 2>"$WORK/errors"; then
+            if test -s "$WORK/active-accounts"; then
+              echo "MESHALOT_GCLOUD_ACTIVE_ACCOUNT=EXISTS_DETAILS_NOT_LOGGED"
+              if "$GCLOUD" projects describe meshalot-poc \
+                --format='value(projectId)' >"$WORK/project-access" 2>"$WORK/project-errors" &&
+                grep -Fxq 'meshalot-poc' "$WORK/project-access"; then
+                echo "MESHALOT_GCLOUD_PROJECT_READ_ACCESS=PASS"
+              else
+                echo "MESHALOT_GCLOUD_PROJECT_READ_ACCESS=UNAVAILABLE"
+              fi
+            else
+              echo "MESHALOT_GCLOUD_ACTIVE_ACCOUNT=NOT_SIGNED_IN"
+              echo "MESHALOT_GCLOUD_PROJECT_READ_ACCESS=NOT_CHECKED"
+            fi
+          else
+            echo "MESHALOT_GCLOUD_ACTIVE_ACCOUNT=CHECK_FAILED"
+            echo "MESHALOT_GCLOUD_PROJECT_READ_ACCESS=NOT_CHECKED"
+          fi
+          echo "MESHALOT_GCLOUD_NO_PRODUCTION_CHANGES=PASS"
