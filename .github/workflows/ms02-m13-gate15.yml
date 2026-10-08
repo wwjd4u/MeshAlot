@@ -1,0 +1,79 @@
+name: MS-02 M13 Gate 15 Real Node001 Local Smoke
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate15.yml
+permissions:
+  contents: write
+jobs:
+  node001-local-smoke:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact M13 local host test
+        uses: actions/checkout@v4
+        with:
+          ref: m13-persistent-heartbeat
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Test EXISTING identity to local TLS and disposable Postgres, no enrollment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname)" = "wwjd4u-MS-02-Ultra"
+          test "$(git rev-parse HEAD)" = "0fa79c378ff5a5e3419d39797cb04a9c7f2dbcfc"
+          echo "M13_GATE15_INPUT=$(git rev-parse HEAD)"
+          gofmt -w server/m13_node001_smoke_test.go
+          git diff --check
+          go mod verify
+          TEMP_BASE="$(mktemp -d "$RUNNER_TEMP/m13-node001-local.XXXXXX")"
+          CID=""
+          cleanup() {
+            if test -n "$CID"; then
+              docker exec -u root "$CID" chmod 0777 /var/run/postgresql >/dev/null 2>&1 || true
+              docker rm -f -v "$CID" >/dev/null 2>&1 || true
+            fi
+            rm -rf "$TEMP_BASE" || true
+          }
+          trap cleanup EXIT
+          mkdir -p "$TEMP_BASE/socket"
+          chmod 0777 "$TEMP_BASE/socket"
+          docker info >/dev/null
+          CID="$(docker run -d --rm --network none --pull=missing \
+            -e POSTGRES_HOST_AUTH_METHOD=trust \
+            -v "$TEMP_BASE/socket:/var/run/postgresql" \
+            -v "$PWD:/repo:ro" \
+            postgres:16-alpine)"
+          for i in $(seq 1 15); do
+            if docker exec "$CID" pg_isready -h /var/run/postgresql -U postgres >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          docker exec "$CID" pg_isready -h /var/run/postgresql -U postgres
+          docker exec -e PGHOST=/var/run/postgresql "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c 'CREATE ROLE meshalot LOGIN;'
+          docker exec -e PGHOST=/var/run/postgresql "$CID" createdb -U postgres meshalot_m13test
+          docker exec -e PGHOST=/var/run/postgresql "$CID" sh -c 'for f in /repo/database/migrations/*.up.sql; do
+            psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test -f "$f" >/dev/null || exit 1
+          done'
+          docker exec -e PGHOST=/var/run/postgresql "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test -f /repo/database/runtime-grants.sql >/dev/null
+          docker exec -e PGHOST=/var/run/postgresql "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test -f /repo/database/tests/milestone13_runtime_privileges.sql
+          MESHALOT_M13_NODE001_SMOKE=1 \
+          MESHALOT_M13_VERTICAL_ADMIN_DSN="host=$TEMP_BASE/socket port=5432 user=postgres dbname=meshalot_m13test sslmode=disable" \
+          MESHALOT_M13_VERTICAL_RUNTIME_DSN="host=$TEMP_BASE/socket port=5432 user=meshalot dbname=meshalot_m13test sslmode=disable" \
+            go test ./server -run '^TestM13Node001LocalIdentitySmoke$' -v -count=1
+          echo "M13_GATE15_EXISTING_NODE_IDENTITY_AND_GPU=PASS"
+          go test ./... -count=1
+          go vet ./...
+          if ! git diff --quiet -- server/m13_node001_smoke_test.go; then
+            git config user.name "meshalot-ms02-runner"
+            git config user.email "meshalot-runner@users.noreply.github.com"
+            git add -- server/m13_node001_smoke_test.go
+            git diff --cached --check
+            git commit -m "M13 Gate 15: format existing Node001 identity local smoke test"
+            git push origin HEAD:refs/heads/m13-persistent-heartbeat
+          fi
+          echo "M13_GATE15_VALIDATED_COMMIT=$(git rev-parse HEAD)"
+          echo "M13_GATE15=PASS"
