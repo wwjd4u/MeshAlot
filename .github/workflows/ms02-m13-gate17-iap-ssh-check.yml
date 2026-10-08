@@ -1,0 +1,99 @@
+name: MS-02 M13 Gate 17 IAP SSH Host Verification
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate17-iap-ssh-check.yml
+permissions:
+  contents: read
+jobs:
+  ssh-check:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 7
+    steps:
+      - name: Authenticate existing VM user through IAP and verify host (read-only)
+        shell: bash
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+          CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+          CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          DIR="$HOME/.local/share/meshalot-m13-iap-ssh"
+          KEY="$DIR/id_ed25519"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          test -x "$GCLOUD"
+          test -d "$DIR" && test ! -L "$DIR"
+          test "$(stat -c %a "$DIR")" = 700
+          test -f "$KEY" && test ! -L "$KEY"
+          test "$(stat -c %a "$KEY")" = 600
+          test -s "$DIR/registration.json"
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-iap-check.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+
+          python3 - "$DIR/registration.json" "$WORK/ssh-user" <<'PY'
+          import json,re,sys,datetime
+          from pathlib import Path
+          record=json.loads(Path(sys.argv[1]).read_text())
+          assert record.get("target")=="meshalot-control-01"
+          assert record.get("project")=="meshalot-poc"
+          assert record.get("zone")=="us-south1-a"
+          user=record.get("username","")
+          assert re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}",user)
+          expiry=datetime.datetime.strptime(record["expires"],"%Y-%m-%dT%H:%M:%S%z")
+          assert expiry>datetime.datetime.now(datetime.timezone.utc)
+          Path(sys.argv[2]).write_text(user)
+          print("M13_IAP_REGISTERED_EXPIRES_IN_FUTURE=PASS")
+          PY
+          REMOTE_USER="$(cat "$WORK/ssh-user")"
+          KNOWN="$DIR/known_hosts"
+          if test -e "$KNOWN"; then
+            test -f "$KNOWN" && test ! -L "$KNOWN"
+          fi
+          PROXY="$GCLOUD compute start-iap-tunnel %h %p --project=meshalot-poc --zone=us-south1-a --listen-on-stdin --quiet --verbosity=error"
+          echo "M13_IAP_SSH_READONLY_HOST_CHECK=START"
+          set +e
+          timeout --signal=TERM --kill-after=5s 80 ssh \
+            -F /dev/null \
+            -o "ProxyCommand=$PROXY" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=30 \
+            -o ConnectionAttempts=1 \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o "UserKnownHostsFile=$KNOWN" \
+            -o GlobalKnownHostsFile=/dev/null \
+            -o UpdateHostKeys=no \
+            -o LogLevel=ERROR \
+            -i "$KEY" \
+            "$REMOTE_USER@meshalot-control-01" \
+            'test "$(hostname -s)" = meshalot-control-01 && printf "M13_EXPECTED_REMOTE_HOST=PASS\n"' \
+            >"$WORK/remote-output" 2>"$WORK/ssh-error"
+          RC="$?"
+          set -e
+          if test "$RC" -ne 0 || ! grep -Fxq "M13_EXPECTED_REMOTE_HOST=PASS" "$WORK/remote-output"; then
+            echo "M13_IAP_SSH_HOST_CHECK=FAILED_NO_PRODUCTION_CHANGES"
+            if grep -Eiq 'Permission denied .*publickey|Permission denied \(publickey\)' "$WORK/ssh-error"; then
+              echo "M13_IAP_SSH_FAILURE_CATEGORY=REMOTE_KEY_NOT_ACCEPTED"
+            elif grep -Eiq '403|permission denied|not authorized|insufficient permissions' "$WORK/ssh-error"; then
+              echo "M13_IAP_SSH_FAILURE_CATEGORY=IAP_OR_IAM_PERMISSION"
+            elif test "$RC" -eq 124; then
+              echo "M13_IAP_SSH_FAILURE_CATEGORY=TIMEOUT"
+            else
+              echo "M13_IAP_SSH_FAILURE_CATEGORY=OTHER_NO_SECRET_LOG"
+            fi
+            exit 1
+          fi
+          test -s "$KNOWN"
+          test "$(stat -c %a "$KNOWN")" = 600
+          echo "M13_IAP_SSH_REMOTE_HOST_CONFIRMED=PASS"
+          echo "M13_IAP_SSH_HOST_KEY_FIRST_USE_SAVED_LOCALLY=PASS"
+          echo "M13_IAP_SSH_NO_REMOTE_MUTATIONS=PASS"
+          echo "M13_IAP_SSH_READONLY_AUTH=PASS"
