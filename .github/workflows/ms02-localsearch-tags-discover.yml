@@ -1,0 +1,65 @@
+name: MS-02 LocalSearch Tag Query Discovery
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-localsearch-tags-discover.yml
+permissions:
+  contents: read
+jobs:
+  detect:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 5
+    steps:
+      - name: Diagnose read-only tag query method
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          echo "TAG_QUERY_DISCOVERY=START"
+          WORK="$(mktemp -d "$RUNNER_TEMP/localsearch-tag-query.XXXXXX")"
+          trap 'rm -rf "$WORK"' EXIT
+          for cmd in localsearch tinysparql tracker3; do
+            if command -v "$cmd" >/dev/null 2>&1; then
+              echo "CLI_$cmd=AVAILABLE"
+            else
+              echo "CLI_$cmd=NOT_INSTALLED"
+            fi
+          done
+          set +e
+          timeout 10 localsearch tag --list >"$WORK/tag-stdout" 2>"$WORK/tag-stderr"
+          TAG_RC=$?
+          set -e
+          echo "TAG_CLI_EXIT_CODE=$TAG_RC"
+          echo "TAG_CLI_STDOUT_BYTES=$(wc -c < "$WORK/tag-stdout")"
+          if grep -Eiq 'unknown|unrecognized|not a valid command|invalid command|not found|usage' "$WORK/tag-stderr"; then
+            echo "TAG_CLI_ERROR_KIND=COMMAND_UNSUPPORTED"
+          elif test -s "$WORK/tag-stderr"; then
+            echo "TAG_CLI_ERROR_KIND=OTHER_DO_NOT_RESET"
+          else
+            echo "TAG_CLI_ERROR_KIND=NONE"
+          fi
+          echo "===== INDEX FILE METADATA ONLY ====="
+          if test -d "$HOME/.cache/tracker3" && test ! -L "$HOME/.cache/tracker3"; then
+            find "$HOME/.cache/tracker3" -maxdepth 3 -type f \
+              -printf 'INDEX_FILE_RELATIVE=%P SIZE_BYTES=%s\n' \
+              | head -35
+          fi
+          echo "===== QUERY HELP SUBCOMMANDS ====="
+          for cmd in tinysparql tracker3; do
+            if command -v "$cmd" >/dev/null 2>&1; then
+              if timeout 8 "$cmd" sparql --help >"$WORK/$cmd-help" 2>&1; then
+                if grep -Eq -- '--dbus-service|--database|--query' "$WORK/$cmd-help"; then
+                  echo "SPARQL_CLI_$cmd=SUPPORTED"
+                else
+                  echo "SPARQL_CLI_$cmd=UNRECOGNIZED_HELP"
+                fi
+              else
+                echo "SPARQL_CLI_$cmd=HELP_UNAVAILABLE"
+              fi
+            fi
+          done
+          echo "TAG_QUERY_DISCOVERY=READ_ONLY_COMPLETE"
