@@ -1,0 +1,47 @@
+name: MS-02 M13 Gate 8 Stale Node Validation
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate8.yml
+permissions:
+  contents: write
+jobs:
+  offline-classification:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 12
+    steps:
+      - name: Checkout isolated M13 branch
+        uses: actions/checkout@v4
+        with:
+          ref: m13-persistent-heartbeat
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Format, test, and validate stale-node logic
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(git rev-parse HEAD)" = "3945273c2eb0b63eff38fe44055e08245c455066"
+          echo "M13_GATE8_INPUT=$(git rev-parse HEAD)"
+          gofmt -w server/postgres.go server/account_postgres.go server/m13_stale.go server/m13_stale_test.go server/cmd/meshalot-server/main.go
+          git diff --check
+          go mod verify
+          go test ./server -run '^TestM13' -v -count=1
+          go test ./... -count=1
+          go test -race ./server -run '^TestM13' -count=1
+          go vet ./...
+          echo "M13_GATE8_GO_TESTS=PASS"
+          if ! git diff --quiet -- server/postgres.go server/account_postgres.go server/m13_stale.go server/m13_stale_test.go server/cmd/meshalot-server/main.go; then
+            git config user.name "meshalot-ms02-runner"
+            git config user.email "meshalot-runner@users.noreply.github.com"
+            git add -- server/postgres.go server/account_postgres.go server/m13_stale.go server/m13_stale_test.go server/cmd/meshalot-server/main.go
+            git diff --cached --check
+            git commit -m "M13 Gate 8: format stale-node classification and tests"
+            git push origin HEAD:refs/heads/m13-persistent-heartbeat
+          fi
+          echo "M13_GATE8_VALIDATED_COMMIT=$(git rev-parse HEAD)"
+          test -z "$(gofmt -l server/postgres.go server/account_postgres.go server/m13_stale.go server/m13_stale_test.go server/cmd/meshalot-server/main.go)"
+          echo "M13_GATE8_GO=PASS"
