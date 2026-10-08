@@ -1,0 +1,51 @@
+name: MS-02 M13 Gate 11 macOS Packaging
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate11.yml
+permissions:
+  contents: read
+jobs:
+  launchd-stage:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 8
+    steps:
+      - name: Check out pinned M13 launchd packaging
+        uses: actions/checkout@v4
+        with:
+          ref: m13-persistent-heartbeat
+          persist-credentials: false
+      - name: Validate stage-only launchd renderer without Mac changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(git rev-parse HEAD)" = "e184d13f31a69c79e577d7adbc248e7fbe2fba1a"
+          test -f deployments/launchd/render_agent_launchd.py
+          test -f deployments/launchd/README.md
+          python3 --version
+          export PYTHONDONTWRITEBYTECODE=1
+          python3 -m unittest discover -s deployments/launchd -p 'test_render_agent_launchd.py' -v
+          echo "M13_GATE11_STAGE_ONLY_TESTS=PASS"
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          path = Path("deployments/launchd/render_agent_launchd.py")
+          program = ast.parse(path.read_text())
+          forbidden = {"subprocess", "shutil", "ctypes"}
+          imports = set()
+          for node in ast.walk(program):
+              if isinstance(node, (ast.Import, ast.ImportFrom)):
+                  if isinstance(node, ast.Import):
+                      imports.update(alias.name.split(".")[0] for alias in node.names)
+                  else:
+                      imports.add((node.module or "").split(".")[0])
+          assert not forbidden.intersection(imports), imports
+          assert "launchctl" not in imports
+          print("M13_GATE11_NO_SERVICE_OPERATIONS=PASS")
+          PY
+          git diff --exit-code
+          echo "M13_GATE11_CODE=PASS"
