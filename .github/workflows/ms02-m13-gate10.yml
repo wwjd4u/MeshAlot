@@ -1,0 +1,68 @@
+name: MS-02 M13 Gate 10 Service Packaging
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate10.yml
+permissions:
+  contents: read
+jobs:
+  validate-service:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 8
+    steps:
+      - name: Checkout pinned M13 service packaging
+        uses: actions/checkout@v4
+        with:
+          ref: m13-persistent-heartbeat
+          persist-credentials: false
+      - name: Verify template syntax and fail-closed startup in temp directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(git rev-parse HEAD)" = "59e6f6eb4bd9515082e0e164251265214eec5b02"
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-service.XXXXXX")"
+          trap 'rm -rf "$WORK"' EXIT
+          UNIT_SRC="deployments/systemd/meshalot-agent@.service"
+          test -f "$UNIT_SRC"
+          test -f deployments/systemd/agent.env.example
+          grep -Fq 'User=%i' "$UNIT_SRC"
+          grep -Fq 'EnvironmentFile=/etc/meshalot/agent-%i.env' "$UNIT_SRC"
+          grep -Fq 'Restart=on-failure' "$UNIT_SRC"
+          grep -Fq 'ExecStart=/usr/local/bin/meshalot-agent connect ' "$UNIT_SRC"
+          if grep -Eq '(enroll|ExecStartPre=|ExecStartPost=|systemctl)' "$UNIT_SRC"; then
+            echo "unsafe service template action detected"
+            exit 1
+          fi
+          go mod verify
+          go build -o "$WORK/meshalot-agent" ./agent/cmd/meshalot-agent
+          test -x "$WORK/meshalot-agent"
+          UNIT="$WORK/meshalot-agent@$(id -un).service"
+          cp "$UNIT_SRC" "$UNIT"
+          cp deployments/systemd/agent.env.example "$WORK/agent-$(id -un).env"
+          sed -i \
+            -e "s#/usr/local/bin/meshalot-agent#$WORK/meshalot-agent#g" \
+            -e "s#/etc/meshalot/agent-%i.env#$WORK/agent-$(id -un).env#g" \
+            "$UNIT"
+          command -v systemd-analyze
+          systemd-analyze verify "$UNIT"
+          echo "M13_GATE10_SYSTEMD_VERIFY=PASS"
+          IDENTITY="$WORK/identity-should-not-exist.json"
+          if "$WORK/meshalot-agent" connect \
+            --server https://127.0.0.1:65534 \
+            --identity "$IDENTITY" \
+            --mode away \
+            --manual-pause true \
+            --job-state unknown \
+            --interval 30s >"$WORK/startup-log" 2>&1; then
+            echo "UNSAFE: service started without enrolled identity"
+            exit 1
+          fi
+          test ! -e "$IDENTITY"
+          grep -q 'read existing enrolled identity' "$WORK/startup-log"
+          go test ./agent/cmd/meshalot-agent -run '^TestM13Connect' -count=1
+          echo "M13_GATE10_NO_ENROLLMENT=PASS"
+          echo "M13_GATE10_PACKAGING=PASS"
