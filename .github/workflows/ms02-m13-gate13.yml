@@ -68,21 +68,7 @@ jobs:
             go test ./server -run '^TestM13ReverseProxyRealPostgres$' -v -count=1
           MESHALOT_M13_VERTICAL_ADMIN_DSN="host=$TEMP_BASE/socket port=5432 user=postgres dbname=meshalot_m13test sslmode=disable" \
           MESHALOT_M13_VERTICAL_RUNTIME_DSN="host=$TEMP_BASE/socket port=5432 user=meshalot dbname=meshalot_m13test sslmode=disable" \
-            go test -race ./server -run '^TestM13ReverseProxyRealPostgres
-          go test ./... -count=1
-          go vet ./...
-          if ! git diff --quiet -- server/m13_reverse_proxy_postgres_test.go; then
-            git config user.name "meshalot-ms02-runner"
-            git config user.email "meshalot-runner@users.noreply.github.com"
-            git add -- server/m13_reverse_proxy_postgres_test.go
-            git diff --cached --check
-            git commit -m "M13 Gate 13: format real TLS/PostgreSQL vertical-slice test"
-            git push origin HEAD:refs/heads/m13-persistent-heartbeat
-          fi
-          echo "M13_GATE13_VALIDATED_COMMIT=$(git rev-parse HEAD)"
-          test -z "$(gofmt -l server/m13_reverse_proxy_postgres_test.go)"
-          echo "M13_GATE13_CODE=PASS"
- -count=1
+            go test -race ./server -run '^TestM13ReverseProxyRealPostgres$' -count=1
           echo "M13_GATE13_END_TO_END=PASS"
           go test ./... -count=1
           go vet ./...
