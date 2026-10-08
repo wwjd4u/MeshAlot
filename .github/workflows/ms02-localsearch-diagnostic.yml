@@ -1,0 +1,78 @@
+name: MS-02 Ubuntu LocalSearch Read-only Diagnosis
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-localsearch-diagnostic.yml
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 5
+    steps:
+      - name: Verify crash source and possible package update without modifying MS-02
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          echo "LOCAL_SEARCH_READONLY_DIAGNOSTIC=START"
+          echo "===== OS AND KERNEL ====="
+          . /etc/os-release
+          printf 'OS=%s\n' "$PRETTY_NAME"
+          uname -r | sed 's/^/KERNEL=/'
+          echo "===== PACKAGE VERSIONS ====="
+          for pkg in localsearch libglib2.0-0t64 libglib2.0-bin tracker-extract; do
+            if dpkg-query -W -f='${Version}' "$pkg" >/dev/null 2>&1; then
+              printf 'PACKAGE_%s=' "$pkg"
+              dpkg-query -W -f='${Version}\n' "$pkg"
+            else
+              echo "PACKAGE_$pkg=NOT_INSTALLED"
+            fi
+          done
+          echo "===== APT POLICY (READ ONLY) ====="
+          apt-cache policy localsearch | sed -n '1,16p'
+          if dpkg -V localsearch > /dev/null 2>&1; then
+            echo "LOCALSEARCH_INSTALLED_PACKAGE_INTEGRITY=PASS"
+          else
+            echo "LOCALSEARCH_INSTALLED_PACKAGE_INTEGRITY=DIFFERENCES_DETECTED"
+          fi
+          echo "===== USER SERVICE (READ ONLY) ====="
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          if systemctl --user show localsearch-3.service \
+            -p LoadState -p ActiveState -p SubState -p Result -p NRestarts \
+            -p ExecMainCode -p ExecMainStatus -p FragmentPath \
+            --no-pager >/dev/null 2>&1; then
+              systemctl --user show localsearch-3.service \
+                -p LoadState -p ActiveState -p SubState -p Result -p NRestarts \
+                -p ExecMainCode -p ExecMainStatus -p FragmentPath --no-pager
+              echo "USER_SERVICE_QUERY=PASS"
+          else
+            echo "USER_SERVICE_QUERY=UNAVAILABLE_FROM_RUNNER"
+          fi
+          echo "===== RELEVANT JOURNAL COUNTS (NO FILE PATHS) ====="
+          if command -v journalctl >/dev/null 2>&1; then
+            TMP="$(mktemp)"
+            trap 'rm -f "$TMP"' EXIT
+            journalctl --user -u localsearch-3.service \
+              --since '2026-10-08 06:30:00' --until '2026-10-08 12:00:00' \
+              --no-pager -o cat 2>/dev/null > "$TMP" || true
+            printf 'JOURNAL_SERVICE_LINES=%s\n' "$(wc -l < "$TMP")"
+            printf 'JOURNAL_SEGV_LINES=%s\n' "$(grep -Eic 'segv|segfault|core.dump|code.dumpe|status=11|exited.*11|Failed with result' "$TMP" || true)"
+            printf 'JOURNAL_RESTART_LINES=%s\n' "$(grep -Eic 'Started|Starting|restart|start request' "$TMP" || true)"
+            printf 'JOURNAL_TRACKER_EXTRACT_WARNINGS=%s\n' "$(grep -Eic 'extract|tracker|dbus' "$TMP" || true)"
+          fi
+          echo "===== EXISTING CRASH FILE METADATA ====="
+          if test -d /var/crash; then
+            find /var/crash -maxdepth 1 -type f -name '*localsearch*' \
+              -printf 'CRASH_FILE=%f SIZE_BYTES=%s\n' 2>/dev/null || true
+          fi
+          echo "===== MINIMAL ACTIVE PROCESS CHECK ====="
+          if pgrep -x localsearch-3 >/dev/null 2>&1; then
+            echo "LOCALSEARCH_PROCESS=RUNNING"
+          else
+            echo "LOCALSEARCH_PROCESS=NOT_RUNNING"
+          fi
+          echo "LOCAL_SEARCH_READONLY_DIAGNOSTIC=COMPLETE"
