@@ -49,7 +49,7 @@ func (s *Service) m13WebSocket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "agent connection unavailable")
 		return
 	}
-	serveM13WebSocket(w, r, s.postgres.InventoryPublicKey)
+	serveM13WebSocketWithTelemetry(w, r, s.postgres.InventoryPublicKey, s.postgres.RecordM13Heartbeat)
 }
 
 // The control API runs behind a loopback Caddy reverse proxy in production.
@@ -70,8 +70,16 @@ func m13SecureTransport(r *http.Request) bool {
 
 // serveM13WebSocket accepts one proof per connection. The fresh nonce is
 // connection-scoped and dies on failure, success, timeout, or disconnect.
-// Telemetry and jobs are intentionally NOT implemented in this gate.
+// Heartbeat telemetry is enabled only with an authenticated recorder; jobs remain disabled.
 func serveM13WebSocket(w http.ResponseWriter, r *http.Request, lookup m13PublicKeyLookup) {
+	// Gate 2 compatibility: without a recorder, application frames remain disabled.
+	serveM13WebSocketWithTelemetry(w, r, lookup, nil)
+}
+
+// This authenticated connection only accepts bounded heartbeats. The recorder
+// receives the node ID from verified Ed25519 proof, never from the telemetry.
+func serveM13WebSocketWithTelemetry(w http.ResponseWriter, r *http.Request,
+	lookup m13PublicKeyLookup, record m13HeartbeatRecorder) {
 	if lookup == nil {
 		writeError(w, http.StatusServiceUnavailable, "agent connection unavailable")
 		return
@@ -147,7 +155,7 @@ func serveM13WebSocket(w http.ResponseWriter, r *http.Request, lookup m13PublicK
 	})
 
 	// Keep the authenticated connection alive with ping/pong, but do not
-	// accept application data until the later heartbeat-telemetry gate.
+	// accept arbitrary application data or remote work.
 	stopPings := make(chan struct{})
 	defer close(stopPings)
 	ticker := time.NewTicker(m13PingInterval)
@@ -166,9 +174,34 @@ func serveM13WebSocket(w http.ResponseWriter, r *http.Request, lookup m13PublicK
 		}
 	}()
 	for {
-		messageType, _, err := ws.ReadMessage()
+		messageType, frame, err := ws.ReadMessage()
 		if err != nil {
 			return
+		}
+		if messageType == websocket.TextMessage && record != nil {
+			heartbeat, err := m13DecodeHeartbeat(frame, time.Now().UTC())
+			if err != nil {
+				_ = ws.WriteControl(websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "invalid heartbeat"),
+					time.Now().Add(m13WriteTimeout))
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+			err = record(ctx, proof.NodeID, heartbeat)
+			cancel()
+			if err != nil {
+				_ = ws.WriteControl(websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "heartbeat unavailable"),
+					time.Now().Add(m13WriteTimeout))
+				return
+			}
+			_ = ws.SetWriteDeadline(time.Now().Add(m13WriteTimeout))
+			if err := ws.WriteJSON(m13HeartbeatAckFrame{Type: "heartbeat_ack"}); err != nil {
+				return
+			}
+			_ = ws.SetWriteDeadline(time.Time{})
+			_ = ws.SetReadDeadline(time.Now().Add(m13IdleTimeout))
+			continue
 		}
 		if messageType == websocket.TextMessage || messageType == websocket.BinaryMessage {
 			_ = ws.WriteControl(websocket.CloseMessage,
