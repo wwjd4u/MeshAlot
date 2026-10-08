@@ -1,0 +1,92 @@
+name: MS-02 M13 Gate 3 Isolated PostgreSQL
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate3-db.yml
+permissions:
+  contents: read
+jobs:
+  postgres-isolation:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 10
+    steps:
+      - name: Validate migration 10 and least-privilege SQL in disposable local cluster
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          export PATH="/usr/lib/postgresql/16/bin:$PATH"
+          test -x "$(command -v initdb)"
+          test -x "$(command -v pg_ctl)"
+          test -x "$(command -v psql)"
+          TEST_DIR="$(mktemp -d "$RUNNER_TEMP/m13-db.XXXXXX")"
+          chmod 700 "$TEST_DIR"
+          DATA_DIR="$TEST_DIR/cluster"
+          trap 'pg_ctl -D "$DATA_DIR" -m immediate -w stop >/dev/null 2>&1 || true; rm -rf "$TEST_DIR"' EXIT
+          git init -q "$TEST_DIR/repo"
+          git -C "$TEST_DIR/repo" fetch -q --depth=1 https://github.com/wwjd4u/MeshAlot.git a4a4facef735eef95b854f4162ab6ad4e8580b8e
+          git -C "$TEST_DIR/repo" checkout -q --detach FETCH_HEAD
+          test "$(git -C "$TEST_DIR/repo" rev-parse HEAD)" = "a4a4facef735eef95b854f4162ab6ad4e8580b8e"
+          cd "$TEST_DIR/repo"
+          echo "M13_GATE3_DB_COMMIT=$(git rev-parse HEAD)"
+          initdb -D "$DATA_DIR" --auth-local=trust --no-instructions >/dev/null
+          pg_ctl -D "$DATA_DIR" -l "$TEST_DIR/postgres.log" -o "-c listen_addresses='' -c unix_socket_directories='$TEST_DIR' -c port=55331" -w start >/dev/null
+          export PGHOST="$TEST_DIR" PGPORT=55331
+          psql -v ON_ERROR_STOP=1 -d postgres -c "CREATE ROLE meshalot LOGIN;"
+          createdb meshalot_m13test
+          for f in $(find database/migrations -maxdepth 1 -name '*.up.sql' -type f | sort); do
+            echo "APPLY=$(basename "$f")"
+            psql -v ON_ERROR_STOP=1 -d meshalot_m13test -f "$f" >/dev/null
+          done
+          psql -v ON_ERROR_STOP=1 -d meshalot_m13test -f database/runtime-grants.sql >/dev/null
+          psql -v ON_ERROR_STOP=1 -d meshalot_m13test -f database/tests/milestone13_runtime_privileges.sql
+          psql -v ON_ERROR_STOP=1 -d meshalot_m13test <<'SQL'
+          INSERT INTO users(email) VALUES ('m13-isolated@example.invalid');
+          INSERT INTO nodes(user_id,node_key,agent_version,identity_public_key)
+            SELECT id,'00000000-0000-4000-8000-000000000001','m13-test','enrolled-public-key'
+            FROM users WHERE email='m13-isolated@example.invalid';
+          INSERT INTO node_status(node_id,status,observed_at)
+            SELECT id,'enrolled',now() FROM nodes
+            WHERE node_key='00000000-0000-4000-8000-000000000001';
+          BEGIN;
+          SET ROLE meshalot;
+          DO $$
+          DECLARE changed integer;
+          BEGIN
+            UPDATE node_status AS s
+              SET status='online', mode='normal', observed_at=now(),last_heartbeat=now(),
+                  m13_telemetry='{"type":"heartbeat","online":true}'::jsonb
+              FROM nodes AS n
+              WHERE s.node_id=n.id
+                AND n.node_key='00000000-0000-4000-8000-000000000001'
+                AND n.identity_public_key IS NOT NULL AND n.identity_public_key<>'';
+            GET DIAGNOSTICS changed=ROW_COUNT;
+            IF changed <> 1 THEN
+              RAISE EXCEPTION 'Expected one scoped heartbeat update, got %', changed;
+            END IF;
+            UPDATE node_status AS s SET status='offline'
+              FROM nodes AS n WHERE s.node_id=n.id
+                AND n.node_key='00000000-0000-4000-8000-000000000099';
+            GET DIAGNOSTICS changed=ROW_COUNT;
+            IF changed <> 0 THEN
+              RAISE EXCEPTION 'Nonexistent other node was unexpectedly updated';
+            END IF;
+          END $$;
+          RESET ROLE;
+          DO $$
+          BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM node_status
+              WHERE status='online' AND mode='normal'
+                AND m13_telemetry->>'type'='heartbeat'
+                AND last_heartbeat IS NOT NULL
+            ) THEN
+              RAISE EXCEPTION 'M13 telemetry not persisted';
+            END IF;
+          END $$;
+          ROLLBACK;
+          SQL
+          echo "M13_GATE3_ISOLATED_POSTGRES=PASS"
