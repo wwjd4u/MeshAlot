@@ -1,0 +1,83 @@
+name: MS-02 M13 Diagnose Google Login Visibility
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gcloud-login-locations.yml
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 5
+    steps:
+      - name: Find account configuration mismatch without reading credentials
+        shell: bash
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
+          CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: "true"
+          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: "true"
+          CLOUDSDK_CORE_DISABLE_COLOR: "true"
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          test -x "$GCLOUD"
+          TMP="$(mktemp -d "$RUNNER_TEMP/gcloud-config-mismatch.XXXXXXXX")"
+          trap 'rm -rf -- "$TMP"' EXIT
+          echo "MS02_ACCOUNT_USER=$(id -un)"
+          echo "MS02_ACCOUNT_HOME=$HOME"
+          if test -n "$(printenv CLOUDSDK_CONFIG 2>/dev/null || true)"; then
+            echo "RUNNER_CLOUDSDK_CONFIG_ENV=PRESENT"
+          else
+            echo "RUNNER_CLOUDSDK_CONFIG_ENV=NOT_SET"
+          fi
+          if test -d "$HOME/.config/gcloud"; then
+            echo "RUNNER_GCLOUD_CONFIG_DIRECTORY=PRESENT"
+            if test "$(stat -c %u "$HOME/.config/gcloud")" = "$(id -u)"; then
+              echo "RUNNER_GCLOUD_CONFIG_OWNER_MATCH=YES"
+            else
+              echo "RUNNER_GCLOUD_CONFIG_OWNER_MATCH=NO"
+            fi
+            for item in "$HOME/.config/gcloud/credentials.db" \
+                "$HOME/.config/gcloud/access_tokens.db" \
+                "$HOME/.config/gcloud/configurations/config_default"; do
+              if test -e "$item"; then
+                echo "CONFIG_FILE_$(basename "$item")=PRESENT"
+              else
+                echo "CONFIG_FILE_$(basename "$item")=ABSENT"
+              fi
+            done
+          else
+            echo "RUNNER_GCLOUD_CONFIG_DIRECTORY=ABSENT"
+          fi
+          set +e
+          "$GCLOUD" auth list --filter="status:ACTIVE" \
+              --format="value(account)" >"$TMP/active" 2>"$TMP/error"
+          RC="$?"
+          set -e
+          echo "GCLOUD_AUTH_LIST_RETURN_CODE=$RC"
+          if test "$RC" = "0"; then
+            if test -s "$TMP/active"; then
+              echo "GCLOUD_AUTH_ACTIVE=YES"
+            else
+              echo "GCLOUD_AUTH_ACTIVE=NO"
+            fi
+          else
+            if grep -Eiq 'permission denied|read.only|database is locked|unable to|failed to' "$TMP/error"; then
+              echo "GCLOUD_AUTH_ERROR_CATEGORY=CONFIG_ACCESS"
+            else
+              echo "GCLOUD_AUTH_ERROR_CATEGORY=OTHER"
+            fi
+          fi
+          if pgrep -u "$(id -u)" -f '[g]cloud auth login' >/dev/null 2>&1; then
+            echo "GCLOUD_INTERACTIVE_LOGIN_PROCESS=ACTIVE"
+          else
+            echo "GCLOUD_INTERACTIVE_LOGIN_PROCESS=NOT_RUNNING"
+          fi
+          echo "M13_GCLOUD_LOGIN_DIAGNOSTIC=READ_ONLY_COMPLETE"
