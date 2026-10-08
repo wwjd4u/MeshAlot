@@ -26,11 +26,11 @@ func runConnect(args []string) error {
 	return runConnectWithDeps(ctx, args, agent.LoadIdentity, agent.SampleM13Heartbeat,
 		func(ctx context.Context, serverURL string, identity agent.Identity,
 			sample agent.M13HeartbeatSampler, interval time.Duration) error {
-			return agent.RunM13Session(ctx, serverURL, identity, sample, interval, nil)
+			return agent.RunM13PersistentSession(ctx, serverURL, identity, sample, interval, nil)
 		})
 }
 
-// Gate 7 uses explicitly supplied current provider state. We cannot assume
+// Gate 9 auto-reconnects, still using explicitly supplied current provider state. We cannot assume
 // the mode or pause state from prior benchmark data, and unknown job activity
 // is reported as "unknown", not falsely "idle". A later gate must bind
 // values to the live local provider-control store before automatic startup.
