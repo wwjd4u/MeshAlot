@@ -18,7 +18,14 @@ jobs:
         run: |
           set -euo pipefail
           test "$RUNNER_NAME" = "meshalot-ms02"
-          export PATH="/usr/lib/postgresql/16/bin:$PATH"
+          echo "===== POSTGRESQL TEST TOOL DIAGNOSTICS ====="
+          for bindir in /usr/lib/postgresql/*/bin; do
+            if test -d "$bindir"; then export PATH="$bindir:$PATH"; fi
+          done
+          for tool in initdb pg_ctl psql pg_config postgres docker podman; do
+            echo "TOOL=$tool PATH=$(command -v "$tool" || echo unavailable)"
+          done
+          echo "RUNNER_UID=$(id -u)"
           test -x "$(command -v initdb)"
           test -x "$(command -v pg_ctl)"
           test -x "$(command -v psql)"
