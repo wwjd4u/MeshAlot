@@ -26,6 +26,8 @@ func main() {
 		err = runIdentity(os.Args[2:])
 	case "runtime":
 		err = runRuntimeWithOutput(os.Args[2:], os.Stdout)
+	case "connect":
+		err = runConnect(os.Args[2:])
 	case "version":
 		fmt.Println(agent.SecureEnrollmentVersion)
 		return
@@ -151,6 +153,6 @@ func env(name, fallback string) string {
 func usage() {
 	fmt.Fprintln(
 		os.Stderr,
-		"usage: meshalot-agent <enroll|identity|status|runtime|version> [options]",
+		"usage: meshalot-agent <enroll|identity|status|runtime|connect|version> [options]",
 	)
 }
