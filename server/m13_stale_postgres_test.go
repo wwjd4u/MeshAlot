@@ -53,8 +53,8 @@ func TestM13StalePostgresIntegration(t *testing.T) {
 		var nodeID string
 		key:=fmt.Sprintf("m13-%s-%s",kind,suffix)
 		if err:=db.QueryRowContext(ctx,
-			"INSERT INTO nodes(user_id,node_key,agent_version,identity_public_key) VALUES($1::uuid,$2,'m13-test','placeholder-key') RETURNING id::text",
-			owner,key).Scan(&nodeID);err!=nil {t.Fatal(err)}
+			"INSERT INTO nodes(user_id,node_key,agent_version,identity_public_key) VALUES($1::uuid,$2,'m13-test',$3) RETURNING id::text",
+			owner,key,"test-public-key-"+kind+"-"+suffix).Scan(&nodeID);err!=nil {t.Fatal(err)}
 		var telemetry any = `{"type":"heartbeat","online":true}`
 		if legacy {telemetry=nil}
 		if _,err:=db.ExecContext(ctx,
