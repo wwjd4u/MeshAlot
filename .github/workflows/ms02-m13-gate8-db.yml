@@ -1,0 +1,72 @@
+name: MS-02 M13 Gate 8 Isolated Database
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate8-db.yml
+permissions:
+  contents: write
+jobs:
+  stale-postgres:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact M13 commit for isolated tests
+        uses: actions/checkout@v4
+        with:
+          ref: m13-persistent-heartbeat
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Test stale status, dashboard, account scoping and recovery with disposable PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(git rev-parse HEAD)" = "9642547aafd33089d6b736fd097301ab52c3d6f9"
+          echo "M13_GATE8_DB_INPUT=$(git rev-parse HEAD)"
+          gofmt -w server/m13_stale_postgres_test.go
+          git diff --check
+          go mod verify
+          TEMP_BASE="$(mktemp -d "$RUNNER_TEMP/m13-stale-db.XXXXXX")"
+          CID=""
+          cleanup() {
+            if test -n "$CID"; then docker rm -f -v "$CID" >/dev/null 2>&1 || true; fi
+            rm -rf "$TEMP_BASE"
+          }
+          trap cleanup EXIT
+          mkdir -p "$TEMP_BASE/socket"
+          chmod 0777 "$TEMP_BASE/socket"
+          docker info >/dev/null
+          CID="$(docker run -d --rm --network none --pull=missing \
+             -e POSTGRES_HOST_AUTH_METHOD=trust \
+             -v "$TEMP_BASE/socket:/socket" \
+             -v "$PWD:/repo:ro" \
+             postgres:16-alpine -c listen_addresses= -c unix_socket_directories=/socket)"
+          for i in $(seq 1 40); do
+            if docker exec "$CID" pg_isready -h /socket -U postgres >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          docker exec "$CID" pg_isready -h /socket -U postgres
+          docker exec -e PGHOST=/socket "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c 'CREATE ROLE meshalot LOGIN;'
+          docker exec -e PGHOST=/socket "$CID" createdb -U postgres meshalot_m13test
+          docker exec -e PGHOST=/socket "$CID" sh -c 'for f in /repo/database/migrations/*.up.sql; do
+            echo "APPLY=$(basename "$f")"
+            psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test -f "$f" >/dev/null || exit 1
+          done'
+          docker exec -e PGHOST=/socket "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test -f /repo/database/runtime-grants.sql >/dev/null
+          docker exec -e PGHOST=/socket "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test -f /repo/database/tests/milestone13_runtime_privileges.sql
+          MESHALOT_M13_STALE_TEST_DSN="host=$TEMP_BASE/socket port=5432 user=postgres dbname=meshalot_m13test sslmode=disable" \
+            go test ./server -run '^TestM13StalePostgresIntegration$' -v -count=1
+          echo "M13_GATE8_DB_RUNTIME=PASS"
+          if ! git diff --quiet -- server/m13_stale_postgres_test.go; then
+            git config user.name "meshalot-ms02-runner"
+            git config user.email "meshalot-runner@users.noreply.github.com"
+            git add -- server/m13_stale_postgres_test.go
+            git diff --cached --check
+            git commit -m "M13 Gate 8: format real PostgreSQL stale-node regression test"
+            git push origin HEAD:refs/heads/m13-persistent-heartbeat
+          fi
+          echo "M13_GATE8_DB_VALIDATED=$(git rev-parse HEAD)"
+          echo "M13_GATE8_ISOLATED_DATABASE=PASS"
