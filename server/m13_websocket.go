@@ -17,28 +17,28 @@ import (
 )
 
 const (
-	m13AuthTimeout = 10 * time.Second
-	m13WriteTimeout = 5 * time.Second
-	m13IdleTimeout = 90 * time.Second
-	m13PingInterval = 30 * time.Second
+	m13AuthTimeout         = 10 * time.Second
+	m13WriteTimeout        = 5 * time.Second
+	m13IdleTimeout         = 90 * time.Second
+	m13PingInterval        = 30 * time.Second
 	m13MaxFrameBytes int64 = 1024
 )
 
 type m13PublicKeyLookup func(context.Context, string) (string, error)
 
 type m13ChallengeFrame struct {
-	Type string `json:"type"`
+	Type      string `json:"type"`
 	Challenge string `json:"challenge"`
 }
 
 type m13ProofFrame struct {
-	Type string `json:"type"`
-	NodeID string `json:"node_id"`
+	Type      string `json:"type"`
+	NodeID    string `json:"node_id"`
 	Signature string `json:"signature"`
 }
 
 type m13AcceptedFrame struct {
-	Type string `json:"type"`
+	Type   string `json:"type"`
 	NodeID string `json:"node_id"`
 }
 
@@ -95,9 +95,9 @@ func serveM13WebSocket(w http.ResponseWriter, r *http.Request, lookup m13PublicK
 		return
 	}
 	upgrader := websocket.Upgrader{
-		ReadBufferSize: 1024,
+		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
-		CheckOrigin: func(r *http.Request) bool { return r.Header.Get("Origin") == "" },
+		CheckOrigin:     func(r *http.Request) bool { return r.Header.Get("Origin") == "" },
 	}
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {

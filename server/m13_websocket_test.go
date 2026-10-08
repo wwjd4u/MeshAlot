@@ -32,7 +32,7 @@ func m13TestServer(t *testing.T, lookup m13PublicKeyLookup) (*httptest.Server, *
 	pool.AddCert(server.Certificate())
 	dialer := &websocket.Dialer{
 		HandshakeTimeout: 5 * time.Second,
-		TLSClientConfig: &tls.Config{RootCAs: pool},
+		TLSClientConfig:  &tls.Config{RootCAs: pool},
 	}
 	return server, dialer
 }
@@ -66,28 +66,40 @@ func TestM13WebSocketRequiresDatabase(t *testing.T) {
 
 func TestM13WebSocketAuthAndNoTelemetryYet(t *testing.T) {
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	lookup := func(_ context.Context, nodeID string) (string, error) {
-		if nodeID != m13TestNodeID { return "", sql.ErrNoRows }
+		if nodeID != m13TestNodeID {
+			return "", sql.ErrNoRows
+		}
 		return base64.RawStdEncoding.EncodeToString(publicKey), nil
 	}
 	server, dialer := m13TestServer(t, lookup)
 	ws, _, err := dialer.Dial(m13TestURL(server), nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer ws.Close()
 	challenge := m13ReadChallenge(t, ws)
 	signature, err := protocol.SignM13Challenge(privateKey, m13TestNodeID, challenge)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := ws.WriteJSON(m13ProofFrame{Type: "authenticate", NodeID: m13TestNodeID, Signature: signature}); err != nil {
 		t.Fatal(err)
 	}
 	var accepted m13AcceptedFrame
-	if err := ws.ReadJSON(&accepted); err != nil { t.Fatal(err) }
+	if err := ws.ReadJSON(&accepted); err != nil {
+		t.Fatal(err)
+	}
 	if accepted.Type != "authenticated" || accepted.NodeID != m13TestNodeID {
 		t.Fatalf("unexpected authentication response: %+v", accepted)
 	}
 	// A signed node is still not allowed to submit telemetry or request jobs yet.
-	if err := ws.WriteJSON(map[string]string{"type":"heartbeat"}); err != nil { t.Fatal(err) }
+	if err := ws.WriteJSON(map[string]string{"type": "heartbeat"}); err != nil {
+		t.Fatal(err)
+	}
 	_, _, err = ws.ReadMessage()
 	if !websocket.IsCloseError(err, websocket.CloseUnsupportedData) {
 		t.Fatalf("expected unsupported-data close, got: %v", err)
@@ -96,25 +108,37 @@ func TestM13WebSocketAuthAndNoTelemetryYet(t *testing.T) {
 
 func TestM13WebSocketRejectsReplayedSignature(t *testing.T) {
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	lookup := func(_ context.Context, nodeID string) (string, error) {
-		if nodeID != m13TestNodeID { return "", sql.ErrNoRows }
+		if nodeID != m13TestNodeID {
+			return "", sql.ErrNoRows
+		}
 		return base64.RawStdEncoding.EncodeToString(publicKey), nil
 	}
 	server, dialer := m13TestServer(t, lookup)
 	first, _, err := dialer.Dial(m13TestURL(server), nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	challenge1 := m13ReadChallenge(t, first)
 	signature, err := protocol.SignM13Challenge(privateKey, m13TestNodeID, challenge1)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	_ = first.Close()
 
 	second, _, err := dialer.Dial(m13TestURL(server), nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer second.Close()
 	challenge2 := m13ReadChallenge(t, second)
-	if challenge1 == challenge2 { t.Fatal("reused challenge") }
-	if err := second.WriteJSON(m13ProofFrame{Type:"authenticate", NodeID:m13TestNodeID, Signature:signature}); err != nil {
+	if challenge1 == challenge2 {
+		t.Fatal("reused challenge")
+	}
+	if err := second.WriteJSON(m13ProofFrame{Type: "authenticate", NodeID: m13TestNodeID, Signature: signature}); err != nil {
 		t.Fatal(err)
 	}
 	_, _, err = second.ReadMessage()
@@ -125,17 +149,25 @@ func TestM13WebSocketRejectsReplayedSignature(t *testing.T) {
 
 func TestM13WebSocketRejectsUnregisteredNode(t *testing.T) {
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil { t.Fatal(err) }
-	server, dialer := m13TestServer(t, func(context.Context,string)(string,error) {
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, dialer := m13TestServer(t, func(context.Context, string) (string, error) {
 		return "", sql.ErrNoRows
 	})
 	ws, _, err := dialer.Dial(m13TestURL(server), nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer ws.Close()
 	challenge := m13ReadChallenge(t, ws)
 	signature, err := protocol.SignM13Challenge(privateKey, m13TestNodeID, challenge)
-	if err != nil { t.Fatal(err) }
-	if err := ws.WriteJSON(m13ProofFrame{Type:"authenticate",NodeID:m13TestNodeID,Signature:signature}); err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.WriteJSON(m13ProofFrame{Type: "authenticate", NodeID: m13TestNodeID, Signature: signature}); err != nil {
+		t.Fatal(err)
+	}
 	_, _, err = ws.ReadMessage()
 	if !websocket.IsCloseError(err, websocket.ClosePolicyViolation) {
 		t.Fatalf("expected unknown node rejection, got: %v", err)
@@ -151,7 +183,9 @@ func TestM13WebSocketRejectsPlaintextAndBrowserOrigin(t *testing.T) {
 	plain := httptest.NewServer(handler)
 	defer plain.Close()
 	_, response, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(plain.URL, "http"), nil)
-	if err == nil { t.Fatal("plaintext WebSocket was accepted") }
+	if err == nil {
+		t.Fatal("plaintext WebSocket was accepted")
+	}
 	if response == nil || response.StatusCode != http.StatusForbidden {
 		t.Fatalf("plaintext status=%v, want 403", response)
 	}
@@ -163,7 +197,9 @@ func TestM13WebSocketRejectsPlaintextAndBrowserOrigin(t *testing.T) {
 	header := make(http.Header)
 	header.Set("Origin", "https://unauthorized.example")
 	_, response, err = dialer.Dial(m13TestURL(server), header)
-	if err == nil { t.Fatal("browser-origin WebSocket was accepted") }
+	if err == nil {
+		t.Fatal("browser-origin WebSocket was accepted")
+	}
 	if response == nil || response.StatusCode != http.StatusForbidden {
 		t.Fatalf("origin status=%v, want 403", response)
 	}
