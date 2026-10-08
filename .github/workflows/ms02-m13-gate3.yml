@@ -1,0 +1,43 @@
+name: MS-02 M13 Gate 3 Validation
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate3.yml
+permissions:
+  contents: read
+concurrency:
+  group: ms02-m13-gate3
+  cancel-in-progress: false
+jobs:
+  heartbeat:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 10
+    steps:
+      - name: Validate exact isolated M13 Gate 3 heartbeat source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          TEST_DIR="$(mktemp -d "$RUNNER_TEMP/m13-gate3.XXXXXX")"
+          trap 'rm -rf "$TEST_DIR"' EXIT
+          git init -q "$TEST_DIR"
+          git -C "$TEST_DIR" fetch -q --depth=1 https://github.com/wwjd4u/MeshAlot.git a4a4facef735eef95b854f4162ab6ad4e8580b8e
+          git -C "$TEST_DIR" checkout -q --detach FETCH_HEAD
+          test "$(git -C "$TEST_DIR" rev-parse HEAD)" = "a4a4facef735eef95b854f4162ab6ad4e8580b8e"
+          cd "$TEST_DIR"
+          echo "M13_GATE3_COMMIT=$(git rev-parse HEAD)"
+          echo "RUNNER=$RUNNER_NAME"
+          echo "===== GOFMT FILES ====="
+          gofmt -l protocol/v1/m13_heartbeat*.go server/m13_heartbeat*.go server/m13_websocket.go
+          echo "===== MODULE VERIFICATION ====="
+          go mod verify
+          echo "===== FOCUSED TESTS ====="
+          go test ./protocol/v1 -run '^TestM13' -v -count=1
+          go test ./server -run '^TestM13' -v -count=1
+          echo "===== COMPLETE SUITE ====="
+          go test ./... -count=1
+          go vet ./...
+          echo "M13_GATE3_GO_TEST_VALIDATION=PASS"
