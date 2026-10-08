@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$RUNNER_NAME" = "meshalot-ms02"
-          test "$(git rev-parse HEAD)" = "e6db595c51431fb21a1d7a591985779ae5df8410"
+          test "$(git rev-parse HEAD)" = "d7dafef66250b20ea15f6da512ef1b1c2b3ef031"
           echo "M13_GATE6_INPUT=$(git rev-parse HEAD)"
           gofmt -w agent/m13_connection.go agent/m13_connection_test.go agent/m13_darwin_parse.go agent/m13_darwin_parse_test.go agent/m13_sampler_darwin.go agent/m13_sampler_other.go
           git diff --check
