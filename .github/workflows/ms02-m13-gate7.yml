@@ -1,0 +1,51 @@
+name: MS-02 M13 Gate 7 Agent Startup
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate7.yml
+permissions:
+  contents: write
+jobs:
+  connect-command:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 12
+    steps:
+      - name: Check out isolated M13 code
+        uses: actions/checkout@v4
+        with:
+          ref: m13-persistent-heartbeat
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Format and validate agent connect command against isolated TLS
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(git rev-parse HEAD)" = "484529a7e68ec91bba13bbae5b23739c0ef824fa"
+          echo "M13_GATE7_INPUT=$(git rev-parse HEAD)"
+          gofmt -w agent/cmd/meshalot-agent/main.go agent/cmd/meshalot-agent/connect.go agent/cmd/meshalot-agent/connect_test.go
+          git diff --check
+          go mod verify
+          go test ./agent/cmd/meshalot-agent -run '^TestM13Connect' -v -count=1
+          go test ./... -count=1
+          go test -race ./agent/cmd/meshalot-agent -run '^TestM13Connect' -count=1
+          go vet ./...
+          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/m13-gate7-darwin-amd64.test" ./agent/cmd/meshalot-agent
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/m13-gate7-darwin-arm64.test" ./agent/cmd/meshalot-agent
+          test -s "$RUNNER_TEMP/m13-gate7-darwin-amd64.test"
+          test -s "$RUNNER_TEMP/m13-gate7-darwin-arm64.test"
+          echo "M13_GATE7_TESTS=PASS"
+          if ! git diff --quiet -- agent/cmd/meshalot-agent/main.go agent/cmd/meshalot-agent/connect.go agent/cmd/meshalot-agent/connect_test.go; then
+            git config user.name "meshalot-ms02-runner"
+            git config user.email "meshalot-runner@users.noreply.github.com"
+            git add -- agent/cmd/meshalot-agent/main.go agent/cmd/meshalot-agent/connect.go agent/cmd/meshalot-agent/connect_test.go
+            git diff --cached --check
+            git commit -m "M13 Gate 7: format explicit agent connect CLI and tests"
+            git push origin HEAD:refs/heads/m13-persistent-heartbeat
+          fi
+          echo "M13_GATE7_VALIDATED_COMMIT=$(git rev-parse HEAD)"
+          test -z "$(gofmt -l agent/cmd/meshalot-agent/main.go agent/cmd/meshalot-agent/connect.go agent/cmd/meshalot-agent/connect_test.go)"
+          echo "M13_GATE7=PASS"
