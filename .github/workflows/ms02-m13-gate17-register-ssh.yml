@@ -1,0 +1,155 @@
+name: MS-02 M13 Gate 17 Instance-Only SSH Key
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate17-register-ssh.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-instance-ssh-registration
+  cancel-in-progress: false
+jobs:
+  register:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 10
+    steps:
+      - name: Create private MS-02 key and register time-limited key on the single approved VM
+        shell: bash
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+          CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+          CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          test -x "$GCLOUD"
+          command -v ssh-keygen >/dev/null
+          echo "M13_SSH_APPROVED_TARGET=meshalot-control-01"
+          echo "M13_SSH_PRIVATE_KEY_EXPORT=NEVER"
+
+          DIR="$HOME/.local/share/meshalot-m13-iap-ssh"
+          if test -e "$DIR" || test -L "$DIR"; then
+            echo "M13_DEDICATED_SSH_FOLDER_ALREADY_EXISTS=STOP_NO_OVERWRITE"
+            exit 1
+          fi
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-ssh-register.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+
+          "$GCLOUD" compute instances describe meshalot-control-01 \
+            --project=meshalot-poc --zone=us-south1-a --format=json \
+            >"$WORK/vm-before.json" 2>"$WORK/vm-before-error"
+          "$GCLOUD" compute project-info describe --project=meshalot-poc \
+            --format=json >"$WORK/project-before.json" 2>"$WORK/project-before-error"
+          "$GCLOUD" auth list --filter=status:ACTIVE --format=json \
+            >"$WORK/accounts.json" 2>"$WORK/account-error"
+          python3 - "$WORK/vm-before.json" "$WORK/project-before.json" "$WORK/accounts.json" \
+            "$WORK/selected-user" <<'PY'
+          import json,re,sys
+          from pathlib import Path
+          vm,project,accounts=[json.loads(Path(p).read_text()) for p in sys.argv[1:4]]
+          assert vm.get("name")=="meshalot-control-01"
+          assert str(vm.get("zone","")).endswith("/us-south1-a")
+          assert vm.get("status")=="RUNNING"
+          assert len(accounts)==1 and accounts[0].get("status")=="ACTIVE"
+          account=accounts[0].get("account","").strip().lower()
+          assert "@" in account
+          user=account.split("@",1)[0]
+          assert re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}",user), "unexpected SSH username"
+          def items(data):
+              return {x.get("key"):x.get("value","") for x in ((data or {}).get("items") or [])}
+          im=items(vm.get("metadata"))
+          pm=items(project.get("commonInstanceMetadata"))
+          assert "ssh-keys" not in im, "instance already has keys; refusal prevents overwrite"
+          assert im.get("enable-oslogin",pm.get("enable-oslogin","false")).lower()!="true"
+          assert im.get("block-project-ssh-keys",pm.get("block-project-ssh-keys","false")).lower()!="true"
+          candidates={line.split(":",1)[0] for line in pm.get("ssh-keys","").splitlines() if ":" in line}
+          assert user in candidates, "Google login does not match existing GCE SSH user"
+          Path(sys.argv[4]).write_text(user)
+          print("M13_SSH_IDENTITY_IS_EXISTING_PROJECT_LOGIN=PASS")
+          print("M13_SSH_INSTANCE_KEY_FIELD_INITIAL=ABSENT")
+          PY
+          mkdir -m 700 -- "$DIR"
+          KEY="$DIR/id_ed25519"
+          ssh-keygen -q -t ed25519 -a 100 -N '' \
+            -C 'meshalot-m13-iap-audit-ms02' -f "$KEY"
+          chmod 600 "$KEY" "$KEY.pub"
+          test ! -L "$KEY"
+          test "$(stat -c %u "$KEY")" = "$(id -u)"
+          test "$(stat -c %a "$KEY")" = 600
+          ssh-keygen -y -f "$KEY" > "$WORK/derived-pub"
+          # Key consistency is checked locally. Do not display either half.
+          python3 - "$KEY.pub" "$WORK/derived-pub" <<'PY'
+          import sys
+          from pathlib import Path
+          a=Path(sys.argv[1]).read_text().split()
+          b=Path(sys.argv[2]).read_text().split()
+          assert a[:2]==b[:2]
+          print("M13_LOCAL_ED25519_KEYPAIR_CONSISTENCY=PASS")
+          PY
+          echo "M13_LOCAL_PRIVATE_KEY_PERMISSIONS=0600"
+          echo "M13_LOCAL_PRIVATE_KEY_STAYS_ON_MS02=PASS"
+
+          python3 - "$WORK/selected-user" "$KEY.pub" "$WORK/instance-ssh-metadata" \
+              "$DIR/registration.json" <<'PY'
+          import datetime,json,re,sys
+          from pathlib import Path
+          user=Path(sys.argv[1]).read_text().strip()
+          parts=Path(sys.argv[2]).read_text().split()
+          assert parts[0]=="ssh-ed25519" and re.fullmatch(r"[A-Za-z0-9+/=]+",parts[1])
+          expire=(datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(hours=24))
+          expiry=expire.strftime("%Y-%m-%dT%H:%M:%S%z")
+          marker=json.dumps({"userName":user,"expireOn":expiry},separators=(",",":"))
+          line=f"{user}:{parts[0]} {parts[1]} google-ssh {marker}\n"
+          Path(sys.argv[3]).write_text(line)
+          Path(sys.argv[4]).write_text(json.dumps({"target":"meshalot-control-01","project":"meshalot-poc","zone":"us-south1-a","expires":expiry,"username":user},indent=2))
+          print("M13_VM_SSH_ACCESS_EXPIRY=24_HOURS")
+          PY
+          chmod 600 "$DIR/registration.json" "$WORK/instance-ssh-metadata"
+          # Scoped Google Compute Engine INSTANCE metadata update only.
+          # No project metadata or other instance SSH entries exist to replace.
+          if "$GCLOUD" compute instances add-metadata meshalot-control-01 \
+            --project=meshalot-poc --zone=us-south1-a \
+            --metadata-from-file="ssh-keys=$WORK/instance-ssh-metadata" \
+            --quiet --format=json >"$WORK/write-response.json" 2>"$WORK/write-error"; then
+            echo "M13_VM_INSTANCE_PUBLIC_KEY_REGISTRATION=APPLIED"
+          else
+            echo "M13_VM_INSTANCE_PUBLIC_KEY_REGISTRATION=FAILED_NO_RETRY"
+            exit 1
+          fi
+          "$GCLOUD" compute instances describe meshalot-control-01 \
+            --project=meshalot-poc --zone=us-south1-a --format=json \
+            >"$WORK/vm-after.json" 2>"$WORK/vm-after-error"
+          "$GCLOUD" compute project-info describe --project=meshalot-poc \
+            --format=json >"$WORK/project-after.json" 2>"$WORK/project-after-error"
+          python3 - "$WORK/vm-before.json" "$WORK/vm-after.json" \
+              "$WORK/project-before.json" "$WORK/project-after.json" \
+              "$WORK/instance-ssh-metadata" <<'PY'
+          import json,sys
+          from pathlib import Path
+          before,after,pbefore,pafter=[json.loads(Path(p).read_text()) for p in sys.argv[1:5]]
+          def metadata(obj,key):
+              return {i["key"]:i.get("value","") for i in (obj.get(key) or {}).get("items",[])}
+          x=metadata(before,"metadata")
+          y=metadata(after,"metadata")
+          expected=Path(sys.argv[5]).read_text().strip()
+          assert "ssh-keys" not in x
+          assert y.pop("ssh-keys","").strip()==expected, "registered SSH value mismatch"
+          assert x==y, "unrelated VM instance metadata changed"
+          assert metadata(pbefore,"commonInstanceMetadata")==metadata(pafter,"commonInstanceMetadata"), "PROJECT METADATA CHANGED"
+          assert after["name"]=="meshalot-control-01" and after["status"]=="RUNNING"
+          print("M13_VM_INSTANCE_KEY_MATCH=PASS")
+          print("M13_VM_OTHER_METADATA_UNCHANGED=PASS")
+          print("M13_PROJECT_SSH_KEYS_UNCHANGED=PASS")
+          PY
+          echo "M13_VM_APPLICATION_DATABASE_CADDY_UNTOUCHED=YES"
+          echo "M13_VM_SSH_NOT_YET_ATTEMPTED=YES"
+          echo "M13_GATE17_DEDICATED_INSTANCE_SSH_KEY=PASS"
