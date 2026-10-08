@@ -1,0 +1,59 @@
+name: MS-02 M13 SSH Existing User Match
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate17-ssh-user-match.yml
+permissions:
+  contents: read
+jobs:
+  classify:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 6
+    steps:
+      - name: Classify existing GCE SSH identity matches without disclosing names or keys
+        shell: bash
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+          CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+          CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(id -un)" = "jason_guynes"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-ssh-user-lookup.XXXXXXXX")"
+          trap 'rm -rf "$WORK"' EXIT
+          "$GCLOUD" compute project-info describe --project meshalot-poc \
+            --format=json >"$WORK/project.json" 2>"$WORK/error"
+          "$GCLOUD" auth list --filter=status:ACTIVE --format=json \
+            >"$WORK/accounts.json" 2>"$WORK/auth-error"
+          python3 - "$WORK/project.json" "$WORK/accounts.json" <<'PY'
+          import json,sys
+          from pathlib import Path
+          project=json.loads(Path(sys.argv[1]).read_text())
+          accounts=json.loads(Path(sys.argv[2]).read_text())
+          assert len(accounts)==1 and accounts[0].get("status")=="ACTIVE"
+          account=accounts[0].get("account","").strip().lower()
+          assert "@" in account
+          pm={i["key"]:i.get("value","") for i in
+              (project.get("commonInstanceMetadata") or {}).get("items",[])}
+          usernames={x.split(":",1)[0].strip() for x in pm.get("ssh-keys","").splitlines()
+                     if ":" in x}
+          localpart=account.split("@",1)[0]
+          forms=[
+              ("ACCOUNT_LOCALPART",localpart),
+              ("ACCOUNT_LOCALPART_UNDERSCORES",localpart.replace(".","_")),
+              ("ACCOUNT_FULL_NORMALIZED",account.replace("@","_").replace(".","_")),
+              ("RUNNER_USERNAME","jason_guynes"),
+          ]
+          for label,u in forms:
+              print("M13_MATCH_"+label+"="+("YES" if u in usernames else "NO"))
+          chosen=next((u for label,u in forms if u in usernames),None)
+          print("M13_EXISTING_USER_FROM_GOOGLE_ACCOUNT="+("FOUND" if chosen else "NO_UNAMBIGUOUS_MATCH"))
+          print("M13_SSH_USER_NAMES_AND_KEYS=NEVER_LOGGED")
+          PY
