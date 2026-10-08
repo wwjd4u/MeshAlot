@@ -1,0 +1,47 @@
+name: MS-02 M13 Gate 4 Agent Session
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate4.yml
+permissions:
+  contents: write
+jobs:
+  agent-session:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact isolated M13 branch
+        uses: actions/checkout@v4
+        with:
+          ref: m13-persistent-heartbeat
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Format, test, and fast-forward only the M13 work branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(git rev-parse HEAD)" = "7aabc472e49ceaab5bc8544e2841fb87c1aedb6c"
+          echo "M13_GATE4_INPUT=$(git rev-parse HEAD)"
+          gofmt -w agent/m13_connection.go agent/m13_connection_test.go
+          git diff --check
+          go mod verify
+          go test ./agent -run '^TestM13' -v -count=1
+          go test ./... -count=1
+          go test -race ./agent -run '^TestM13' -count=1
+          go vet ./...
+          echo "M13_GATE4_TESTS=PASS"
+          if ! git diff --quiet -- agent/m13_connection.go agent/m13_connection_test.go; then
+            git config user.name "meshalot-ms02-runner"
+            git config user.email "meshalot-runner@users.noreply.github.com"
+            git add -- agent/m13_connection.go agent/m13_connection_test.go
+            git diff --cached --check
+            git commit -m "M13 Gate 4: format outbound WSS agent session and tests"
+            git push origin HEAD:refs/heads/m13-persistent-heartbeat
+          fi
+          echo "M13_GATE4_VALIDATED_COMMIT=$(git rev-parse HEAD)"
+          test -z "$(gofmt -l agent/m13_connection.go agent/m13_connection_test.go)"
+          echo "M13_GATE4=PASS"
