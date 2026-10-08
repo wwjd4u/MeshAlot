@@ -119,7 +119,9 @@ func TestM13ConnectReadsExistingIdentityWithoutMutation(t *testing.T) {
 		t.Fatalf("failed to make isolated test identity: %v", err)
 	}
 	before, err := os.ReadFile(path)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	called := false
 	session := func(ctx context.Context, server string, id agent.Identity,
 		sample agent.M13HeartbeatSampler, interval time.Duration) error {
@@ -128,7 +130,9 @@ func TestM13ConnectReadsExistingIdentityWithoutMutation(t *testing.T) {
 			t.Fatalf("incorrect connection configuration")
 		}
 		h, err := sample(ctx)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		if h.AvailabilityMode != "away" || !h.ManualPause || h.ActiveJobState != "running" {
 			t.Fatalf("provider state was silently changed: %+v", h)
 		}
@@ -140,7 +144,9 @@ func TestM13ConnectReadsExistingIdentityWithoutMutation(t *testing.T) {
 		t.Fatalf("existing identity connection failed: called=%v err=%v", called, err)
 	}
 	after, err := os.ReadFile(path)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !bytes.Equal(before, after) {
 		t.Fatal("connect changed existing identity file")
 	}
@@ -150,7 +156,10 @@ func TestM13ConnectPropagatesCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	err := runConnectWithDeps(ctx, m13ConnectTestOptions("nonexistent"),
-		func(string) (agent.Identity, error) { t.Fatal("loaded identity after cancellation"); return agent.Identity{}, nil },
+		func(string) (agent.Identity, error) {
+			t.Fatal("loaded identity after cancellation")
+			return agent.Identity{}, nil
+		},
 		m13ConnectTestSnapshot,
 		func(context.Context, string, agent.Identity, agent.M13HeartbeatSampler, time.Duration) error {
 			t.Fatal("started session after cancellation")
@@ -164,9 +173,13 @@ func TestM13ConnectPropagatesCancelledContext(t *testing.T) {
 func TestM13ConnectEndToEndIsolatedTLS(t *testing.T) {
 	path := m13PrivateIdentityFixture(t)
 	identity, _, err := agent.LoadOrCreateIdentity(path) // ONLY test fixture
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	pub, err := base64.RawStdEncoding.DecodeString(identity.PublicKey)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	var serverErrors = make(chan error, 2)
 	received := make(chan protocol.M13Heartbeat, 1)
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -175,33 +188,53 @@ func TestM13ConnectEndToEndIsolatedTLS(t *testing.T) {
 			return
 		}
 		ws, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
-		if err != nil { serverErrors <- err; return }
+		if err != nil {
+			serverErrors <- err
+			return
+		}
 		defer ws.Close()
 		challenge, err := protocol.NewM13Challenge()
-		if err != nil { serverErrors <- err; return }
+		if err != nil {
+			serverErrors <- err
+			return
+		}
 		if err := ws.WriteJSON(map[string]string{"type": "challenge", "challenge": challenge}); err != nil {
-			serverErrors <- err; return
+			serverErrors <- err
+			return
 		}
 		var proof struct {
-			Type string `json:"type"`
-			NodeID string `json:"node_id"`
+			Type      string `json:"type"`
+			NodeID    string `json:"node_id"`
 			Signature string `json:"signature"`
 		}
-		if err := ws.ReadJSON(&proof); err != nil { serverErrors <- err; return }
+		if err := ws.ReadJSON(&proof); err != nil {
+			serverErrors <- err
+			return
+		}
 		if proof.Type != "authenticate" || proof.NodeID != identity.NodeID {
-			serverErrors <- errors.New("wrong enrolled node"); return
+			serverErrors <- errors.New("wrong enrolled node")
+			return
 		}
 		if err := protocol.VerifyM13Challenge(ed25519.PublicKey(pub), proof.NodeID, challenge, proof.Signature); err != nil {
-			serverErrors <- err; return
+			serverErrors <- err
+			return
 		}
 		if err := ws.WriteJSON(map[string]string{"type": "authenticated", "node_id": identity.NodeID}); err != nil {
-			serverErrors <- err; return
+			serverErrors <- err
+			return
 		}
 		var heartbeat protocol.M13Heartbeat
-		if err := ws.ReadJSON(&heartbeat); err != nil { serverErrors <- err; return }
-		if err := heartbeat.Validate(time.Now().UTC()); err != nil { serverErrors <- err; return }
+		if err := ws.ReadJSON(&heartbeat); err != nil {
+			serverErrors <- err
+			return
+		}
+		if err := heartbeat.Validate(time.Now().UTC()); err != nil {
+			serverErrors <- err
+			return
+		}
 		if err := ws.WriteJSON(map[string]string{"type": "heartbeat_ack"}); err != nil {
-			serverErrors <- err; return
+			serverErrors <- err
+			return
 		}
 		received <- heartbeat
 	}))
@@ -210,7 +243,7 @@ func TestM13ConnectEndToEndIsolatedTLS(t *testing.T) {
 	roots.AddCert(server.Certificate())
 	dialer := &websocket.Dialer{
 		HandshakeTimeout: 3 * time.Second,
-		TLSClientConfig: &tls.Config{RootCAs: roots},
+		TLSClientConfig:  &tls.Config{RootCAs: roots},
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
