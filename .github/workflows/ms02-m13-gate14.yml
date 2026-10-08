@@ -1,0 +1,61 @@
+name: MS-02 M13 Gate 14 Read-only Preflight
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate14.yml
+permissions:
+  contents: read
+jobs:
+  safe-preflight:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 6
+    steps:
+      - name: Checkout pinned M13 source read-only
+        uses: actions/checkout@v4
+        with:
+          ref: m13-persistent-heartbeat
+          persist-credentials: false
+      - name: Examine host prereqs without host mutation or re-enrollment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(git rev-parse HEAD)" = "6af3eed39ae77a4f639a11636159435b7a94f8a1"
+          echo "M13_GATE14_SOURCE=$(git rev-parse HEAD)"
+          echo "M13_GATE14_HOST=$RUNNER_NAME"
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-readonly.XXXXXX")"
+          trap 'rm -rf "$WORK"' EXIT
+          go build -o "$WORK/meshalot-agent" ./agent/cmd/meshalot-agent
+          test -x "$WORK/meshalot-agent"
+          echo "M13_GATE14_GO_BUILD=PASS"
+          DEFAULT_IDENTITY="${XDG_CONFIG_HOME:-$HOME/.config}/meshalot/agent-identity.json"
+          if test -L "$DEFAULT_IDENTITY"; then
+            echo "M13_GATE14_IDENTITY=BLOCKED_SYMLINK"
+          elif test -f "$DEFAULT_IDENTITY"; then
+            if "$WORK/meshalot-agent" identity --identity "$DEFAULT_IDENTITY"; then
+              echo "M13_GATE14_IDENTITY=EXISTING_VALID_READ_ONLY"
+            else
+              echo "M13_GATE14_IDENTITY=EXISTS_BUT_INVALID_NO_REENROLL"
+            fi
+          else
+            echo "M13_GATE14_IDENTITY=NOT_PRESENT_AT_DEFAULT_PATH"
+          fi
+          if command -v meshalot-agent >/dev/null 2>&1; then
+            echo "M13_GATE14_INSTALLED_AGENT=PATH_PRESENT"
+          else
+            echo "M13_GATE14_INSTALLED_AGENT=NOT_IN_PATH"
+          fi
+          echo "===== READ-ONLY SYSTEMD STATE ====="
+          systemctl list-unit-files 'meshalot-agent*' --no-legend --no-pager || true
+          echo "===== READ-ONLY PRODUCTION API HEALTH ====="
+          if curl -fsS --max-time 10 https://api.meshalot.com/v1/health >"$WORK/health.json"; then
+            python3 -c "import json,sys; x=json.load(open(sys.argv[1])); assert x.get('status') == 'ok'; print('M13_GATE14_PRODUCTION_HEALTH=PASS')" "$WORK/health.json"
+          else
+            echo "M13_GATE14_PRODUCTION_HEALTH=UNVERIFIED"
+          fi
+          test ! -e "$WORK/agent-identity.json"
+          git diff --exit-code
+          echo "M13_GATE14_READ_ONLY_PREFLIGHT=PASS"
