@@ -1,0 +1,90 @@
+name: MS-02 M13 Gate 17 Step 1 Read-only Readiness
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate17-step1.yml
+permissions:
+  contents: read
+jobs:
+  readiness:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 12
+    steps:
+      - name: Check out pinned M13 candidate (not production)
+        uses: actions/checkout@v4
+        with:
+          ref: m13-persistent-heartbeat
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Read-only Node001 readiness and fresh source regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(git rev-parse HEAD)" = "4f67ee54e5ebca084e38e306e723ae0acd08e77d"
+          test "$(git rev-parse origin/main)" = "1016c9b058690f34058dfab9cde7927e421fa469"
+          echo "M13_GATE17_STEP1_CANDIDATE=$(git rev-parse HEAD)"
+          echo "M13_GATE17_STEP1_PRODUCTION_MAIN_PRESERVED=PASS"
+          for file in \
+            docs/m13-gate13-closeout-2026-10-07.md \
+            docs/m13-gate14-closeout-2026-10-07.md \
+            docs/m13-gate15-closeout-2026-10-07.md \
+            docs/m13-gate16-closeout-2026-10-07.md \
+            docs/m13-gate17-controlled-live-rollout-plan-2026-10-07.md; do
+            test -s "$file"
+          done
+          echo "M13_GATE17_STEP1_EVIDENCE_PRESENT=PASS"
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-gate17-readonly.XXXXXX")"
+          trap 'rm -rf "$WORK"' EXIT
+          go mod verify
+          go test ./... -count=1
+          go test -race ./agent -run '^TestM13(Reconnect|Persistent)' -count=1
+          go vet ./...
+          go build -o "$WORK/meshalot-agent" ./agent/cmd/meshalot-agent
+          echo "M13_GATE17_STEP1_BUILD_TEST_VET=PASS"
+          IDENTITY="$HOME/.config/meshalot/agent-identity.json"
+          test -f "$IDENTITY"
+          test ! -L "$IDENTITY"
+          test "$(stat -c %a "$IDENTITY")" = "600"
+          test "$(stat -c %u "$IDENTITY")" = "$(id -u)"
+          BEFORE="$(sha256sum "$IDENTITY" | cut -d' ' -f1)"
+          "$WORK/meshalot-agent" identity --identity "$IDENTITY" >"$WORK/identity-public-only.txt"
+          grep -Fq "Node identity fingerprint: 2d717e508988" "$WORK/identity-public-only.txt"
+          grep -Fq "Public key fingerprint: 1249f59eacd83ffc" "$WORK/identity-public-only.txt"
+          AFTER="$(sha256sum "$IDENTITY" | cut -d' ' -f1)"
+          test "$BEFORE" = "$AFTER"
+          echo "M13_GATE17_STEP1_EXISTING_IDENTITY_UNCHANGED=PASS"
+          if systemctl list-unit-files 'meshalot-agent*' --no-legend --no-pager 2>/dev/null | grep -q 'meshalot-agent'; then
+            echo "M13_GATE17_STEP1_AGENT_UNIT=PRESENT_REQUIRES_REVIEW"
+          else
+            echo "M13_GATE17_STEP1_AGENT_UNIT=NOT_INSTALLED"
+          fi
+          if command -v meshalot-agent >/dev/null 2>&1; then
+            echo "M13_GATE17_STEP1_AGENT_BINARY=IN_PATH"
+          else
+            echo "M13_GATE17_STEP1_AGENT_BINARY=NOT_INSTALLED_IN_PATH"
+          fi
+          if command -v nvidia-smi >/dev/null 2>&1; then
+            nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits \
+              >"$WORK/gpu.txt"
+            test -s "$WORK/gpu.txt"
+            echo "M13_GATE17_STEP1_GPU_READ_ONLY=PASS"
+          else
+            echo "M13_GATE17_STEP1_GPU_READ_ONLY=UNAVAILABLE"
+          fi
+          if curl -fsS --max-time 10 https://api.meshalot.com/v1/health >"$WORK/health.json"; then
+            python3 - "$WORK/health.json" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as f:
+              body = json.load(f)
+          assert body.get("status") == "ok"
+          print("M13_GATE17_STEP1_PUBLIC_API_HEALTH=PASS")
+          PY
+          else
+            echo "M13_GATE17_STEP1_PUBLIC_API_HEALTH=UNVERIFIED"
+          fi
+          test -z "$(git status --porcelain)"
+          echo "M13_GATE17_STEP1_READ_ONLY_PREFLIGHT=PASS"
