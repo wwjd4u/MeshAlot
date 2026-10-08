@@ -11,7 +11,7 @@ import (
 	protocol "github.com/wwjd4u/MeshAlot/protocol/v1"
 )
 
-var m13DarwinIdleRE = regexp.MustCompile(`([0-9]+(?:.[0-9]+)?)%s+idle`)
+var m13DarwinIdleRE = regexp.MustCompile(`([0-9]+(?:\.[0-9]+)?)%\s+idle`)
 var m13DarwinPageRE = regexp.MustCompile(`page size of ([0-9]+) bytes`)
 
 // Mac's top reports an idle percentage. The final CPU usage line represents
@@ -38,8 +38,7 @@ func m13DarwinAvailableRAM(raw []byte)(uint64,error){
 		"Pages speculative":true,"Pages purgeable":true}
 	var pageSum uint64
 	found:=0
-	for _,line:=range strings.Split(txt,"
-"){
+	for _,line:=range strings.Split(txt,"\n"){
 		key,value,ok:=strings.Cut(line,":")
 		if !ok {continue}
 		key=strings.TrimSpace(key)
