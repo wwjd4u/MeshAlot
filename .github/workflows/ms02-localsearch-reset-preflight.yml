@@ -1,0 +1,78 @@
+name: MS-02 LocalSearch Safe-Reset Preflight
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-localsearch-reset-preflight.yml
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 6
+    steps:
+      - name: Verify index reset safety, user tags and cache directory metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$(dpkg-query -W -f='${Version}' localsearch)" = "3.11.0-1ubuntu1.1"
+          echo "LOCALSEARCH_RESET_PREFLIGHT=START"
+          if ! command -v localsearch >/dev/null 2>&1; then
+            echo "LOCALSEARCH_CLI=UNAVAILABLE"
+            exit 1
+          fi
+          echo "LOCALSEARCH_CLI=AVAILABLE"
+          WORK="$(mktemp -d "$RUNNER_TEMP/localsearch-reset-check.XXXXXX")"
+          trap 'rm -rf "$WORK"' EXIT
+          if timeout 12 localsearch reset --help >"$WORK/reset-help" 2>&1; then
+            echo "LOCALSEARCH_RESET_HELP=AVAILABLE"
+          else
+            echo "LOCALSEARCH_RESET_HELP=UNAVAILABLE"
+            exit 1
+          fi
+          if grep -q -- '--filesystem' "$WORK/reset-help"; then
+            echo "LOCALSEARCH_FILESYSTEM_ONLY_OPTION=VERIFIED"
+          else
+            echo "LOCALSEARCH_FILESYSTEM_ONLY_OPTION=NOT_VERIFIED"
+            exit 1
+          fi
+          if timeout 12 localsearch tag --list >"$WORK/tags" 2>"$WORK/tag-error"; then
+            tagbytes="$(wc -c <"$WORK/tags")"
+            if test "$tagbytes" -eq 0; then
+              echo "LOCALSEARCH_TAG_STATUS=NO_TAG_OUTPUT"
+            elif grep -Eiq 'no tags|no results|nothing found|there (are|were) no tags' "$WORK/tags"; then
+              echo "LOCALSEARCH_TAG_STATUS=NO_TAGS_REPORTED"
+            else
+              echo "LOCALSEARCH_TAG_STATUS=POTENTIALLY_PRESENT_DO_NOT_RESET"
+            fi
+          else
+            echo "LOCALSEARCH_TAG_STATUS=UNAVAILABLE_DO_NOT_RESET"
+          fi
+          echo "===== INDEX DATABASE DIRECTORIES (METADATA ONLY) ====="
+          for place in \
+            "$HOME/.cache/localsearch3" \
+            "$HOME/.cache/tracker3" \
+            "$HOME/.cache/localsearch" \
+            "$HOME/.local/share/localsearch3" \
+            "$HOME/.local/share/tracker3" \
+            "$HOME/.local/share/localsearch"; do
+            if test -d "$place" && test ! -L "$place"; then
+              size="$(du -sk "$place" 2>/dev/null | awk '{print $1}')"
+              echo "INDEX_DIRECTORY=${place##*/} PARENT=${place%/*} KILOBYTES=$size"
+            fi
+          done
+          echo "===== FREE SPACE AND SERVICE ====="
+          df -Pk "$HOME" | awk 'NR==2 {print "HOME_FREE_KILOBYTES="$4}'
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          systemctl --user show localsearch-3.service -p ActiveState -p NRestarts -p Result --no-pager || true
+          if timeout 12 localsearch status >"$WORK/status" 2>"$WORK/status-error"; then
+            echo "LOCALSEARCH_STATUS_QUERY=AVAILABLE"
+          else
+            echo "LOCALSEARCH_STATUS_QUERY=UNAVAILABLE"
+          fi
+          echo "LOCALSEARCH_RESET_PREFLIGHT=READ_ONLY_COMPLETE"
