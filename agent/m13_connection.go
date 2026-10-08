@@ -81,6 +81,9 @@ func RunM13Session(ctx context.Context, controlURL string, identity Identity,
 	if dialer == nil {
 		dialer = websocket.DefaultDialer
 	}
+	if dialer.TLSClientConfig != nil && dialer.TLSClientConfig.InsecureSkipVerify {
+		return errors.New("TLS certificate verification must not be disabled")
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -156,7 +159,7 @@ func RunM13Session(ctx context.Context, controlURL string, identity Identity,
 		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
-			if !timer.Stop() { <-timer.C }
+			timer.Stop()
 			return nil
 		case <-timer.C:
 		}
