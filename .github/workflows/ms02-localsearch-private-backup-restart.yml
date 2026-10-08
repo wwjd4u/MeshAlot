@@ -1,0 +1,147 @@
+name: MS-02 LocalSearch Private Backup and Gentle Restart
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-localsearch-private-backup-restart.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-ms02-localsearch-maintenance
+  cancel-in-progress: false
+jobs:
+  safe-restart:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 9
+    steps:
+      - name: Back up one GNOME tag and index privately, verify, and restart LocalSearch only
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          test "$(dpkg-query -W -f='${Version}' localsearch)" = "3.11.0-1ubuntu1.1"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          test -S "$XDG_RUNTIME_DIR/bus"
+          command -v tinysparql >/dev/null
+          echo "LOCALSEARCH_SAFE_MAINTENANCE=START"
+
+          SRC="$HOME/.cache/tracker3"
+          test -d "$SRC"
+          test ! -L "$SRC"
+          test "$(stat -c %u "$SRC")" = "$(id -u)"
+          INDEX_KIB="$(du -sk "$SRC" | awk '{print $1}')"
+          FREE_KIB="$(df -Pk "$HOME" | awk 'NR==2{print $4}')"
+          [[ "$INDEX_KIB" =~ ^[0-9]+$ && "$FREE_KIB" =~ ^[0-9]+$ ]]
+          test "$FREE_KIB" -gt "$((INDEX_KIB * 3 + 102400))"
+          echo "LOCALSEARCH_BACKUP_DISK_SPACE=PASS"
+
+          ROOT="$HOME/.local/share/localsearch-safety-backups"
+          if test -e "$ROOT" || test -L "$ROOT"; then
+            test -d "$ROOT" && test ! -L "$ROOT"
+            test "$(stat -c %u "$ROOT")" = "$(id -u)"
+            test "$(stat -c %a "$ROOT")" = "700"
+          else
+            mkdir -m 700 -- "$ROOT"
+          fi
+          DEST="$ROOT/$(date -u +%Y%m%dT%H%M%SZ)-run-$GITHUB_RUN_ID"
+          mkdir -m 700 -- "$DEST"
+          echo "LOCALSEARCH_BACKUP_PRIVATE_DIRECTORY=PASS"
+
+          tinysparql query --dbus-service org.freedesktop.Tracker3.Miner.Files \
+            'SELECT (COUNT(?tag) AS ?count) WHERE { ?tag a nao:Tag }' \
+            >"$DEST/tag-count-before.txt" 2>"$DEST/tag-query-stderr.txt"
+          COUNT="$(awk 'NF {last=$0} END {print last}' "$DEST/tag-count-before.txt" | tr -d '[:space:]|')"
+          test "$COUNT" = "1"
+          echo "LOCALSEARCH_TAG_COUNT_BEFORE=1"
+
+          tinysparql query --dbus-service org.freedesktop.Tracker3.Miner.Files \
+            'SELECT ?tag ?label ?resource WHERE { ?tag a nao:Tag . OPTIONAL { ?tag nao:prefLabel ?label } OPTIONAL { ?resource nao:hasTag ?tag } } ORDER BY ?tag ?resource' \
+            >"$DEST/tag-metadata-private.txt" 2>>"$DEST/tag-query-stderr.txt"
+          test -s "$DEST/tag-metadata-private.txt"
+
+          tinysparql query --dbus-service org.freedesktop.Tracker3.Miner.Files \
+            'SELECT (COUNT(?resource) AS ?count) WHERE { ?resource nao:hasTag ?tag . ?tag a nao:Tag }' \
+            >"$DEST/linked-resources-private.txt" 2>>"$DEST/tag-query-stderr.txt"
+          LINKED="$(awk 'NF {last=$0} END {print last}' "$DEST/linked-resources-private.txt" | tr -d '[:space:]|')"
+          test "$LINKED" = "0"
+          echo "LOCALSEARCH_TAG_METADATA_EXPORT=PASS"
+          echo "LOCALSEARCH_TAG_ASSOCIATIONS_BEFORE=0"
+
+          test "$(systemctl --user show localsearch-3.service -p ActiveState --value)" = "active"
+          echo "LOCALSEARCH_SERVICE_BEFORE=ACTIVE"
+          NEED_RESTART=0
+          recover_on_exit() {
+            if test "$NEED_RESTART" = "1"; then
+              echo "LOCALSEARCH_RECOVERY_START_ATTEMPT=RUNNING"
+              systemctl --user start localsearch-3.service || true
+            fi
+          }
+          trap recover_on_exit EXIT
+
+          # Explicitly authorized service restart, with offline snapshot
+          # taken while the index writer is stopped. No index reset or removal.
+          NEED_RESTART=1
+          systemctl --user stop localsearch-3.service
+          test "$(systemctl --user show localsearch-3.service -p ActiveState --value)" = "inactive"
+          if pgrep -u "$(id -u)" -x localsearch-3 >/dev/null 2>&1; then
+            echo "LOCALSEARCH_WRITER_STILL_RUNNING_ABORT_BACKUP"
+            exit 1
+          fi
+          echo "LOCALSEARCH_INDEX_WRITER_STOPPED=PASS"
+
+          ARCHIVE="$DEST/tracker3-index-cache.tar"
+          tar --create --file "$ARCHIVE" --directory "$HOME/.cache" tracker3
+          test -s "$ARCHIVE"
+          tar --list --file "$ARCHIVE" >"$DEST/archived-paths-private.txt"
+          grep -qx 'tracker3/' "$DEST/archived-paths-private.txt"
+          chmod 600 "$DEST"/*.txt "$ARCHIVE"
+          (
+            cd "$DEST"
+            sha256sum tag-count-before.txt tag-metadata-private.txt \
+              linked-resources-private.txt tracker3-index-cache.tar \
+              >SHA256SUMS
+            sha256sum --check --status SHA256SUMS
+          )
+          chmod 600 "$DEST/SHA256SUMS"
+          echo "LOCALSEARCH_INDEX_BACKUP_ARCHIVE=VERIFIED"
+          echo "LOCALSEARCH_BACKUP_ARCHIVE_BYTES=$(stat -c %s "$ARCHIVE")"
+          echo "LOCALSEARCH_BACKUP_DIRECTORY=$DEST"
+
+          systemctl --user start localsearch-3.service
+          NEED_RESTART=0
+          sleep 3
+          test "$(systemctl --user show localsearch-3.service -p ActiveState --value)" = "active"
+          echo "LOCALSEARCH_SERVICE_AFTER=ACTIVE"
+
+          OK=0
+          for attempt in 1 2 3 4 5; do
+            if timeout 10 tinysparql query --dbus-service org.freedesktop.Tracker3.Miner.Files \
+              'SELECT (COUNT(?tag) AS ?count) WHERE { ?tag a nao:Tag }' \
+              >"$DEST/tag-count-after.txt" 2>>"$DEST/tag-query-stderr.txt"; then
+              AFTER="$(awk 'NF {last=$0} END {print last}' "$DEST/tag-count-after.txt" | tr -d '[:space:]|')"
+              if test "$AFTER" = "1"; then
+                OK=1
+                break
+              fi
+            fi
+            sleep 1
+          done
+          test "$OK" = "1"
+          chmod 600 "$DEST/tag-count-after.txt"
+          echo "LOCALSEARCH_TAG_COUNT_AFTER=1"
+
+          (
+            cd "$DEST"
+            sha256sum --check --status SHA256SUMS
+          )
+          echo "LOCALSEARCH_SAVED_ARCHIVE_CHECKSUMS=PASS"
+          echo "LOCALSEARCH_INDEX_RESET=NOT_PERFORMED"
+          echo "LOCALSEARCH_DATA_DELETE=NOT_PERFORMED"
+          echo "LOCALSEARCH_BACKUP_AND_SERVICE_RESTART=PASS"
