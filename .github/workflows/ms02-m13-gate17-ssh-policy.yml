@@ -1,0 +1,70 @@
+name: MS-02 M13 Gate 17 GCE SSH Policy Read-only
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate17-ssh-policy.yml
+permissions:
+  contents: read
+jobs:
+  vm-ssh-policy:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 7
+    steps:
+      - name: Read only VM OS Login and SSH policy metadata, never print metadata values
+        shell: bash
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+          CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+          CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          test -x "$GCLOUD"
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-vm-ssh-policy.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          echo "M13_GATE17_GCE_SSH_POLICY=READ_ONLY_START"
+          "$GCLOUD" compute instances describe meshalot-control-01 \
+            --zone=us-south1-a --project=meshalot-poc --format=json \
+            > "$WORK/instance.json" 2>"$WORK/error.log"
+          "$GCLOUD" compute project-info describe --project=meshalot-poc \
+            --format=json > "$WORK/project.json" 2>"$WORK/project-error.log"
+          python3 - "$WORK/instance.json" "$WORK/project.json" <<'PY'
+          import json,sys
+          with open(sys.argv[1],encoding='utf-8') as f: inst=json.load(f)
+          with open(sys.argv[2],encoding='utf-8') as f: project=json.load(f)
+          assert inst.get('name')=='meshalot-control-01'
+          assert str(inst.get('zone','')).endswith('/us-south1-a')
+          assert str(inst.get('status','')).upper() in ('RUNNING','STOPPING','STOPPED','SUSPENDING','SUSPENDED','TERMINATED')
+          def extract(meta):
+              return {item.get('key',''):item.get('value','') for item in
+                      ((meta or {}).get('items') or [])}
+          im=extract(inst.get('metadata'))
+          pm=extract(project.get('commonInstanceMetadata'))
+          v=im.get('enable-oslogin',pm.get('enable-oslogin','unset')).strip().lower()
+          print('M13_CONTROL_VM_STATE='+str(inst.get('status')).upper())
+          print('M13_VM_OS_LOGIN_EFFECTIVE='+('ENABLED' if v=='true' else 'DISABLED' if v=='false' else 'UNSET'))
+          print('M13_VM_SSH_KEYS_INSTANCE_METADATA='+('PRESENT' if 'ssh-keys' in im else 'ABSENT'))
+          print('M13_VM_SSH_KEYS_PROJECT_METADATA='+('PRESENT' if 'ssh-keys' in pm else 'ABSENT'))
+          block=im.get('block-project-ssh-keys',pm.get('block-project-ssh-keys','unset')).strip().lower()
+          print('M13_VM_BLOCK_PROJECT_SSH_KEYS='+('YES' if block=='true' else 'NO' if block=='false' else 'UNSET'))
+          nic=inst.get('networkInterfaces') or []
+          print('M13_VM_HAS_PRIVATE_NETWORK='+str(any(bool(x.get('networkIP')) for x in nic)))
+          print('M13_VM_HAS_EXTERNAL_IP='+str(any(bool(x.get('accessConfigs')) for x in nic)))
+          print('M13_VM_SSH_POLICY_READ_ONLY=PASS')
+          PY
+          if test -f "$HOME/.ssh/google_compute_engine" || \
+             test -L "$HOME/.ssh/google_compute_engine"; then
+            echo "M13_MS02_GCE_KEY=EXISTS_DO_NOT_OVERWRITE"
+          else
+            echo "M13_MS02_GCE_KEY=NOT_PRESENT"
+          fi
+          echo "M13_CONTROL_VM_SSH=NOT_ATTEMPTED"
+          echo "M13_CONTROL_VM_METADATA=NOT_CHANGED"
