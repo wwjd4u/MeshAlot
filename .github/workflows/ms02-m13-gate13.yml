@@ -1,0 +1,99 @@
+name: MS-02 M13 Gate 13 Reverse Proxy
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate13.yml
+permissions:
+  contents: write
+jobs:
+  vertical-slice:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 12
+    steps:
+      - name: Check out exact isolated M13 vertical slice
+        uses: actions/checkout@v4
+        with:
+          ref: m13-persistent-heartbeat
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Test production-shaped HTTPS proxy and long-lived WebSocket
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(git rev-parse HEAD)" = "4a323589246e4fd943f45c6d37a59359ac198c47"
+          echo "M13_GATE13_INPUT=$(git rev-parse HEAD)"
+          gofmt -w server/m13_reverse_proxy_postgres_test.go
+          git diff --check
+          go mod verify
+          TEMP_BASE="$(mktemp -d "$RUNNER_TEMP/m13-vertical.XXXXXX")"
+          CID=""
+          cleanup() {
+            if test -n "$CID"; then
+              docker exec -u root "$CID" chmod 0777 /var/run/postgresql >/dev/null 2>&1 || true
+              docker rm -f -v "$CID" >/dev/null 2>&1 || true
+            fi
+            rm -rf "$TEMP_BASE" || true
+          }
+          trap cleanup EXIT
+          mkdir -p "$TEMP_BASE/socket"
+          chmod 0777 "$TEMP_BASE/socket"
+          docker info >/dev/null
+          CID="$(docker run -d --rm --network none --pull=missing \
+            -e POSTGRES_HOST_AUTH_METHOD=trust \
+            -v "$TEMP_BASE/socket:/var/run/postgresql" \
+            -v "$PWD:/repo:ro" \
+            postgres:16-alpine)"
+          for i in $(seq 1 15); do
+            if docker exec "$CID" pg_isready -h /var/run/postgresql -U postgres >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          if ! docker exec "$CID" pg_isready -h /var/run/postgresql -U postgres; then
+            docker logs "$CID" || true
+            exit 1
+          fi
+          docker exec -e PGHOST=/var/run/postgresql "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c 'CREATE ROLE meshalot LOGIN;'
+          docker exec -e PGHOST=/var/run/postgresql "$CID" createdb -U postgres meshalot_m13test
+          docker exec -e PGHOST=/var/run/postgresql "$CID" sh -c 'for f in /repo/database/migrations/*.up.sql; do
+            echo "APPLY=$(basename "$f")"
+            psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test -f "$f" >/dev/null || exit 1
+          done'
+          docker exec -e PGHOST=/var/run/postgresql "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test -f /repo/database/runtime-grants.sql >/dev/null
+          docker exec -e PGHOST=/var/run/postgresql "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test -f /repo/database/tests/milestone13_runtime_privileges.sql
+          MESHALOT_M13_VERTICAL_ADMIN_DSN="host=$TEMP_BASE/socket port=5432 user=postgres dbname=meshalot_m13test sslmode=disable" \
+          MESHALOT_M13_VERTICAL_RUNTIME_DSN="host=$TEMP_BASE/socket port=5432 user=meshalot dbname=meshalot_m13test sslmode=disable" \
+            go test ./server -run '^TestM13ReverseProxyRealPostgres$' -v -count=1
+          MESHALOT_M13_VERTICAL_ADMIN_DSN="host=$TEMP_BASE/socket port=5432 user=postgres dbname=meshalot_m13test sslmode=disable" \
+          MESHALOT_M13_VERTICAL_RUNTIME_DSN="host=$TEMP_BASE/socket port=5432 user=meshalot dbname=meshalot_m13test sslmode=disable" \
+            go test -race ./server -run '^TestM13ReverseProxyRealPostgres
+          go test ./... -count=1
+          go vet ./...
+          if ! git diff --quiet -- server/m13_reverse_proxy_postgres_test.go; then
+            git config user.name "meshalot-ms02-runner"
+            git config user.email "meshalot-runner@users.noreply.github.com"
+            git add -- server/m13_reverse_proxy_postgres_test.go
+            git diff --cached --check
+            git commit -m "M13 Gate 13: format real TLS/PostgreSQL vertical-slice test"
+            git push origin HEAD:refs/heads/m13-persistent-heartbeat
+          fi
+          echo "M13_GATE13_VALIDATED_COMMIT=$(git rev-parse HEAD)"
+          test -z "$(gofmt -l server/m13_reverse_proxy_postgres_test.go)"
+          echo "M13_GATE13_CODE=PASS"
+ -count=1
+          echo "M13_GATE13_END_TO_END=PASS"
+          go test ./... -count=1
+          go vet ./...
+          if ! git diff --quiet -- server/m13_reverse_proxy_postgres_test.go; then
+            git config user.name "meshalot-ms02-runner"
+            git config user.email "meshalot-runner@users.noreply.github.com"
+            git add -- server/m13_reverse_proxy_postgres_test.go
+            git diff --cached --check
+            git commit -m "M13 Gate 13: format real TLS/PostgreSQL vertical-slice test"
+            git push origin HEAD:refs/heads/m13-persistent-heartbeat
+          fi
+          echo "M13_GATE13_VALIDATED_COMMIT=$(git rev-parse HEAD)"
+          test -z "$(gofmt -l server/m13_reverse_proxy_postgres_test.go)"
+          echo "M13_GATE13_CODE=PASS"
