@@ -14,7 +14,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +21,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/wwjd4u/MeshAlot/agent"
 	"github.com/wwjd4u/MeshAlot/server"
+	protocol "github.com/wwjd4u/MeshAlot/protocol/v1"
 )
 
 // Opt-in local-only smoke: one authenticated TLS session using the ALREADY
@@ -83,10 +83,6 @@ func TestM13Node001LocalIdentitySmoke(t *testing.T){
 	pool.AddCert(api.Certificate())
 	dialer:=&websocket.Dialer{HandshakeTimeout:3*time.Second,
 		TLSClientConfig:&tls.Config{RootCAs:pool}}
-	sampler:=func(ctx context.Context)(interface{},error) {
-		return nil,errors.New("unused placeholder")
-	}
-	_ = sampler
 	// Test-only safe provider state is explicitly paused. It does not alter
 	// the user's actual local resource sharing policy or runtime configuration.
 	sample:=func(ctx context.Context)(protocol.M13Heartbeat,error){
@@ -100,9 +96,10 @@ func TestM13Node001LocalIdentitySmoke(t *testing.T){
 		done<-agent.RunM13Session(ctx,api.URL,identity,sample,30*time.Second,dialer)
 	}()
 	deadline:=time.Now().Add(5*time.Second)
-	var payloadType,state,mode string
+	var state,mode string
+	var payloadType sql.NullString
 	var cpuText,ramText,gpuText,vramText,paused sql.NullString
-	var last time.Time
+	var last sql.NullTime
 	for {
 		err=admin.QueryRowContext(ctx,
 			`SELECT status,mode,last_heartbeat,
@@ -116,7 +113,7 @@ func TestM13Node001LocalIdentitySmoke(t *testing.T){
 		).Scan(&state,&mode,&last,&payloadType,
 			&cpuText,&ramText,&gpuText,&vramText,&paused)
 		if err!=nil{t.Fatal(err)}
-		if state=="online"&&payloadType=="heartbeat" {break}
+		if state=="online"&&payloadType.Valid&&payloadType.String=="heartbeat" {break}
 		select{
 		case err=<-done:t.Fatalf("existing Node001 agent failed to authenticate: %v",err)
 		default:
@@ -124,7 +121,7 @@ func TestM13Node001LocalIdentitySmoke(t *testing.T){
 		if time.Now().After(deadline) {t.Fatal("Node001 local heartbeat did not persist")}
 		time.Sleep(20*time.Millisecond)
 	}
-	if mode!="away"||paused.String!="true"||last.IsZero(){
+	if mode!="away"||paused.String!="true"||!last.Valid{
 		t.Fatalf("unsafe or incomplete test-only status: mode=%q paused=%v last=%v",mode,paused,last)
 	}
 	ram,err:=strconv.ParseUint(ramText.String,10,64)
@@ -152,6 +149,5 @@ func TestM13Node001LocalIdentitySmoke(t *testing.T){
 	if err!=nil{t.Fatal(err)}
 	if !bytes.Equal(original,after){t.Fatal("real node identity was modified")}
 	if _,err=os.Stat(identityPath);err!=nil{t.Fatal(err)}
-	_ = strings.TrimSpace // no identity/private material is emitted to logs
 	t.Log("M13_NODE001_REAL_IDENTITY_LOCAL_TLS_GPU_AND_DB=PASS")
 }
