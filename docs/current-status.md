@@ -14,6 +14,8 @@ This file is the concise current-status pointer. The Google Drive **AI Mesh POC 
 - Milestone 9 — **PASSED**
 - Milestone 10 — **PASSED**
 - Milestone 11 — **PASSED**
+- Milestone 12 — **PASSED**
+- Milestone 13 — **IN PROGRESS — GATES 1–16 VERIFIED IN ISOLATED TESTS; LIVE ACCEPTANCE PENDING**
 
 ## Milestone 4 reconciliation
 
@@ -65,7 +67,9 @@ See `docs/milestone11.md` for the detailed validation and closeout evidence.
 
 ## Next work
 
-Milestone 11 is closed. Before beginning Milestone 12, reconcile the next technical work against the governing **AI Mesh POC Build, Test, and Release Guide**.
+Milestone 12 is closed. Milestone 13 (Persistent Agent Connection and Heartbeat) has completed code, isolated PostgreSQL, WebSocket/TLS, reconnect, Linux/macOS packaging, real Node001 read-only identity/local telemetry, reverse-proxy and migration-upgrade validations through Gate 16. These are **not** evidence of real production WSS deployment, physical WAN/sleep interruption or reboot recovery. M13 remains open.
+
+Gate 17 is a **controlled live rollout with explicit operator approval**. See `docs/m13-gate17-controlled-live-rollout-plan-2026-10-07.md` and individual `docs/m13-gate*-closeout-2026-10-07.md` evidence. Do not migrate or restart production, re-enroll Node002, or rerun V100 benchmark evidence until the approved plan requires it.
 
 Milestone 10 remains closed with workload-aware eligibility preserving separate Compute, Network, Reliability, Availability, and Trust dimensions.
 
