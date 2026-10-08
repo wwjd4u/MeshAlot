@@ -13,51 +13,45 @@ jobs:
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 10
     steps:
-      - name: Validate migration 10 and least-privilege SQL in disposable local cluster
+      - name: Validate migration 10 in network-isolated disposable PostgreSQL container
         shell: bash
         run: |
           set -euo pipefail
           test "$RUNNER_NAME" = "meshalot-ms02"
-          echo "===== POSTGRESQL TEST TOOL DIAGNOSTICS ====="
-          for bindir in /usr/lib/postgresql/*/bin; do
-            if test -d "$bindir"; then export PATH="$bindir:$PATH"; fi
-          done
-          for tool in initdb pg_ctl psql pg_config postgres docker podman; do
-            echo "TOOL=$tool PATH=$(command -v "$tool" || echo unavailable)"
-          done
-          echo "RUNNER_UID=$(id -u)"
-          test -x "$(command -v initdb)"
-          test -x "$(command -v pg_ctl)"
-          test -x "$(command -v psql)"
+          docker info >/dev/null
           TEST_DIR="$(mktemp -d "$RUNNER_TEMP/m13-db.XXXXXX")"
           chmod 700 "$TEST_DIR"
-          DATA_DIR="$TEST_DIR/cluster"
-          trap 'pg_ctl -D "$DATA_DIR" -m immediate -w stop >/dev/null 2>&1 || true; rm -rf "$TEST_DIR"' EXIT
+          CID=""
+          trap 'if test -n "$CID"; then docker rm -f -v "$CID" >/dev/null 2>&1 || true; fi; rm -rf "$TEST_DIR"' EXIT
           git init -q "$TEST_DIR/repo"
           git -C "$TEST_DIR/repo" fetch -q --depth=1 https://github.com/wwjd4u/MeshAlot.git a4a4facef735eef95b854f4162ab6ad4e8580b8e
           git -C "$TEST_DIR/repo" checkout -q --detach FETCH_HEAD
           test "$(git -C "$TEST_DIR/repo" rev-parse HEAD)" = "a4a4facef735eef95b854f4162ab6ad4e8580b8e"
-          cd "$TEST_DIR/repo"
-          echo "M13_GATE3_DB_COMMIT=$(git rev-parse HEAD)"
-          initdb -D "$DATA_DIR" --auth-local=trust --no-instructions >/dev/null
-          pg_ctl -D "$DATA_DIR" -l "$TEST_DIR/postgres.log" -o "-c listen_addresses='' -c unix_socket_directories='$TEST_DIR' -c port=55331" -w start >/dev/null
-          export PGHOST="$TEST_DIR" PGPORT=55331
-          psql -v ON_ERROR_STOP=1 -d postgres -c "CREATE ROLE meshalot LOGIN;"
-          createdb meshalot_m13test
-          for f in $(find database/migrations -maxdepth 1 -name '*.up.sql' -type f | sort); do
-            echo "APPLY=$(basename "$f")"
-            psql -v ON_ERROR_STOP=1 -d meshalot_m13test -f "$f" >/dev/null
+          echo "M13_GATE3_DB_COMMIT=$(git -C "$TEST_DIR/repo" rev-parse HEAD)"
+          CID="$(docker run -d --rm --network none --pull=missing \
+            -e POSTGRES_HOST_AUTH_METHOD=trust \
+            -v "$TEST_DIR/repo:/repo:ro" \
+            postgres:16-alpine)"
+          for i in $(seq 1 40); do
+            if docker exec "$CID" pg_isready -U postgres >/dev/null 2>&1; then break; fi
+            sleep 1
           done
-          psql -v ON_ERROR_STOP=1 -d meshalot_m13test -f database/runtime-grants.sql >/dev/null
-          psql -v ON_ERROR_STOP=1 -d meshalot_m13test -f database/tests/milestone13_runtime_privileges.sql
-          psql -v ON_ERROR_STOP=1 -d meshalot_m13test <<'SQL'
+          docker exec "$CID" pg_isready -U postgres
+          docker exec "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c "CREATE ROLE meshalot LOGIN;"
+          docker exec "$CID" createdb -U postgres meshalot_m13test
+          docker exec "$CID" sh -c 'for f in /repo/database/migrations/*.up.sql; do
+            echo "APPLY=$(basename "$f")"
+            psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test -f "$f" >/dev/null || exit 1
+          done'
+          docker exec "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test -f /repo/database/runtime-grants.sql >/dev/null
+          docker exec "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test -f /repo/database/tests/milestone13_runtime_privileges.sql
+          docker exec -i "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test <<'SQL'
           INSERT INTO users(email) VALUES ('m13-isolated@example.invalid');
           INSERT INTO nodes(user_id,node_key,agent_version,identity_public_key)
             SELECT id,'00000000-0000-4000-8000-000000000001','m13-test','enrolled-public-key'
             FROM users WHERE email='m13-isolated@example.invalid';
           INSERT INTO node_status(node_id,status,observed_at)
-            SELECT id,'enrolled',now() FROM nodes
-            WHERE node_key='00000000-0000-4000-8000-000000000001';
+            SELECT id,'enrolled',now() FROM nodes WHERE node_key='00000000-0000-4000-8000-000000000001';
           BEGIN;
           SET ROLE meshalot;
           DO $$
