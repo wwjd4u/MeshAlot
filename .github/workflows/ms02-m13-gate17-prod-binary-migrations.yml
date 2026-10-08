@@ -1,0 +1,176 @@
+name: MS-02 M13 Gate 17 Release Baseline Read-only Checks
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate17-prod-binary-migrations.yml
+permissions:
+  contents: read
+jobs:
+  baseline:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 8
+    steps:
+      - name: Checkout the exact M13 source and migration files
+        uses: actions/checkout@v4
+        with:
+          ref: 7e43a7334e3a7c58786ff80eb2cb550a42071a03
+          persist-credentials: false
+      - name: Compare migration history checksums privately and query active binary
+        shell: bash
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+          CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+          CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$(git rev-parse HEAD)" = "7e43a7334e3a7c58786ff80eb2cb550a42071a03"
+          DIR="$HOME/.local/share/meshalot-m13-iap-ssh"
+          ROOT="$HOME/.local/share/meshalot-m13-private-audits"
+          test -d "$ROOT" && test ! -L "$ROOT" && test "$(stat -c %a "$ROOT")" = 700
+          BASELINE="$ROOT/step2-control-20261008T181125Z-run-37822331815.txt"
+          test -f "$BASELINE" && test ! -L "$BASELINE"
+          test "$(stat -c %a "$BASELINE")" = 600
+          (cd "$ROOT"; sha256sum --check --status "$(basename "$BASELINE").sha256")
+          echo "M13_PROD_EXISTING_PRIVATE_REPORT_VERIFIED=PASS"
+          python3 - "$BASELINE" "database/migrations" <<'PY'
+          from pathlib import Path
+          import hashlib,re,sys
+          report=Path(sys.argv[1]).read_text().splitlines()
+          root=Path(sys.argv[2])
+          data=[]
+          for line in report:
+              match=re.fullmatch(r"MIGRATION=(\d+):([a-z0-9_.]+):([0-9a-f]{12})",line)
+              if match:
+                  version=int(match.group(1))
+                  name=match.group(2)
+                  prefix=match.group(3)
+                  assert int(name[:6])==version
+                  path=root/name
+                  assert path.is_file(), "migration missing from candidate source"
+                  actual=hashlib.sha256(path.read_bytes()).hexdigest()
+                  if not actual.startswith(prefix):
+                      print("M13_PROD_MIGRATION_HISTORY_VS_SOURCE=MISMATCH_STOP")
+                      sys.exit(2)
+                  data.append(version)
+          assert data==list(range(1,9)), "production migration history is not 1..8"
+          print("M13_PROD_MIGRATION_HISTORY_SOURCE_CHECKSUMS_1_TO_8=PASS")
+          print("M13_PROD_MIGRATIONS_9_AND_10=NOT_APPLIED")
+          PY
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          KEY="$DIR/id_ed25519"
+          KNOWN="$DIR/known_hosts"
+          test -x "$GCLOUD"
+          test -f "$KEY" && test -f "$KNOWN"
+          test "$(stat -c %a "$KEY")" = 600
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-binary-baseline.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          python3 - "$DIR/registration.json" "$WORK/remote-user" <<'PY'
+          import json,re,datetime,sys
+          from pathlib import Path
+          d=json.loads(Path(sys.argv[1]).read_text())
+          assert d.get("target")=="meshalot-control-01" and d.get("project")=="meshalot-poc"
+          assert d.get("zone")=="us-south1-a"
+          name=d["username"]
+          assert re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}",name)
+          assert datetime.datetime.strptime(d["expires"],"%Y-%m-%dT%H:%M:%S%z")>datetime.datetime.now(datetime.timezone.utc)
+          Path(sys.argv[2]).write_text(name)
+          PY
+          REMOTE_USER="$(cat "$WORK/remote-user")"
+          cat >"$WORK/binary-audit.sh" <<'SH'
+          #!/bin/bash
+          set -euo pipefail
+          test "$(hostname -s)" = "meshalot-control-01" || {
+            echo "M13_ACTIVE_BIN=REFUSED_WRONG_HOST"
+            exit 2
+          }
+          while read -r unit enabled rest; do
+            case "$unit" in
+              meshalot*.service)
+                echo "API_UNIT=$unit"
+                state="$(systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)"
+                echo "API_STATE=$state"
+                pid="$(systemctl show "$unit" -p MainPID --value 2>/dev/null || true)"
+                if [[ "$pid" =~ ^[0-9]+$ ]] && test "$pid" -gt 1; then
+                  executable="$(sudo -n readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
+                  if test -z "$executable"; then
+                    executable="$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
+                  fi
+                  if test -n "$executable"; then
+                    echo "API_EXE_PATH=$executable"
+                  else
+                    echo "API_EXE_PATH=UNAVAILABLE"
+                  fi
+                  digest="$(sudo -n sha256sum "/proc/$pid/exe" 2>/dev/null | awk '{print $1}' || true)"
+                  if test -z "$digest"; then
+                    digest="$(sha256sum "/proc/$pid/exe" 2>/dev/null | awk '{print $1}' || true)"
+                  fi
+                  if [[ "$digest" =~ ^[0-9a-f]{64}$ ]]; then
+                    echo "API_EXE_SHA256=$digest"
+                  else
+                    echo "API_EXE_SHA256=UNAVAILABLE"
+                  fi
+                else
+                  echo "API_MAIN_PID=UNAVAILABLE"
+                fi
+                ;;
+            esac
+          done < <(systemctl list-unit-files 'meshalot*.service' --no-pager --no-legend 2>/dev/null || true)
+          echo "M13_PROD_BINARY_BASELINE_READONLY=COMPLETE"
+          SH
+          bash -n "$WORK/binary-audit.sh"
+          set +e
+          wrong="$(bash "$WORK/binary-audit.sh" 2>&1)"
+          wrong_rc="$?"
+          set -e
+          test "$wrong_rc" = 2
+          test "$wrong" = "M13_ACTIVE_BIN=REFUSED_WRONG_HOST"
+          echo "M13_PROD_BINARY_AUDIT_WRONG_HOST_REFUSED=PASS"
+
+          REPORT="$ROOT/step2-api-binary-$(date -u +%Y%m%dT%H%M%SZ)-run-$GITHUB_RUN_ID.txt"
+          PROXY="$GCLOUD compute start-iap-tunnel %h %p --project=meshalot-poc --zone=us-south1-a --listen-on-stdin --quiet --verbosity=error"
+          set +e
+          timeout --signal=TERM --kill-after=5s 90 ssh \
+            -F /dev/null -T \
+            -o "ProxyCommand=$PROXY" -o BatchMode=yes -o ConnectTimeout=25 \
+            -o ConnectionAttempts=1 -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$KNOWN" \
+            -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no \
+            -o LogLevel=ERROR -i "$KEY" "$REMOTE_USER@meshalot-control-01" \
+            'bash -s' <"$WORK/binary-audit.sh" >"$REPORT" 2>"$WORK/ssh-error"
+          rc="$?"
+          set -e
+          chmod 600 "$REPORT"
+          if test "$rc" -ne 0; then
+            echo "M13_PROD_BINARY_BASELINE_REMOTE=FAILED_PRIVATE_REPORT_PRESERVED"
+            exit 1
+          fi
+          grep -Fxq "M13_PROD_BINARY_BASELINE_READONLY=COMPLETE" "$REPORT"
+          python3 - "$REPORT" <<'PY'
+          from pathlib import Path
+          import re,sys
+          lines=Path(sys.argv[1]).read_text().splitlines()
+          def vals(prefix):
+              return [line.split("=",1)[1] for line in lines if line.startswith(prefix+"=")]
+          states=vals("API_STATE")
+          paths=vals("API_EXE_PATH")
+          hashes=vals("API_EXE_SHA256")
+          okhash=[h for h in hashes if re.fullmatch(r"[0-9a-f]{64}",h)]
+          print("M13_PROD_API_ACTIVE_SERVICE="+str("active" in states))
+          print("M13_PROD_API_BINARY_PATH_PRIVATE="+str(any(p!="UNAVAILABLE" for p in paths)))
+          print("M13_PROD_API_BINARY_SHA256_PRIVATE="+str(len(okhash)>0))
+          print("M13_PROD_API_BINARY_DETAILS_NEVER_UPLOADED=YES")
+          PY
+          sha256sum "$REPORT" >"$REPORT.sha256"
+          chmod 600 "$REPORT.sha256"
+          (cd "$ROOT"; sha256sum --check --status "$(basename "$REPORT").sha256")
+          echo "M13_PROD_API_BINARY_REPORT_CHECKSUM=PASS"
+          echo "M13_PROD_API_BINARY_PRIVATE_REPORT=$REPORT"
+          echo "M13_PROD_API_BINARY_NO_PRODUCTION_CHANGES=PASS"
