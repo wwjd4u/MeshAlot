@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$RUNNER_NAME" = "meshalot-ms02"
-          test "$(git rev-parse HEAD)" = "9642547aafd33089d6b736fd097301ab52c3d6f9"
+          test "$(git rev-parse HEAD)" = "f201ae0b527fef1d8e56699997ee52761649d7c9"
           echo "M13_GATE8_DB_INPUT=$(git rev-parse HEAD)"
           gofmt -w server/m13_stale_postgres_test.go
           git diff --check
@@ -32,10 +32,24 @@ jobs:
           TEMP_BASE="$(mktemp -d "$RUNNER_TEMP/m13-stale-db.XXXXXX")"
           CID=""
           cleanup() {
-            if test -n "$CID"; then docker rm -f -v "$CID" >/dev/null 2>&1 || true; fi
-            rm -rf "$TEMP_BASE"
+            if test -n "$CID"; then
+              docker exec -u root "$CID" chmod 0777 /var/run/postgresql >/dev/null 2>&1 || true
+              docker rm -f -v "$CID" >/dev/null 2>&1 || true
+            fi
+            rm -rf "$TEMP_BASE" || true
           }
           trap cleanup EXIT
+          # Clean only the temp socket files left by the earlier, failed
+          # M13 Gate 8 run. Do not touch other runner or project files.
+          PREVIOUS_M13_TEMP="$RUNNER_TEMP/m13-stale-db.u4aZ6G"
+          if test -d "$PREVIOUS_M13_TEMP/socket"; then
+            docker run --rm --network none --pull=missing \
+              -v "$PREVIOUS_M13_TEMP/socket:/old-socket" \
+              postgres:16-alpine sh -c \
+              'rm -f /old-socket/.s.PGSQL.5432 /old-socket/.s.PGSQL.5432.lock'
+            rm -rf "$PREVIOUS_M13_TEMP"
+            echo "M13_PRIOR_TEMP_SOCKET_CLEANUP=PASS"
+          fi
           mkdir -p "$TEMP_BASE/socket"
           chmod 0777 "$TEMP_BASE/socket"
           docker info >/dev/null
