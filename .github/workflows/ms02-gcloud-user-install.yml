@@ -1,0 +1,96 @@
+name: MS-02 Gate 17 User-Local Google Cloud CLI Install
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-gcloud-user-install.yml
+permissions:
+  contents: read
+concurrency:
+  group: ms02-gcloud-user-install
+  cancel-in-progress: false
+jobs:
+  install-cli:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 15
+    steps:
+      - name: Verify trusted host and install official checksum-pinned CLI in user home only
+        shell: bash
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+          CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+          CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          test "$(uname -m)" = "x86_64"
+          test "$(getconf LONG_BIT)" = "64"
+          DEST="$HOME/google-cloud-sdk"
+          if test -e "$DEST" || test -L "$DEST"; then
+            echo "GCLOUD_INSTALL=REFUSED_EXISTING_PATH_NO_OVERWRITE"
+            exit 1
+          fi
+          echo "GCLOUD_INSTALL_HOST_AND_DESTINATION=VERIFIED"
+
+          FREE_KIB="$(df -Pk "$HOME" | awk 'NR==2{print $4}')"
+          test "$FREE_KIB" -gt 1048576
+          WORK="$(mktemp -d "$RUNNER_TEMP/ms02-gcloud-official.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          ARCHIVE="$WORK/google-cloud-cli-linux-x86_64.tar.gz"
+          URL='https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz'
+          EXPECTED_SHA256='73b6678401811a8a1b8d0ce29e043834308d9263ae6d9577c5aadc55621cd7d3'
+          curl --fail --location --silent --show-error --retry 2 \
+            --connect-timeout 10 --max-time 300 "$URL" --output "$ARCHIVE"
+          echo "$EXPECTED_SHA256  $ARCHIVE" | sha256sum --check --status
+          echo "GCLOUD_DOWNLOAD_OFFICIAL_SHA256=PASS"
+
+          tar -tzf "$ARCHIVE" > "$WORK/archive-list"
+          python3 - "$WORK/archive-list" <<'PY'
+          from pathlib import Path
+          import sys
+          paths=Path(sys.argv[1]).read_text().splitlines()
+          assert len(paths)>50, "archive unexpectedly small"
+          for path in paths:
+              bits=path.split("/")
+              assert not path.startswith("/"), "absolute path in archive"
+              assert bits[0]=="google-cloud-sdk", "archive escapes SDK root"
+              assert ".." not in bits, "parent traversal in archive"
+          print("GCLOUD_ARCHIVE_PATHS_SANITIZED=PASS")
+          PY
+          tar -xzf "$ARCHIVE" -C "$WORK"
+          test -x "$WORK/google-cloud-sdk/bin/gcloud"
+          "$WORK/google-cloud-sdk/bin/gcloud" version --format=json >"$WORK/version.json"
+          python3 - "$WORK/version.json" <<'PY'
+          import json,sys
+          obj=json.load(open(sys.argv[1],encoding="utf-8"))
+          assert any("Google Cloud SDK" in k for k in obj), "not official gcloud SDK"
+          print("GCLOUD_STAGED_BINARY_SELFTEST=PASS")
+          PY
+
+          if test -e "$DEST" || test -L "$DEST"; then
+            echo "GCLOUD_INSTALL=REFUSED_DESTINATION_CHANGED"
+            exit 1
+          fi
+          mv -T -- "$WORK/google-cloud-sdk" "$DEST"
+          test -x "$DEST/bin/gcloud"
+          "$DEST/bin/gcloud" version --format=json >"$WORK/version-final.json"
+          python3 - "$WORK/version-final.json" <<'PY'
+          import json,sys
+          obj=json.load(open(sys.argv[1],encoding="utf-8"))
+          sdk=next((v for k,v in obj.items() if "Google Cloud SDK" in k),None)
+          assert sdk
+          print("GCLOUD_INSTALLED_VERSION="+str(sdk))
+          PY
+          echo "GCLOUD_INSTALLED_USER_PATH=$DEST/bin/gcloud"
+          echo "GCLOUD_SHELL_PATH_UNCHANGED=YES"
+          echo "GCLOUD_SYSTEM_PACKAGES_UNCHANGED=YES"
+          echo "GCLOUD_AUTHENTICATION=NOT_ATTEMPTED"
+          echo "GCLOUD_PRODUCTION_ACCESS=NOT_ATTEMPTED"
+          echo "M13_GATE17_GOOGLE_CLOUD_USER_INSTALL=PASS"
