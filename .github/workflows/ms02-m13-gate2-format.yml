@@ -1,0 +1,37 @@
+name: MS-02 M13 Gate 2 Formatting Proof
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate2-format.yml
+permissions:
+  contents: read
+jobs:
+  format-m13:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 5
+    steps:
+      - name: Format isolated M13 files and emit non-secret source for connector
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          TEST_DIR="$(mktemp -d "$RUNNER_TEMP/m13-format.XXXXXX")"
+          trap 'rm -rf "$TEST_DIR"' EXIT
+          git init -q "$TEST_DIR"
+          git -C "$TEST_DIR" fetch -q --depth=1 https://github.com/wwjd4u/MeshAlot.git 64afa1974745f3ab050813ba6ab223bca7696d36
+          git -C "$TEST_DIR" checkout -q --detach FETCH_HEAD
+          test "$(git -C "$TEST_DIR" rev-parse HEAD)" = "64afa1974745f3ab050813ba6ab223bca7696d36"
+          cd "$TEST_DIR"
+          gofmt -w server/m13_websocket.go server/m13_websocket_test.go
+          echo "FORMAT_SOURCE_BEGIN"
+          echo -n "SERVER_GO="
+          base64 -w0 server/m13_websocket.go
+          echo
+          echo -n "SERVER_TEST_GO="
+          base64 -w0 server/m13_websocket_test.go
+          echo
+          echo "FORMAT_SOURCE_END"
+          echo "M13_FORMAT_PROOF=PASS"
