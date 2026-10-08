@@ -21,6 +21,10 @@ func main(){
 		if err!=nil {logger.Error("database startup failed; check configuration and migrations");os.Exit(1)}
 		defer store.Close()
 		svc=server.NewWithPostgres(logger,token,store)
+		monitorCtx, stopMonitor := context.WithCancel(context.Background())
+		defer stopMonitor()
+		go server.RunM13StaleMonitor(monitorCtx,server.M13StaleSweepInterval,
+			store.MarkStaleM13NodesOffline,logger)
 		logger.Info("PostgreSQL storage enabled")
 	} else {logger.Warn("development in-memory storage enabled")}
 	logger.Info("control API starting","addr",addr)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	protocol "github.com/wwjd4u/MeshAlot/protocol/v1"
 )
@@ -12,8 +13,12 @@ func (p *PostgresStore) Dashboard(ctx context.Context, userID string) (protocol.
 	var result protocol.DashboardResponse
 	if err := p.db.QueryRowContext(ctx, `SELECT
         COALESCE((SELECT sum(amount_microunits) FROM wallet_transactions WHERE user_id=$1::uuid),0),
-        COALESCE((SELECT count(*) FROM nodes n JOIN node_status s ON s.node_id=n.id WHERE n.user_id=$1::uuid AND s.status='online'),0),
-        COALESCE((SELECT sum(amount_microunits) FROM wallet_transactions WHERE user_id=$1::uuid AND amount_microunits>0 AND created_at>=date_trunc('day',now())),0)`, userID).Scan(&result.BalanceMicrounits, &result.OnlineNodes, &result.TodayEarningsMicrounits); err != nil {
+        COALESCE((SELECT count(*) FROM nodes n JOIN node_status s ON s.node_id=n.id
+          WHERE n.user_id=$1::uuid AND s.status='online'
+            AND (s.m13_telemetry IS NULL OR
+                (s.last_heartbeat IS NOT NULL AND
+                 s.last_heartbeat >= now() - ($2::integer * interval '1 second')))),0),
+        COALESCE((SELECT sum(amount_microunits) FROM wallet_transactions WHERE user_id=$1::uuid AND amount_microunits>0 AND created_at>=date_trunc('day',now())),0)`, userID, int(M13StaleAfter/time.Second)).Scan(&result.BalanceMicrounits, &result.OnlineNodes, &result.TodayEarningsMicrounits); err != nil {
 		return result, err
 	}
 	result.CurrentStatus = "Ready"
@@ -52,13 +57,20 @@ func (p *PostgresStore) Dashboard(ctx context.Context, userID string) (protocol.
 func (p *PostgresStore) NodeForUser(ctx context.Context, userID, nodeID string) (protocol.Node, error) {
 	var node protocol.Node
 	var heartbeat sql.NullTime
-	err := p.db.QueryRowContext(ctx, `SELECT n.node_key,n.agent_version,s.status,s.mode,s.last_heartbeat
+	var m13 bool
+	err := p.db.QueryRowContext(ctx, `SELECT n.node_key,n.agent_version,s.status,s.mode,s.last_heartbeat,
+           (s.m13_telemetry IS NOT NULL)
         FROM nodes n JOIN node_status s ON s.node_id=n.id
-        WHERE n.user_id=$1::uuid AND n.node_key=$2`, userID, nodeID).Scan(&node.NodeID, &node.AgentVersion, &node.Status, &node.Mode, &heartbeat)
+        WHERE n.user_id=$1::uuid AND n.node_key=$2`, userID, nodeID).Scan(
+		&node.NodeID, &node.AgentVersion, &node.Status, &node.Mode, &heartbeat, &m13)
+	if err != nil {
+		return node, err
+	}
 	if heartbeat.Valid {
 		node.LastHeartbeat = heartbeat.Time.UTC()
 	}
-	return node, err
+	node.Status = M13EffectiveNodeStatus(node.Status, node.LastHeartbeat, m13, time.Now().UTC())
+	return node, nil
 }
 
 func (p *PostgresStore) Wallet(ctx context.Context, userID string) (protocol.WalletResponse, error) {

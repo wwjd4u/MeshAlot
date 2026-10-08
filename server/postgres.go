@@ -36,7 +36,7 @@ func OpenPostgres(ctx context.Context, dsn, owner string) (*PostgresStore, error
 		db.Close()
 		return nil, errors.New("database unavailable or POC owner missing")
 	}
-	rows, err := db.QueryContext(ctx, "SELECT n.agent_version,s.mode,s.last_heartbeat FROM nodes n JOIN node_status s ON s.node_id=n.id LIMIT 0")
+	rows, err := db.QueryContext(ctx, "SELECT n.agent_version,s.mode,s.last_heartbeat,s.m13_telemetry FROM nodes n JOIN node_status s ON s.node_id=n.id LIMIT 0")
 	if err != nil {
 		db.Close()
 		return nil, errors.New("node persistence schema unavailable")
@@ -102,7 +102,8 @@ func (p *PostgresStore) Nodes(ctx context.Context) ([]protocol.Node, error) {
 }
 
 func (p *PostgresStore) NodesForUser(ctx context.Context, userID string) ([]protocol.Node, error) {
-	rows, err := p.db.QueryContext(ctx, `SELECT n.node_key,n.agent_version,s.status,s.mode,s.last_heartbeat
+	rows, err := p.db.QueryContext(ctx, `SELECT n.node_key,n.agent_version,s.status,s.mode,s.last_heartbeat,
+          (s.m13_telemetry IS NOT NULL)
         FROM nodes n JOIN node_status s ON s.node_id=n.id WHERE n.user_id=$1::uuid ORDER BY n.node_key`, userID)
 	if err != nil {
 		return nil, err
@@ -112,12 +113,14 @@ func (p *PostgresStore) NodesForUser(ctx context.Context, userID string) ([]prot
 	for rows.Next() {
 		var n protocol.Node
 		var heartbeat sql.NullTime
-		if err = rows.Scan(&n.NodeID, &n.AgentVersion, &n.Status, &n.Mode, &heartbeat); err != nil {
+		var m13 bool
+		if err = rows.Scan(&n.NodeID, &n.AgentVersion, &n.Status, &n.Mode, &heartbeat, &m13); err != nil {
 			return nil, fmt.Errorf("scan node: %w", err)
 		}
 		if heartbeat.Valid {
 			n.LastHeartbeat = heartbeat.Time.UTC()
 		}
+		n.Status = M13EffectiveNodeStatus(n.Status, n.LastHeartbeat, m13, time.Now().UTC())
 		nodes = append(nodes, n)
 	}
 	return nodes, rows.Err()
