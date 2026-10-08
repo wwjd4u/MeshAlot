@@ -1,0 +1,30 @@
+# MeshAlot M13 provider agent — TEMPLATE ONLY, not installed by this repo.
+# Example instance: meshalot-agent@<existing-identity-owner>.service
+# Identity MUST already exist and be readable by %i.
+[Unit]
+Description=MeshAlot M13 Outbound Provider Heartbeat (%i)
+Documentation=https://github.com/wwjd4u/MeshAlot
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=%i
+EnvironmentFile=/etc/meshalot/agent-%i.env
+ExecStart=/usr/local/bin/meshalot-agent connect --server ${MESHALOT_SERVER_URL} --identity ${MESHALOT_IDENTITY_PATH} --mode ${MESHALOT_PROVIDER_MODE} --manual-pause ${MESHALOT_MANUAL_PAUSE} --job-state unknown --interval 30s
+Restart=on-failure
+RestartSec=15s
+TimeoutStopSec=15s
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
