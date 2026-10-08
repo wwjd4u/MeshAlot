@@ -1,0 +1,47 @@
+name: MS-02 M13 Gate 5 Linux Sampler
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate5.yml
+permissions:
+  contents: write
+jobs:
+  linux-sampler:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 10
+    steps:
+      - name: Check out isolated M13 telemetry branch
+        uses: actions/checkout@v4
+        with:
+          ref: m13-persistent-heartbeat
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Format and validate passive Linux telemetry on MS-02
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(git rev-parse HEAD)" = "437b040aa1734e208ab3c7bd4459dedf6e41c3c2"
+          echo "M13_GATE5_INPUT=$(git rev-parse HEAD)"
+          gofmt -w agent/m13_sampler.go agent/m13_sampler_linux.go agent/m13_sampler_linux_test.go
+          git diff --check
+          go mod verify
+          go test ./agent -run '^TestM13Linux' -v -count=1
+          go test ./... -count=1
+          go test -race ./agent -run '^TestM13Linux' -count=1
+          go vet ./...
+          echo "M13_GATE5_TESTS=PASS"
+          if ! git diff --quiet -- agent/m13_sampler.go agent/m13_sampler_linux.go agent/m13_sampler_linux_test.go; then
+            git config user.name "meshalot-ms02-runner"
+            git config user.email "meshalot-runner@users.noreply.github.com"
+            git add -- agent/m13_sampler.go agent/m13_sampler_linux.go agent/m13_sampler_linux_test.go
+            git diff --cached --check
+            git commit -m "M13 Gate 5: format Linux host telemetry sampler and tests"
+            git push origin HEAD:refs/heads/m13-persistent-heartbeat
+          fi
+          echo "M13_GATE5_VALIDATED_COMMIT=$(git rev-parse HEAD)"
+          test -z "$(gofmt -l agent/m13_sampler.go agent/m13_sampler_linux.go agent/m13_sampler_linux_test.go)"
+          echo "M13_GATE5=PASS"
