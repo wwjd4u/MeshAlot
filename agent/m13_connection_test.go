@@ -121,6 +121,11 @@ func TestM13AgentSessionRejectsIdentityAndNoHTTPFallback(t *testing.T) {
 		m13TestSample,M13DefaultHeartbeatInterval,nil);err==nil {t.Fatal("permitted plaintext fallback")}
 	if err:=RunM13Session(context.Background(),"https://api.meshalot.com",identity,
 		nil,M13DefaultHeartbeatInterval,nil);err==nil {t.Fatal("accepted missing sampler")}
+	if err:=RunM13Session(context.Background(),"https://api.meshalot.com",identity,
+		m13TestSample,M13DefaultHeartbeatInterval,
+		&websocket.Dialer{TLSClientConfig:&tls.Config{InsecureSkipVerify:true}});err==nil {
+		t.Fatal("accepted disabled certificate verification")
+	}
 }
 
 func TestM13AgentSessionRejectsWrongAuthenticatedNode(t *testing.T) {
