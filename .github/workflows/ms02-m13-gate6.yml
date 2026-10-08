@@ -1,0 +1,50 @@
+name: MS-02 M13 Gate 6 macOS + RTT
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate6.yml
+permissions:
+  contents: write
+jobs:
+  macos-contract:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 12
+    steps:
+      - name: Checkout isolated M13 branch
+        uses: actions/checkout@v4
+        with:
+          ref: m13-persistent-heartbeat
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Format, validate and cross-compile macOS sampler
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(git rev-parse HEAD)" = "e6db595c51431fb21a1d7a591985779ae5df8410"
+          echo "M13_GATE6_INPUT=$(git rev-parse HEAD)"
+          gofmt -w agent/m13_connection.go agent/m13_connection_test.go agent/m13_darwin_parse.go agent/m13_darwin_parse_test.go agent/m13_sampler_darwin.go agent/m13_sampler_other.go
+          git diff --check
+          go mod verify
+          go test ./agent -run '^TestM13' -v -count=1
+          go test ./... -count=1
+          go test -race ./agent -run '^TestM13' -count=1
+          go vet ./...
+          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/m13-darwin-amd64.test" ./agent
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/m13-darwin-arm64.test" ./agent
+          test -s "$RUNNER_TEMP/m13-darwin-amd64.test"
+          test -s "$RUNNER_TEMP/m13-darwin-arm64.test"
+          echo "M13_GATE6_DARWIN_CROSSCOMPILE=PASS"
+          if ! git diff --quiet -- agent/m13_connection.go agent/m13_connection_test.go agent/m13_darwin_parse.go agent/m13_darwin_parse_test.go agent/m13_sampler_darwin.go agent/m13_sampler_other.go; then
+            git config user.name "meshalot-ms02-runner"
+            git config user.email "meshalot-runner@users.noreply.github.com"
+            git add -- agent/m13_connection.go agent/m13_connection_test.go agent/m13_darwin_parse.go agent/m13_darwin_parse_test.go agent/m13_sampler_darwin.go agent/m13_sampler_other.go
+            git diff --cached --check
+            git commit -m "M13 Gate 6: format macOS telemetry and RTT code"
+            git push origin HEAD:refs/heads/m13-persistent-heartbeat
+          fi
+          echo "M13_GATE6_VALIDATED_COMMIT=$(git rev-parse HEAD)"
+          echo "M13_GATE6_CODE_VALIDATION=PASS"
