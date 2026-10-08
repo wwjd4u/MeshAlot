@@ -51,6 +51,17 @@ func m13ConnectTestOptions(identityPath string) []string {
 	}
 }
 
+// Identity fixtures must live under a 0700 directory even when Go's
+// temporary test root is created with broader permissions on a runner.
+func m13PrivateIdentityFixture(t *testing.T) string {
+	t.Helper()
+	directory := filepath.Join(t.TempDir(), "private")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(directory, "identity.json")
+}
+
 func TestM13ConnectRequiresExplicitProviderState(t *testing.T) {
 	var called bool
 	loader := func(string) (agent.Identity, error) {
@@ -102,7 +113,7 @@ func TestM13ConnectMissingIdentityNeverEnrolls(t *testing.T) {
 }
 
 func TestM13ConnectReadsExistingIdentityWithoutMutation(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "identity.json")
+	path := m13PrivateIdentityFixture(t)
 	original, created, err := agent.LoadOrCreateIdentity(path) // isolated test fixture only
 	if err != nil || !created {
 		t.Fatalf("failed to make isolated test identity: %v", err)
@@ -151,7 +162,7 @@ func TestM13ConnectPropagatesCancelledContext(t *testing.T) {
 }
 
 func TestM13ConnectEndToEndIsolatedTLS(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "identity.json")
+	path := m13PrivateIdentityFixture(t)
 	identity, _, err := agent.LoadOrCreateIdentity(path) // ONLY test fixture
 	if err != nil { t.Fatal(err) }
 	pub, err := base64.RawStdEncoding.DecodeString(identity.PublicKey)
