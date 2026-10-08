@@ -1,0 +1,54 @@
+name: MS-02 M13 Gate 17 Step 2 Audit Safety Test
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate17-step2-safety.yml
+permissions:
+  contents: read
+jobs:
+  audit-safety:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 6
+    steps:
+      - name: Checkout pinned audit plan, never the production server
+        uses: actions/checkout@v4
+        with:
+          ref: m13-persistent-heartbeat
+          persist-credentials: false
+      - name: Shell syntax and wrong-host fail-closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(git rev-parse HEAD)" = "5948f9edda3b1f673c0e7b66583118897acc4c91"
+          AUDIT="deployments/google/m13-gate17-step2-readonly-audit.sh"
+          test -s "$AUDIT"
+          bash -n "$AUDIT"
+          echo "M13_GATE17_STEP2_AUDIT_SYNTAX=PASS"
+          set +e
+          OUTPUT="$(bash "$AUDIT" 2>&1)"
+          STATUS="$?"
+          set -e
+          test "$STATUS" = "2"
+          test "$OUTPUT" = "M13_GATE17_STEP2=REFUSED_WRONG_HOST"
+          echo "M13_GATE17_STEP2_WRONG_HOST_REFUSED=PASS"
+          # Verify that the code cannot accidentally leak common sensitive
+          # systemd properties or dump raw production config.
+          python3 - "$AUDIT" <<'PY'
+          import pathlib, sys
+          text=pathlib.Path(sys.argv[1]).read_text()
+          assert "ExecStart --value" not in text
+          assert "Environment --value" not in text
+          assert "systemctl cat" not in text
+          assert "psql -X -qAt" in text
+          assert "BEGIN READ ONLY;" in text
+          assert "ROLLBACK;" in text
+          assert "M13_GATE17_STEP2=REFUSED_WRONG_HOST" in text
+          print("M13_GATE17_STEP2_SAFETY_GUARDS=PASS")
+          PY
+          test -z "$(git status --porcelain)"
+          echo "M13_GATE17_STEP2_HOST_ACCESS=BLOCKED_NO_IAP_AUTH"
+          echo "M13_GATE17_STEP2_PRODUCTION_AUDIT=NOT_EXECUTED"
