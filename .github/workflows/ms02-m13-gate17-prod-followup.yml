@@ -1,0 +1,118 @@
+name: MS-02 M13 Gate 17 Production Baseline Follow-up
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate17-prod-followup.yml
+permissions:
+  contents: read
+jobs:
+  baseline:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact audited read-only follow-up
+        uses: actions/checkout@v4
+        with:
+          ref: 7e43a7334e3a7c58786ff80eb2cb550a42071a03
+          persist-credentials: false
+      - name: Verify actual API binary and Caddy loopback target with private output
+        shell: bash
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+          CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+          CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$(git rev-parse HEAD)" = "7e43a7334e3a7c58786ff80eb2cb550a42071a03"
+          SOURCE="deployments/google/m13-gate17-step2-readonly-followup.sh"
+          bash -n "$SOURCE"
+          set +e
+          GUARD="$(bash "$SOURCE" 2>&1)"
+          GUARD_RC="$?"
+          set -e
+          test "$GUARD_RC" = 2
+          test "$GUARD" = "M13_FOLLOWUP=REFUSED_WRONG_HOST"
+          echo "M13_PROD_FOLLOWUP_WRONG_HOST_GUARD=PASS"
+
+          DIR="$HOME/.local/share/meshalot-m13-iap-ssh"
+          ROOT="$HOME/.local/share/meshalot-m13-private-audits"
+          KEY="$DIR/id_ed25519"
+          KNOWN="$DIR/known_hosts"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          test -f "$KEY" && test -f "$KNOWN"
+          test "$(stat -c %a "$KEY")" = 600
+          test "$(stat -c %a "$KNOWN")" = 600
+          test -d "$ROOT" && test ! -L "$ROOT" && test "$(stat -c %a "$ROOT")" = 700
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-prod-followup.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          python3 - "$DIR/registration.json" "$WORK/user" <<'PY'
+          import json,datetime,re,sys
+          from pathlib import Path
+          d=json.loads(Path(sys.argv[1]).read_text())
+          assert d.get("target")=="meshalot-control-01"
+          assert d.get("project")=="meshalot-poc" and d.get("zone")=="us-south1-a"
+          assert re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}",d["username"])
+          assert datetime.datetime.strptime(d["expires"],"%Y-%m-%dT%H:%M:%S%z")>datetime.datetime.now(datetime.timezone.utc)
+          Path(sys.argv[2]).write_text(d["username"])
+          PY
+          USER="$(cat "$WORK/user")"
+          REPORT="$ROOT/step2-followup-$(date -u +%Y%m%dT%H%M%SZ)-run-$GITHUB_RUN_ID.txt"
+          PROXY="$GCLOUD compute start-iap-tunnel %h %p --project=meshalot-poc --zone=us-south1-a --listen-on-stdin --quiet --verbosity=error"
+          echo "M13_PROD_FOLLOWUP_READONLY=START"
+          set +e
+          timeout --signal=TERM --kill-after=5s 100 ssh \
+            -F /dev/null -T \
+            -o "ProxyCommand=$PROXY" \
+            -o BatchMode=yes -o ConnectTimeout=30 \
+            -o ConnectionAttempts=1 -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$KNOWN" \
+            -o GlobalKnownHostsFile=/dev/null \
+            -o UpdateHostKeys=no -o LogLevel=ERROR \
+            -i "$KEY" "$USER@meshalot-control-01" 'bash -s' \
+            <"$SOURCE" >"$REPORT" 2>"$WORK/remote-error"
+          RC="$?"
+          set -e
+          chmod 600 "$REPORT"
+          if test "$RC" -ne 0; then
+            echo "M13_PROD_FOLLOWUP_READONLY=FAILED_PRIVATE_REPORT_PRESERVED"
+            exit 1
+          fi
+          grep -Fxq 'M13_FOLLOWUP_HOST=VERIFIED' "$REPORT"
+          grep -Fxq 'M13_FOLLOWUP_READ_ONLY=PASS' "$REPORT"
+          python3 - "$REPORT" <<'PY'
+          from pathlib import Path
+          import sys
+          ls=Path(sys.argv[1]).read_text().splitlines()
+          def get(prefix):
+              vals=[s.partition("=")[2] for s in ls if s.startswith(prefix+"=")]
+              return vals
+          unit=get("API_UNIT_NAME")
+          active=get("API_UNIT_STATE")
+          path=get("API_RUNNING_EXE_PATH")
+          digest=get("API_RUNNING_EXE_SHA256")
+          endpoint=get("CADDY_PROXY_HEALTH_TARGET")
+          found200=sum(s.endswith("HTTP_CODE=200") for s in endpoint)
+          print("M13_PROD_FOLLOWUP_SERVICE_COUNT="+str(len(unit)))
+          print("M13_PROD_FOLLOWUP_SERVICE_ACTIVE_COUNT="+str(sum(s=="active" for s in active)))
+          print("M13_PROD_FOLLOWUP_EXECUTABLE_PATH="+("DETECTED_PRIVATE" if any(p not in ("UNAVAILABLE","") for p in path) else "UNVERIFIED"))
+          print("M13_PROD_FOLLOWUP_RUNNING_BINARY_SHA256="+("DETECTED_PRIVATE" if any(len(x)==64 for x in digest) else "UNVERIFIED"))
+          print("M13_PROD_FOLLOWUP_CADDY_LOOPBACK_ENDPOINTS="+str(len(endpoint)))
+          print("M13_PROD_FOLLOWUP_CADDY_LOOPBACK_HTTP_200="+str(found200))
+          print("M13_PROD_FOLLOWUP_RESULTS_STORED_PRIVATELY=YES")
+          PY
+          sha256sum "$REPORT" >"$REPORT.sha256"
+          chmod 600 "$REPORT.sha256"
+          (cd "$ROOT"; sha256sum --check --status "$(basename "$REPORT").sha256")
+          echo "M13_PROD_FOLLOWUP_LOCAL_SHA256_CHECK=PASS"
+          echo "M13_PROD_FOLLOWUP_PRIVATE_REPORT=$REPORT"
+          echo "M13_PROD_FOLLOWUP_PRODUCTION_CHANGES=NONE"
+          echo "M13_PROD_FOLLOWUP_READONLY=PASS"
