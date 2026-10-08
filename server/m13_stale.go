@@ -9,7 +9,7 @@ import (
 const (
 	// Three missed default 30s heartbeats trigger offline classification.
 	// M13 status is reported using server time, not untrusted client time.
-	M13StaleAfter = 90 * time.Second
+	M13StaleAfter         = 90 * time.Second
 	M13StaleSweepInterval = 15 * time.Second
 )
 
@@ -28,7 +28,7 @@ func M13EffectiveNodeStatus(status string, lastHeartbeat time.Time,
 // MarkStaleM13NodesOffline modifies only status for expired M13 nodes.
 // It deliberately preserves last_heartbeat, telemetry, scores, history,
 // identity, mode, and enrolled/non-M13 node records.
-func (p *PostgresStore) MarkStaleM13NodesOffline(ctx context.Context) (int64,error) {
+func (p *PostgresStore) MarkStaleM13NodesOffline(ctx context.Context) (int64, error) {
 	result, err := p.db.ExecContext(ctx, `UPDATE node_status
 		SET status='offline'
 		WHERE status='online'
@@ -36,15 +36,17 @@ func (p *PostgresStore) MarkStaleM13NodesOffline(ctx context.Context) (int64,err
 		  AND (last_heartbeat IS NULL OR
 		       last_heartbeat < now() - ($1::integer * interval '1 second'))`,
 		int(M13StaleAfter/time.Second))
-	if err != nil { return 0,err }
+	if err != nil {
+		return 0, err
+	}
 	return result.RowsAffected()
 }
 
-type M13StaleSweepFunc func(context.Context) (int64,error)
+type M13StaleSweepFunc func(context.Context) (int64, error)
 
 // RunM13StaleMonitor runs a bounded DB housekeeping sweep until cancellation.
 // It never acts without an explicit caller, so isolated tests remain safe.
-func RunM13StaleMonitor(ctx context.Context,interval time.Duration,
+func RunM13StaleMonitor(ctx context.Context, interval time.Duration,
 	sweep M13StaleSweepFunc, logger *slog.Logger) {
 	if ctx == nil || sweep == nil || logger == nil || interval <= 0 {
 		return
@@ -56,13 +58,13 @@ func RunM13StaleMonitor(ctx context.Context,interval time.Duration,
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			workCtx, cancel := context.WithTimeout(ctx,3*time.Second)
-			count,err:=sweep(workCtx)
+			workCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			count, err := sweep(workCtx)
 			cancel()
 			if err != nil {
 				logger.Error("M13 stale-node status update failed")
 			} else if count > 0 {
-				logger.Info("M13 stale nodes marked offline","count",count)
+				logger.Info("M13 stale nodes marked offline", "count", count)
 			}
 		}
 	}
