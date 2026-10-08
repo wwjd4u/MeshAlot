@@ -1,0 +1,52 @@
+name: MS-02 LocalSearch Tag Backup Query Preflight
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-localsearch-tag-backup-preflight.yml
+permissions:
+  contents: read
+jobs:
+  query:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 5
+    steps:
+      - name: Verify full tag and file-association query without exposing metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          test -S "$XDG_RUNTIME_DIR/bus"
+          umask 077
+          WORK="$(mktemp -d "$RUNNER_TEMP/localsearch-tag-preflight.XXXXXX")"
+          trap 'rm -rf "$WORK"' EXIT
+          echo "TAG_BACKUP_PREFLIGHT=START"
+          timeout 15 tinysparql query --dbus-service org.freedesktop.Tracker3.Miner.Files \
+            'SELECT (COUNT(?tag) AS ?count) WHERE { ?tag a nao:Tag }' \
+            >"$WORK/count" 2>"$WORK/count-error"
+          COUNT="$(awk 'NF {last=$0} END {print last}' "$WORK/count" | tr -d '[:space:]|')"
+          test "$COUNT" = "1"
+          echo "TAG_BACKUP_KNOWN_TAG_COUNT=1"
+          timeout 15 tinysparql query --dbus-service org.freedesktop.Tracker3.Miner.Files \
+            'SELECT ?tag ?label ?resource WHERE { ?tag a nao:Tag . OPTIONAL { ?tag nao:prefLabel ?label } OPTIONAL { ?resource nao:hasTag ?tag } } ORDER BY ?tag ?resource' \
+            >"$WORK/tag-details" 2>"$WORK/details-error"
+          test -s "$WORK/tag-details"
+          echo "TAG_BACKUP_METADATA_QUERY=PASS"
+          echo "TAG_BACKUP_METADATA_BYTES=$(wc -c < "$WORK/tag-details")"
+          timeout 15 tinysparql query --dbus-service org.freedesktop.Tracker3.Miner.Files \
+            'SELECT (COUNT(?resource) AS ?count) WHERE { ?resource nao:hasTag ?tag . ?tag a nao:Tag }' \
+            >"$WORK/linked-count" 2>"$WORK/linked-error"
+          COUNT_LINKS="$(awk 'NF {last=$0} END {print last}' "$WORK/linked-count" | tr -d '[:space:]|')"
+          if [[ "$COUNT_LINKS" =~ ^[0-9]+$ ]]; then
+            echo "TAG_BACKUP_TAGGED_RESOURCES=$COUNT_LINKS"
+          else
+            echo "TAG_BACKUP_TAGGED_RESOURCES=UNPARSEABLE"
+            exit 1
+          fi
+          echo "TAG_BACKUP_PREFLIGHT=PASS_NO_PERSISTENT_CHANGES"
