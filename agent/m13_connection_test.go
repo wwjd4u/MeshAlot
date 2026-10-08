@@ -37,7 +37,7 @@ func m13TestDialer(t *testing.T, s *httptest.Server) *websocket.Dialer {
 func m13TestSample(_ context.Context) (protocol.M13Heartbeat, error) {
 	ram := uint64(32 << 30)
 	vram := uint64(16 << 30)
-	cpu, gpu, lat := 10.0, 20.0, 15.5
+	cpu, gpu, lat := 10.0, 20.0, 60000.0
 	return protocol.M13Heartbeat{
 		Type: "heartbeat", Online: true, GPUUtilizationPercent: &gpu,
 		AvailableVRAMBytes: &vram, AvailableRAMBytes: &ram, CPULoadPercent: &cpu,
@@ -130,7 +130,7 @@ func TestM13AgentSessionAuthenticatedAndHeartbeat(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		select {
 		case h := <-received:
-			if h.RecentLatencyMS == nil || *h.RecentLatencyMS < 0 || *h.RecentLatencyMS >= 15.5 {
+			if h.RecentLatencyMS == nil || *h.RecentLatencyMS < 0 || *h.RecentLatencyMS >= 60000 {
 				t.Fatalf("session must report measured control RTT, not sampler placeholder: %+v",h.RecentLatencyMS)
 			}
 			if !h.Online || h.AvailabilityMode != "normal" {
