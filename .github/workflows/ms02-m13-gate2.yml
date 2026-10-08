@@ -1,0 +1,38 @@
+name: MS-02 M13 Gate 2 Validation
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate2.yml
+permissions:
+  contents: read
+concurrency:
+  group: ms02-m13-gate2
+  cancel-in-progress: false
+jobs:
+  validate-m13-websocket:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 10
+    steps:
+      - name: Verify and test exact isolated M13 WebSocket commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          TEST_DIR="$(mktemp -d "$RUNNER_TEMP/m13-gate2.XXXXXX")"
+          trap 'rm -rf "$TEST_DIR"' EXIT
+          git init -q "$TEST_DIR"
+          git -C "$TEST_DIR" fetch -q --depth=1 https://github.com/wwjd4u/MeshAlot.git 64afa1974745f3ab050813ba6ab223bca7696d36
+          git -C "$TEST_DIR" checkout -q --detach FETCH_HEAD
+          test "$(git -C "$TEST_DIR" rev-parse HEAD)" = "64afa1974745f3ab050813ba6ab223bca7696d36"
+          cd "$TEST_DIR"
+          echo "M13_GATE2_COMMIT=$(git rev-parse HEAD)"
+          echo "RUNNER=$RUNNER_NAME"
+          echo "GATE2_FORMAT_CHECK=$(gofmt -l server/m13_websocket.go server/m13_websocket_test.go | wc -l)"
+          go mod verify
+          go test ./server -run '^TestM13' -v -count=1
+          go test ./... -count=1
+          go vet ./...
+          echo "M13_GATE2_VALIDATION=PASS"
