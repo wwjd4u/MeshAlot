@@ -1,0 +1,51 @@
+name: MS-02 LocalSearch Read-only Tag Count
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-localsearch-tagcount.yml
+permissions:
+  contents: read
+jobs:
+  query:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 5
+    steps:
+      - name: Query GNOME tag-count only through existing D-Bus endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          command -v tinysparql
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          test -S "$XDG_RUNTIME_DIR/bus"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          WORK="$(mktemp -d "$RUNNER_TEMP/localsearch-tags-only.XXXXXX")"
+          trap 'rm -rf "$WORK"' EXIT
+          echo "LOCALSEARCH_TAG_DBUS_QUERY=START"
+          if timeout 15 tinysparql query --dbus-service org.freedesktop.Tracker3.Miner.Files \
+            'SELECT (COUNT(?tag) AS ?count) WHERE { ?tag a nao:Tag }' \
+            >"$WORK/count" 2>"$WORK/error"; then
+            echo "LOCALSEARCH_TAG_QUERY_COMMAND=SUCCESS"
+            last="$(awk 'NF {v=$0} END {print v}' "$WORK/count" | tr -d '[:space:]|')"
+            if [[ "$last" =~ ^[0-9]+$ ]]; then
+              echo "LOCALSEARCH_GNOME_TAG_COUNT=$last"
+            else
+              echo "LOCALSEARCH_GNOME_TAG_COUNT=UNPARSEABLE_DO_NOT_RESET"
+              echo "QUERY_RESULT_BYTES=$(wc -c < "$WORK/count")"
+            fi
+          else
+            echo "LOCALSEARCH_TAG_QUERY_COMMAND=FAILED_DO_NOT_RESET"
+            if grep -Eqi 'unknown|invalid|ontology|prefix' "$WORK/error"; then
+              echo "TAG_QUERY_ERROR_KIND=SCHEMA_OR_SYNTAX"
+            elif grep -Eqi 'connection|dbus|service|timeout' "$WORK/error"; then
+              echo "TAG_QUERY_ERROR_KIND=SERVICE_ACCESS"
+            else
+              echo "TAG_QUERY_ERROR_KIND=UNKNOWN"
+            fi
+          fi
+          echo "LOCALSEARCH_TAG_DBUS_QUERY=COMPLETE_READ_ONLY"
