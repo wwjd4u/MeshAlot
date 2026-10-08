@@ -73,6 +73,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/account/jobs", s.requireSession(s.jobs))
 	mux.HandleFunc("POST /v1/account/enrollment-codes", s.requireSession(s.issueEnrollmentCode))
 	mux.HandleFunc("POST /v1/agent/enroll", s.secureEnroll)
+	mux.HandleFunc("GET /v1/agent/connect", s.m13WebSocket)
 	mux.HandleFunc("POST /v1/agent/inventory", s.inventorySubmission)
 	mux.HandleFunc("POST "+protocol.NetworkBenchmarkSubmissionPath, s.networkBenchmarkSubmission)
 	mux.HandleFunc("POST "+protocol.ComputeBenchmarkSubmissionPath, s.computeBenchmarkSubmission)
