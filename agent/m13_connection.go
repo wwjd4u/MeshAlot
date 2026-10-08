@@ -87,6 +87,7 @@ func RunM13Session(ctx context.Context, controlURL string, identity Identity,
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	dialStarted := time.Now()
 	ws, response, err := dialer.DialContext(ctx, endpoint, nil)
 	if err != nil {
 		if response != nil && response.Body != nil {
@@ -130,6 +131,10 @@ func RunM13Session(ctx context.Context, controlURL string, identity Identity,
 	if accepted.Type != "authenticated" || accepted.NodeID != identity.NodeID {
 		return errors.New("control plane did not authenticate the expected node")
 	}
+	// First snapshot uses the measured TLS/auth handshake duration; later
+	// snapshots use the previous acknowledged heartbeat's channel round trip.
+	// These are control-channel timings, not ICMP or full bandwidth tests.
+	recentRTTMS := float64(time.Since(dialStarted).Microseconds()) / 1000
 	for {
 		if ctx.Err() != nil {
 			return nil
@@ -141,9 +146,11 @@ func RunM13Session(ctx context.Context, controlURL string, identity Identity,
 			}
 			return fmt.Errorf("collect heartbeat: %w", sampleErr)
 		}
+		heartbeat.RecentLatencyMS = &recentRTTMS
 		if err = heartbeat.Validate(time.Now().UTC()); err != nil {
 			return fmt.Errorf("invalid sampled heartbeat: %w", err)
 		}
+		sentAt := time.Now()
 		_ = ws.SetWriteDeadline(time.Now().Add(m13ClientWriteTimeout))
 		if err = ws.WriteJSON(heartbeat); err != nil {
 			if ctx.Err() != nil {
@@ -162,6 +169,7 @@ func RunM13Session(ctx context.Context, controlURL string, identity Identity,
 		if ack.Type != "heartbeat_ack" {
 			return errors.New("invalid heartbeat acknowledgement")
 		}
+		recentRTTMS = float64(time.Since(sentAt).Microseconds()) / 1000
 		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
