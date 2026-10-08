@@ -131,7 +131,7 @@ func TestM13AgentSessionAuthenticatedAndHeartbeat(t *testing.T) {
 		select {
 		case h := <-received:
 			if h.RecentLatencyMS == nil || *h.RecentLatencyMS < 0 || *h.RecentLatencyMS >= 60000 {
-				t.Fatalf("session must report measured control RTT, not sampler placeholder: %+v",h.RecentLatencyMS)
+				t.Fatalf("session must report measured control RTT, not sampler placeholder: %+v", h.RecentLatencyMS)
 			}
 			if !h.Online || h.AvailabilityMode != "normal" {
 				t.Fatalf("invalid heartbeat %+v", h)
