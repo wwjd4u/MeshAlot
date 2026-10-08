@@ -1,0 +1,65 @@
+name: MS-02 M13 Gate 17 Verify Google IAP Sign-In
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate17-auth-verified.yml
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 6
+    steps:
+      - name: Verify project and VM visibility without disclosing Google account
+        shell: bash
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
+          CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: "true"
+          CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: "true"
+          CLOUDSDK_CORE_DISABLE_COLOR: "true"
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          test -x "$GCLOUD"
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-gcloud-verify.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          "$GCLOUD" version --format="value(Google Cloud SDK)" > "$WORK/version" 2>/dev/null || true
+          if "$GCLOUD" auth list --filter="status:ACTIVE" --format="value(account)" >"$WORK/account" 2>"$WORK/account.err" &&
+              test -s "$WORK/account"; then
+            echo "M13_IAP_AUTH_ACTIVE=PASS"
+          else
+            echo "M13_IAP_AUTH_ACTIVE=NOT_SIGNED_IN"
+            exit 1
+          fi
+          if "$GCLOUD" projects describe meshalot-poc --format="value(projectId)" \
+              >"$WORK/project" 2>"$WORK/project.err" &&
+              grep -Fxq meshalot-poc "$WORK/project"; then
+            echo "M13_GCP_PROJECT_READ=PASS"
+          else
+            echo "M13_GCP_PROJECT_READ=FAILED"
+            exit 1
+          fi
+          if "$GCLOUD" compute instances describe meshalot-control-01 \
+              --zone=us-south1-a --project=meshalot-poc \
+              --format="value(name)" >"$WORK/instance" 2>"$WORK/instance.err" &&
+              grep -Fxq meshalot-control-01 "$WORK/instance"; then
+            echo "M13_CONTROL_INSTANCE_READ=PASS"
+          else
+            echo "M13_CONTROL_INSTANCE_READ=FAILED"
+            exit 1
+          fi
+          if test -f "$HOME/.ssh/google_compute_engine" &&
+              test ! -L "$HOME/.ssh/google_compute_engine"; then
+            echo "M13_EXISTING_GOOGLE_SSH_KEY=AVAILABLE"
+          else
+            echo "M13_EXISTING_GOOGLE_SSH_KEY=NOT_PRESENT"
+          fi
+          echo "M13_IAP_SSH_TUNNEL=NOT_ATTEMPTED"
+          echo "M13_NO_SERVER_OR_PRODUCTION_CHANGES=PASS"
