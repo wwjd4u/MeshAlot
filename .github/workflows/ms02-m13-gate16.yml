@@ -1,0 +1,125 @@
+name: MS-02 M13 Gate 16 Tracked DB Upgrade
+on:
+  push:
+    branches:
+      - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-m13-gate16.yml
+permissions:
+  contents: read
+jobs:
+  migration-upgrade:
+    if: github.repository == 'wwjd4u/MeshAlot'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact M13 migration source
+        uses: actions/checkout@v4
+        with:
+          ref: m13-persistent-heartbeat
+          persist-credentials: false
+      - name: Apply tracked 1-9 and upgrade to 10 without data or history loss
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(git rev-parse HEAD)" = "91a9ea6a8e17e187e7fbee1f237ed2b8c12e1302"
+          echo "M13_GATE16_SOURCE=$(git rev-parse HEAD)"
+          python3 -m unittest discover -s database/tests -p 'test_migrate.py' -v
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-migrate.XXXXXX")"
+          CID=""
+          cleanup() {
+            if test -n "$CID"; then
+              docker exec -u root "$CID" chmod 0777 /var/run/postgresql >/dev/null 2>&1 || true
+              docker rm -f -v "$CID" >/dev/null 2>&1 || true
+            fi
+            rm -rf "$WORK" || true
+          }
+          trap cleanup EXIT
+          mkdir -p "$WORK/socket" "$WORK/tools" "$WORK/stage/migrations"
+          chmod 0777 "$WORK/socket"
+          docker info >/dev/null
+          CID="$(docker run -d --rm --network none --pull=missing \
+            -e POSTGRES_HOST_AUTH_METHOD=trust \
+            -v "$WORK/socket:/var/run/postgresql" \
+            -v "$PWD:/repo:ro" \
+            postgres:16-alpine)"
+          for i in $(seq 1 15); do
+            if docker exec "$CID" pg_isready -h /var/run/postgresql -U postgres >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          docker exec "$CID" pg_isready -h /var/run/postgresql -U postgres
+          docker exec -e PGHOST=/var/run/postgresql "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c 'CREATE ROLE meshalot LOGIN;'
+          docker exec -e PGHOST=/var/run/postgresql "$CID" createdb -U postgres meshalot_m13test
+          cat >"$WORK/tools/psql" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec docker exec -i -e PGHOST=/var/run/postgresql "$M13_PG_CONTAINER" psql -U postgres "$@"
+          SH
+          chmod 0700 "$WORK/tools/psql"
+          export M13_PG_CONTAINER="$CID"
+          export PATH="$WORK/tools:$PATH"
+          cp database/migrate.py "$WORK/stage/migrate.py"
+          for f in database/migrations/*.up.sql; do
+            case "$(basename "$f")" in
+              000010_*) ;;
+              *) cp "$f" "$WORK/stage/migrations/" ;;
+            esac
+          done
+          python3 "$WORK/stage/migrate.py" apply --database meshalot_m13test
+          docker exec -e PGHOST=/var/run/postgresql "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test -c \
+            "SELECT CASE WHEN max(version)=9 AND count(*)=9 THEN 'M13_TRACKED_V9=PASS' ELSE 'FAIL' END FROM meshalot_meta.schema_migrations"
+          docker exec -i -e PGHOST=/var/run/postgresql "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test <<'SQL'
+          INSERT INTO users(email) VALUES ('m13-upgrade-fixture@example.invalid');
+          INSERT INTO nodes(user_id,node_key,agent_version,identity_public_key)
+            SELECT id,'m13-gate16-legacy-fixture','M12','m13-gate16-fake-public-key'
+            FROM users WHERE email='m13-upgrade-fixture@example.invalid';
+          INSERT INTO node_status(node_id,status,mode,observed_at,last_heartbeat)
+            SELECT id,'online','available','2026-10-07 18:00:00+00','2026-10-07 18:00:00+00'
+            FROM nodes WHERE node_key='m13-gate16-legacy-fixture';
+          INSERT INTO network_benchmarks(node_id,payload,score,observed_at)
+            SELECT id,'{"marker":"preserve-me"}'::jsonb,67,'2026-10-07 18:00:00+00'
+            FROM nodes WHERE node_key='m13-gate16-legacy-fixture';
+          SQL
+          cp database/migrations/000010_m13_heartbeat.up.sql "$WORK/stage/migrations/"
+          python3 "$WORK/stage/migrate.py" apply --database meshalot_m13test
+          python3 "$WORK/stage/migrate.py" status --database meshalot_m13test
+          python3 "$WORK/stage/migrate.py" apply --database meshalot_m13test
+          docker exec -i -e PGHOST=/var/run/postgresql "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test <<'SQL'
+          DO $$
+          BEGIN
+            IF (SELECT count(*) FROM meshalot_meta.schema_migrations)<>10
+              OR (SELECT max(version) FROM meshalot_meta.schema_migrations)<>10 THEN
+              RAISE EXCEPTION 'Tracked migration version 10 was not recorded exactly once';
+            END IF;
+            IF NOT EXISTS(
+              SELECT 1 FROM nodes n JOIN node_status s ON s.node_id=n.id
+              WHERE n.node_key='m13-gate16-legacy-fixture'
+                AND s.status='online' AND s.mode='available'
+                AND s.last_heartbeat='2026-10-07 18:00:00+00'::timestamptz
+                AND s.m13_telemetry IS NULL
+            ) THEN
+              RAISE EXCEPTION 'Historical node status was altered during migration';
+            END IF;
+            IF NOT EXISTS(
+              SELECT 1 FROM network_benchmarks b JOIN nodes n ON n.id=b.node_id
+              WHERE n.node_key='m13-gate16-legacy-fixture'
+                AND b.score=67 AND b.payload->>'marker'='preserve-me'
+            ) THEN
+              RAISE EXCEPTION 'Historical M8 benchmark was altered during migration';
+            END IF;
+          END $$;
+          SELECT 'M13_TRACKED_UPGRADE_HISTORY_PRESERVED=PASS' AS result;
+          SQL
+          docker exec -e PGHOST=/var/run/postgresql "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test -f /repo/database/runtime-grants.sql >/dev/null
+          docker exec -e PGHOST=/var/run/postgresql "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d meshalot_m13test -f /repo/database/tests/milestone13_runtime_privileges.sql
+          sed -i 's/latest operational snapshot/latest operational snapshot tampered/' "$WORK/stage/migrations/000010_m13_heartbeat.up.sql"
+          if python3 "$WORK/stage/migrate.py" status --database meshalot_m13test >"$WORK/tamper.log" 2>&1; then
+            echo "M13_GATE16_CHECKSUM_DRIFT_NOT_REJECTED"
+            exit 1
+          fi
+          cp database/migrations/000010_m13_heartbeat.up.sql "$WORK/stage/migrations/"
+          python3 "$WORK/stage/migrate.py" status --database meshalot_m13test >/dev/null
+          echo "M13_GATE16_CHECKSUM_DRIFT_REJECTED=PASS"
+          git diff --exit-code
+          echo "M13_GATE16_TRACKED_MIGRATION=PASS"
