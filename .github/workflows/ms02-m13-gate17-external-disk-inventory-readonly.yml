@@ -1,0 +1,89 @@
+name: MS-02 M13 Gate 17 External Backup Disk Read-only Inventory
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths: [.github/workflows/ms02-m13-gate17-external-disk-inventory-readonly.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 4
+    steps:
+      - name: Detect external 1TB backup drive without mounting or reading files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+          from pathlib import Path
+
+          def die():
+              print("M13_EXTERNAL_DISK_INVENTORY=FAILED_SAFE_STOP")
+              sys.exit(1)
+
+          try:
+              raw = subprocess.check_output(
+                  ["lsblk", "-J", "-b", "-o",
+                   "NAME,TYPE,TRAN,SIZE,FSTYPE,MOUNTPOINTS,RO,RM,HOTPLUG"],
+                  text=True, timeout=15
+              )
+              disks = json.loads(raw)["blockdevices"]
+              usb = [d for d in disks if
+                     d.get("type") == "disk" and d.get("tran") == "usb"]
+              candidates = [d for d in usb if
+                            800_000_000_000 <= int(d.get("size") or 0) <= 1_200_000_000_000]
+
+              print("M13_USB_DISK_COUNT=" + str(len(usb)))
+              print("M13_USB_1TB_CANDIDATES=" + str(len(candidates)))
+              if len(candidates) != 1:
+                  print("M13_EXTERNAL_1TB_DRIVE=NOT_UNIQUELY_IDENTIFIED")
+                  print("M13_EXTERNAL_DISK_INVENTORY=PASS_READONLY")
+                  sys.exit(0)
+
+              disk = candidates[0]
+              print("M13_EXTERNAL_1TB_DRIVE=DETECTED")
+              print("M13_EXTERNAL_DISK_HW_READONLY=" + ("YES" if disk.get("ro") else "NO"))
+              def flatten(d):
+                  yield d
+                  for child in d.get("children", []):
+                      yield from flatten(child)
+              items = list(flatten(disk))
+              encrypted = any((x.get("fstype") or "").lower() == "crypto_luks" for x in items)
+              print("M13_EXTERNAL_DISK_LUKS_VOLUME=" + ("YES" if encrypted else "NOT_IDENTIFIED"))
+
+              mounted = []
+              for item in items:
+                  for mountpoint in item.get("mountpoints") or []:
+                      if mountpoint and mountpoint != "/":
+                          mounted.append((item, mountpoint))
+              print("M13_EXTERNAL_MOUNTED_FILESYSTEM_COUNT=" + str(len(mounted)))
+              for index, (item, mountpoint) in enumerate(mounted, 1):
+                  fs = (item.get("fstype") or "unknown").lower()
+                  # Emit only standardized type, never label/UUID/device name/mount path.
+                  known_fs = {"ext4", "xfs", "btrfs", "exfat", "vfat", "ntfs", "ntfs3", "f2fs"}
+                  print(f"M13_EXTERNAL_VOLUME_{index}_FSTYPE=" + (fs if fs in known_fs else "OTHER"))
+                  try:
+                      info = os.statvfs(mountpoint)
+                      available_gib = (info.f_bavail * info.f_frsize) // (1024**3)
+                      print(f"M13_EXTERNAL_VOLUME_{index}_FREE_GIB={available_gib}")
+                  except OSError:
+                      print(f"M13_EXTERNAL_VOLUME_{index}_FREE_GIB=UNKNOWN")
+                  try:
+                      options = subprocess.check_output(
+                          ["findmnt", "-n", "-o", "OPTIONS", "--target", mountpoint],
+                          text=True, timeout=5
+                      ).strip().split(",")
+                      print(f"M13_EXTERNAL_VOLUME_{index}_MOUNT_READONLY=" +
+                            ("YES" if "ro" in options else "NO" if "rw" in options else "UNKNOWN"))
+                  except Exception:
+                      print(f"M13_EXTERNAL_VOLUME_{index}_MOUNT_READONLY=UNKNOWN")
+              print("M13_EXTERNAL_DISK_INVENTORY=PASS_READONLY")
+          except Exception:
+              die()
+          PY
