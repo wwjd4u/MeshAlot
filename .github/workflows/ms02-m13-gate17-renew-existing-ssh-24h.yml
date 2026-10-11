@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   renew:
-    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
+    if: false # One-time 24h registration complete; deliberate guard against unattended reauthorization
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 10
     env:
