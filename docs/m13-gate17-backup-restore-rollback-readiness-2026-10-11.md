@@ -71,6 +71,35 @@ families. [Verified workflow](https://github.com/wwjd4u/MeshAlot/actions/runs/38
 - The Mac-attached APFS off-machine backup copy and separately protected
   recovery passphrase both remain **PENDING**.
 
+## Additional synthetic production-matched migration validation
+
+On 2026-10-11, a trusted MS-02 workflow ran a disposable, network-isolated
+PostgreSQL 16 test from the exact candidate source SHA
+`4f67ee54e5ebca084e38e306e723ae0acd08e77d`.
+[Verified Gate 17 V8→V10 synthetic migration run](https://github.com/wwjd4u/MeshAlot/actions/runs/38166687485).
+
+- Applied original tracked migrations **1–8** in a newly created test DB,
+  matching production's known schema version without reading production data.
+- Inserted only synthetic fixture identities, status/heartbeat and network
+  benchmark data; no real user/node IDs, report content, private keys, or
+  passwords were involved.
+- Applied untouched tracked migrations **9 and 10** with the original
+  `database/migrate.py`, then verified migration status and a repeated
+  idempotent apply.
+- Confirmed all **10** tracked versions were recorded exactly once, the
+  version 9 `node_ratings` table exists, and historical synthetic node
+  status, heartbeat, and Network Score 67 remained intact with NULL
+  M13 telemetry for the legacy fixture.
+- Pinned source and `main` baseline matched expectations; worktree remained
+  unchanged. Network mode for the disposable DB was `none`; no production
+  database, recovery archive/passphrase, deployed services, node identities,
+  or V100 artifacts were accessed or changed.
+
+**Meaning:** The production-matched schema-upgrade path is now supported by
+a synthetic database test in addition to the earlier Gate 16 9→10 test.
+It is **not** a rehearsal using the restored production backup, nor approval
+for migration, release, or application cutover.
+
 ## Rollback readiness — explicit limitations
 
 The [Step 2 read-only production audit](m13-gate17-step2-production-readonly-closeout-2026-10-08.md)
