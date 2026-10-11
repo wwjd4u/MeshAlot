@@ -11,7 +11,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 4
     steps:
-      - name: Inspect external disk sizes and mount status without accessing files
+      - name: Identify 2TB USB disk partition filesystem types without mounting
         shell: bash
         run: |
           set -euo pipefail
@@ -35,15 +35,22 @@ jobs:
               return int(value or 0) // (1024**3)
 
           def print_volumes(prefix, disk):
-              known_fs = {"ext4", "xfs", "btrfs", "exfat", "vfat", "ntfs", "ntfs3", "f2fs"}
+              known_fs = {"ext4", "xfs", "btrfs", "exfat", "vfat", "ntfs", "ntfs3", "f2fs", "bitlocker", "crypto_luks", "apfs", "hfsplus", "lvm2_member", "zfs_member", "linux_raid_member", "udf", "iso9660", "swap"}
               mounted = []
+              partition_number = 0
               for item in flatten(disk):
+                  if item.get("type") == "part":
+                      partition_number += 1
+                      part_fs = str(item.get("fstype") or "unknown").lower()
+                      print(f"{prefix}_PARTITION_{partition_number}_SIZE_GIB=" + str(gib(item.get("size"))))
+                      print(f"{prefix}_PARTITION_{partition_number}_FSTYPE=" + (part_fs if part_fs in known_fs else "UNKNOWN_OR_OTHER"))
                   if item.get("fstype") and item.get("type") != "disk":
                       fs = str(item["fstype"]).lower()
                       print(prefix + "_VOLUME_FSTYPE=" + (fs if fs in known_fs else "OTHER"))
                   for mp in item.get("mountpoints") or []:
                       if mp and mp != "/":
                           mounted.append((item, mp))
+              print(prefix + "_PARTITION_COUNT=" + str(partition_number))
               print(prefix + "_MOUNTED_VOLUME_COUNT=" + str(len(mounted)))
               for i, (item, mp) in enumerate(mounted, 1):
                   fs = (item.get("fstype") or "unknown").lower()
@@ -89,9 +96,9 @@ jobs:
                   ))
 
               candidates = [d for d in usb if
-                            800_000_000_000 <= int(d.get("size") or 0) <= 1_200_000_000_000]
-              print("M13_USB_1TB_CANDIDATES=" + str(len(candidates)))
-              print("M13_EXTERNAL_1TB_DRIVE=" + (
+                            1_750_000_000_000 <= int(d.get("size") or 0) <= 2_250_000_000_000]
+              print("M13_USB_2TB_CANDIDATES=" + str(len(candidates)))
+              print("M13_EXTERNAL_2TB_DRIVE=" + (
                   "DETECTED" if len(candidates) == 1 else "NOT_UNIQUELY_IDENTIFIED"))
               print("M13_EXTERNAL_DISK_INVENTORY=PASS_READONLY")
           except Exception:
