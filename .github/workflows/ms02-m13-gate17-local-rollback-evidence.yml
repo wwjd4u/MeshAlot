@@ -1,0 +1,86 @@
+name: MS-02 M13 Gate 17 Local Rollback Evidence Integrity
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-gate17-local-rollback-evidence.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-local-rollback-evidence
+  cancel-in-progress: false
+jobs:
+  private-reports:
+    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 5
+    steps:
+      - name: Verify existing private Step 2 evidence hashes without printing sensitive reports
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          python3 - <<'PY'
+          import hashlib
+          import os
+          import socket
+          import stat
+          import sys
+          from pathlib import Path
+
+          def need(condition):
+              if not condition:
+                  raise RuntimeError("validation did not pass")
+
+          try:
+              home = Path("/home/jason_guynes")
+              root = home / ".local/share/meshalot-m13-private-audits"
+              need(socket.gethostname().split(".")[0] == "wwjd4u-MS-02-Ultra")
+              need(Path.home() == home)
+              owner = os.getuid()
+
+              def safe(path, kind, mode):
+                  info = path.lstat()
+                  need(info.st_uid == owner)
+                  need(stat.S_IMODE(info.st_mode) == mode)
+                  need((stat.S_ISREG(info.st_mode) if kind == "file"
+                        else stat.S_ISDIR(info.st_mode)))
+                  return info
+
+              safe(root, "dir", 0o700)
+              families = (
+                  ("STEP2_CONTROL_AUDIT", "step2-control-*.txt"),
+                  ("STEP2_SERVICE_FOLLOWUP", "step2-followup-*.txt"),
+                  ("STEP2_API_BINARY", "step2-api-binary-*.txt"),
+              )
+
+              for label, pattern in families:
+                  reports = sorted(root.glob(pattern))
+                  need(reports)
+                  checked = 0
+                  for report in reports:
+                      info = safe(report, "file", 0o600)
+                      need(0 < info.st_size < 8 * 1024 * 1024)
+                      checksum_file = Path(str(report) + ".sha256")
+                      safe(checksum_file, "file", 0o600)
+                      digest = hashlib.sha256()
+                      with report.open("rb") as stream:
+                          for chunk in iter(lambda: stream.read(65536), b""):
+                              digest.update(chunk)
+                      expected = digest.hexdigest() + "  " + str(report) + "\n"
+                      need(checksum_file.read_text(encoding="utf-8") == expected)
+                      checked += 1
+                  print("M13_G17_" + label + "_HASHES=PASS")
+                  print("M13_G17_" + label + "_REPORT_COUNT=" + str(checked))
+
+              print("M13_G17_PRIVATE_ROLLBACK_AUDIT_EVIDENCE=PASS")
+              print("M13_G17_PRODUCTION_ROLLBACK_ARTIFACT_COPY=NOT_VERIFIED")
+              print("M13_G17_NO_PRODUCTION_CONNECTION=PASS")
+          except Exception:
+              print("M13_G17_PRIVATE_ROLLBACK_AUDIT_EVIDENCE=FAILED_SAFE_STOP")
+              sys.exit(1)
+          PY
