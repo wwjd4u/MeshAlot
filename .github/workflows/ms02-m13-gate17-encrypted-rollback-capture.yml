@@ -1,0 +1,378 @@
+name: MS-02 M13 Gate17 Encrypted Known-good Rollback Capture
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths: [.github/workflows/ms02-m13-gate17-encrypted-rollback-capture.yml]
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-private-rollback-capture
+  cancel-in-progress: false
+jobs:
+  capture:
+    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 9
+    env:
+      CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+      CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+      CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+      CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+    steps:
+      - name: Encrypt source-approved rollback files directly into private MS-02 storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          DIR="$HOME/.local/share/meshalot-m13-iap-ssh"
+          AUDITS="$HOME/.local/share/meshalot-m13-private-audits"
+          ROOT="$HOME/.local/share/meshalot-m13-private-rollbacks"
+          KEYS="$HOME/.local/share/meshalot-m13-backup-keys"
+          test -x "$GCLOUD"
+          command -v gpg >/dev/null
+          command -v sha256sum >/dev/null
+          command -v timeout >/dev/null
+          test -d "$DIR" && test ! -L "$DIR" && test "$(stat -c %a "$DIR")" = 700
+          test -d "$AUDITS" && test ! -L "$AUDITS" && test "$(stat -c %a "$AUDITS")" = 700
+          test -d "$KEYS" && test ! -L "$KEYS" && test "$(stat -c %a "$KEYS")" = 700
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-g17-rollback-copy.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          
+          python3 - "$DIR" "$AUDITS" "$ROOT" "$KEYS" "$GITHUB_RUN_ID" "$WORK" <<'PY'
+          import datetime, hashlib, json, os, re, shutil, stat, sys
+          from pathlib import Path
+          ssh,audits,root,keys,run,work=(Path(v) for v in sys.argv[1:5])+(sys.argv[5],Path(sys.argv[6]))
+          def check(path,is_dir,mode):
+              s=path.lstat()
+              assert s.st_uid==os.getuid() and stat.S_IMODE(s.st_mode)==mode
+              assert stat.S_ISDIR(s.st_mode) if is_dir else stat.S_ISREG(s.st_mode)
+          for x in (ssh,audits,keys): check(x,True,0o700)
+          for x in (ssh/"id_ed25519",ssh/"known_hosts",ssh/"registration.json"):
+              check(x,False,0o600)
+          registration=json.loads((ssh/"registration.json").read_text())
+          assert registration.get("target")=="meshalot-control-01"
+          assert registration.get("project")=="meshalot-poc" and registration.get("zone")=="us-south1-a"
+          user=registration.get("username")
+          assert re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}",user)
+          end=datetime.datetime.strptime(registration["expires"],"%Y-%m-%dT%H:%M:%S%z")
+          assert end>datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(minutes=30),"SSH_AUTH_EXPIRES_TOO_SOON"
+          (work/"user").write_text(user)
+          reports=list(audits.glob("gate17-rollback-readonly-*.txt"))
+          assert len(reports)==1,"ROLLBACK_AUDIT_NOT_UNIQUE"
+          report=reports[0]
+          check(report,False,0o600)
+          check(Path(str(report)+".sha256"),False,0o600)
+          digest=hashlib.sha256(report.read_bytes()).hexdigest()
+          assert Path(str(report)+".sha256").read_text()==digest+"  "+str(report)+"\n"
+          text=report.read_text()
+          for term in ("M13_G17_PRODUCTION_REMOTE_READONLY_INVENTORY=COMPLETE",
+                       "API_BINARY_HASHED_COUNT=1", "SYSTEMD_FRAGMENT_HASHED_COUNT=1",
+                       "SYSTEMD_DROPIN_HASHED_COUNT=6"):
+              assert term in text,"PRIVATE_BASELINE_INCOMPLETE"
+          assert re.search(r"^API_EXE_SHA256=[a-f0-9]{64}$",text,re.M)
+          assert re.search(r"^CADDYFILE_SHA256=[a-f0-9]{64}$",text,re.M)
+          (work/"baseline-path").write_text(str(report))
+          if root.exists() or root.is_symlink():
+              check(root,True,0o700)
+          else:
+              root.mkdir(mode=0o700)
+              check(root,True,0o700)
+          assert shutil.disk_usage(root).free>2*1024**3,"LOCAL_DISK_HEADROOM_LOW"
+          runid="m13-g17-rollback-"+run
+          destination=root/runid
+          assert not destination.exists() and not destination.is_symlink()
+          destination.mkdir(mode=0o700)
+          (work/"dest").write_text(str(destination))
+          key=keys/(runid+".passphrase")
+          fd=os.open(key,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+          with os.fdopen(fd,"w") as f:
+              f.write(os.urandom(32).hex()+"\n")
+          check(key,False,0o600)
+          (work/"key-path").write_text(str(key))
+          print("M13_G17_RESTRICTED_LOCAL_STORAGE=PASS")
+          print("M13_G17_NEW_PRIVATE_RECOVERY_KEY=PASS")
+          print("M13_G17_PRIOR_API_AND_CONFIG_BASELINE=PASS")
+          PY
+          
+          DEST="$(cat "$WORK/dest")"
+          KEYFILE="$(cat "$WORK/key-path")"
+          BASELINE="$(cat "$WORK/baseline-path")"
+          USER="$(cat "$WORK/user")"
+          PARTIAL="$DEST/.known-good-api-systemd-caddy.tar.gpg.partial"
+          FINAL="$DEST/known-good-api-systemd-caddy.tar.gpg"
+          test ! -e "$PARTIAL" && test ! -L "$PARTIAL"
+          test ! -e "$FINAL" && test ! -L "$FINAL"
+          test ! -e "$FINAL.sha256" && test ! -L "$FINAL.sha256"
+          
+          cat >"$WORK/remote.py" <<'REMOTE_PY'
+          import datetime
+          import hashlib
+          import io
+          import json
+          import os
+          import re
+          import socket
+          import stat
+          import subprocess
+          import sys
+          import tarfile
+          from pathlib import Path
+          
+          def require(ok):
+              if not ok:
+                  raise RuntimeError("rollback capture validation failed")
+          
+          def property_value(unit, name):
+              return subprocess.check_output(
+                  ["systemctl", "show", unit, "--property="+name, "--value"],
+                  stderr=subprocess.DEVNULL, text=True, timeout=12
+              ).strip()
+          
+          def read_allowlisted(path_text, allowed_roots, maximum):
+              path = Path(path_text)
+              require(path.is_absolute() and "\n" not in path_text and "\r" not in path_text)
+              real = path.resolve(strict=True)
+              require(any(real == base or base in real.parents for base in allowed_roots))
+              info = real.stat()
+              require(stat.S_ISREG(info.st_mode) and 0 < info.st_size <= maximum)
+              data = real.read_bytes()
+              require(len(data) == info.st_size)
+              return data, info
+          
+          try:
+              require(socket.gethostname().split(".")[0] == "meshalot-control-01")
+              require(os.geteuid() == 0)
+              raw = subprocess.check_output(
+                  ["systemctl", "list-unit-files", "meshalot*.service", "--no-legend", "--no-pager"],
+                  stderr=subprocess.DEVNULL, text=True, timeout=12
+              )
+              units = [line.split()[0] for line in raw.splitlines()
+                       if line.strip() and re.fullmatch(r"meshalot[a-zA-Z0-9_-]*\.service", line.split()[0])]
+              require(len(units) == 1)
+              unit = units[0]
+              require(property_value(unit, "ActiveState") == "active")
+              pid_text = property_value(unit, "MainPID")
+              require(pid_text.isdigit() and int(pid_text) > 1)
+              proc = Path("/proc") / pid_text / "exe"
+              info = proc.stat()
+              require(stat.S_ISREG(info.st_mode) and 0 < info.st_size <= 300*1024*1024)
+              binary = proc.read_bytes()
+              require(len(binary) == info.st_size)
+              binary_path = os.readlink(proc)
+          
+              syspaths = [Path(x) for x in
+                          ("/etc/systemd/system", "/lib/systemd/system",
+                           "/usr/lib/systemd/system", "/run/systemd/system")]
+              fragment = property_value(unit, "FragmentPath")
+              require(bool(fragment))
+              dropins = property_value(unit, "DropInPaths").split()
+              require(len(dropins) == 6 and len(set(dropins)) == 6)
+              files = [("api/active-server-binary",binary_path,binary,info)]
+              d, st = read_allowlisted(fragment, syspaths, 2*1024*1024)
+              files.append(("systemd/unit.fragment",fragment,d,st))
+              for i,path in enumerate(dropins,1):
+                  d,st = read_allowlisted(path, syspaths, 2*1024*1024)
+                  files.append((f"systemd/dropin-{i:02d}.conf",path,d,st))
+              caddy = "/etc/caddy/Caddyfile"
+              d,st = read_allowlisted(caddy,[Path("/etc/caddy")],4*1024*1024)
+              files.append(("caddy/Caddyfile",caddy,d,st))
+              require(len(files) == 9)
+          
+              manifest = {
+                  "purpose":"M13 Gate 17 encrypted known-good rollback",
+                  "source_host":"meshalot-control-01",
+                  "created_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                  "environment_files":"EXCLUDED",
+                  "database_contents":"EXCLUDED",
+                  "caddy_imported_files":"NOT_INVENTORIED",
+                  "artifacts":[]
+              }
+              for name,path,raw,info in files:
+                  manifest["artifacts"].append({
+                      "archive_name":name, "original_path":path,
+                      "sha256":hashlib.sha256(raw).hexdigest(),
+                      "size":len(raw), "mode":stat.S_IMODE(info.st_mode),
+                      "uid":info.st_uid, "gid":info.st_gid,
+                      "mtime":int(info.st_mtime)
+                  })
+              manifest_bytes=(json.dumps(manifest,sort_keys=True,indent=2)+"\n").encode("utf-8")
+          
+              def add(tar,name,data,mode=0o600,uid=0,gid=0,mtime=0):
+                  entry=tarfile.TarInfo(name)
+                  entry.type=tarfile.REGTYPE
+                  entry.size=len(data)
+                  entry.mode=mode
+                  entry.uid=uid
+                  entry.gid=gid
+                  entry.mtime=mtime
+                  tar.addfile(entry,io.BytesIO(data))
+          
+              with tarfile.open(fileobj=sys.stdout.buffer,mode="w|") as tar:
+                  add(tar,"recovery/manifest.json",manifest_bytes)
+                  for name,path,raw,info in files:
+                      add(tar,name,raw,stat.S_IMODE(info.st_mode),
+                          info.st_uid,info.st_gid,int(info.st_mtime))
+          except Exception:
+              # Write no paths, keys, system configuration, or DB contents to stderr.
+              print("M13_G17_CAPTURE_SOURCE_FAILED_SAFE_STOP",file=sys.stderr)
+              sys.exit(31)
+          
+          REMOTE_PY
+          cat >"$WORK/verify.py" <<'VERIFY_PY'
+          import hashlib
+          import json
+          import re
+          import sys
+          import tarfile
+          from pathlib import Path
+          
+          try:
+              prior = Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+              def vals(name):
+                  return [line[len(name):] for line in prior if line.startswith(name)]
+              def single(name):
+                  v=vals(name)
+                  assert len(v)==1
+                  return v[0]
+              exp_binary=single("API_EXE_SHA256=")
+              exp_fragment={p:h for p,h in zip(vals("UNIT_FRAGMENT_PATH="),vals("UNIT_FRAGMENT_SHA256="))}
+              exp_dropins={p:h for p,h in zip(vals("UNIT_DROPIN_PATH="),vals("UNIT_DROPIN_SHA256="))}
+              exp_caddy=single("CADDYFILE_SHA256=")
+              assert re.fullmatch("[0-9a-f]{64}",exp_binary)
+              assert len(exp_fragment)==1 and len(exp_dropins)==6
+              assert re.fullmatch("[0-9a-f]{64}",exp_caddy)
+          
+              got={}
+              manifest=None
+              with tarfile.open(fileobj=sys.stdin.buffer,mode="r|") as tar:
+                  for member in tar:
+                      assert member.isfile()
+                      assert member.name not in got
+                      assert member.size>=0 and member.size <= 300*1024*1024
+                      data=tar.extractfile(member)
+                      assert data is not None
+                      digest=hashlib.sha256()
+                      length=0
+                      manifest_raw=bytearray()
+                      for block in iter(lambda:data.read(1024*1024),b""):
+                          digest.update(block)
+                          length+=len(block)
+                          if member.name=="recovery/manifest.json":
+                              assert length<=128*1024
+                              manifest_raw.extend(block)
+                      assert length==member.size
+                      got[member.name]=(digest.hexdigest(), length)
+                      if member.name=="recovery/manifest.json":
+                          assert manifest is None
+                          manifest=json.loads(manifest_raw.decode("utf-8"))
+              assert manifest is not None
+              assert manifest.get("source_host")=="meshalot-control-01"
+              assert manifest.get("environment_files")=="EXCLUDED"
+              assert manifest.get("database_contents")=="EXCLUDED"
+              assert len(manifest.get("artifacts",[]))==9
+              names={"recovery/manifest.json"}
+              for item in manifest["artifacts"]:
+                  n=item["archive_name"]
+                  names.add(n)
+                  assert n in got
+                  assert got[n]==(item["sha256"],item["size"])
+                  source=item["original_path"]
+                  if n=="api/active-server-binary":
+                      assert item["sha256"]==exp_binary
+                  elif n=="systemd/unit.fragment":
+                      assert exp_fragment.get(source)==item["sha256"]
+                  elif n.startswith("systemd/dropin-"):
+                      assert exp_dropins.get(source)==item["sha256"]
+                  elif n=="caddy/Caddyfile":
+                      assert source=="/etc/caddy/Caddyfile"
+                      assert item["sha256"]==exp_caddy
+                  else:
+                      raise ValueError("unexpected file")
+              assert len(names)==10 and set(got)==names
+              print("M13_G17_ENCRYPTED_ROLLBACK_CONTENTS=PASS")
+              print("M13_G17_ACTIVE_BINARY_MATCHES_PRIVATE_BASELINE=PASS")
+              print("M13_G17_SYSTEMD_AND_CADDY_MATCH_PRIVATE_BASELINE=PASS")
+              print("M13_G17_ROLLBACK_CAPTURE_FILE_COUNT=9")
+          except Exception:
+              print("M13_G17_ROLLBACK_DECRYPTED_VALIDATION=FAILED_SAFE_STOP",file=sys.stderr)
+              sys.exit(42)
+          
+          VERIFY_PY
+          python3 -m py_compile "$WORK/verify.py" "$WORK/remote.py"
+          
+          PROXY="$GCLOUD compute start-iap-tunnel %h %p --project=meshalot-poc --zone=us-south1-a --listen-on-stdin --quiet --verbosity=error"
+          echo "M13_G17_ENCRYPTED_PRIVATE_COPY=START"
+          if timeout --signal=TERM --kill-after=5s 180 ssh \
+              -F /dev/null -T -o "ProxyCommand=$PROXY" \
+              -o BatchMode=yes -o ConnectTimeout=30 -o ConnectionAttempts=1 \
+              -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              -o "UserKnownHostsFile=$DIR/known_hosts" \
+              -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no \
+              -o LogLevel=ERROR -i "$DIR/id_ed25519" \
+              "$USER@meshalot-control-01" 'sudo -n /usr/bin/python3 -' \
+              <"$WORK/remote.py" 2>"$WORK/ssh-error" |
+            gpg --quiet --batch --no-tty --pinentry-mode loopback \
+              --passphrase-file "$KEYFILE" \
+              --cipher-algo AES256 --s2k-mode 3 --s2k-digest-algo SHA512 \
+              --compress-algo none --symmetric --output "$PARTIAL" \
+              2>"$WORK/encryption-error"
+          then
+            test -s "$PARTIAL"
+            echo "M13_G17_ENCRYPTED_STREAM=PASS"
+          else
+            echo "M13_G17_ENCRYPTED_STREAM=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          
+          if gpg --quiet --batch --no-tty --pinentry-mode loopback \
+              --passphrase-file "$KEYFILE" --decrypt "$PARTIAL" 2>"$WORK/decrypt-error" |
+            python3 "$WORK/verify.py" "$BASELINE" 2>"$WORK/verify-error"
+          then
+            echo "M13_G17_DECRYPTED_ARCHIVE_VALIDATION=PASS"
+          else
+            echo "M13_G17_DECRYPTED_ARCHIVE_VALIDATION=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          
+          ln -- "$PARTIAL" "$FINAL"
+          rm -- "$PARTIAL"
+          sha256sum -- "$FINAL" > "$FINAL.sha256"
+          chmod 0600 "$FINAL" "$FINAL.sha256"
+          (cd "$DEST" && sha256sum --check --status "$(basename "$FINAL").sha256")
+          
+          python3 - "$DEST" "$FINAL" "$KEYFILE" <<'PY'
+          import datetime, hashlib, json, os, stat, sys
+          from pathlib import Path
+          folder,archive,key=map(Path,sys.argv[1:])
+          digest=hashlib.sha256(archive.read_bytes()).hexdigest()
+          record={
+            "scope":"M13 Gate17 known-good API, systemd and Caddy only",
+            "recorded_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "archive_sha256":digest,
+            "archive_size_bytes":archive.stat().st_size,
+            "encrypted_archive":"AES256 GPG symmetric",
+            "archive_members_verified":9,
+            "environment_file_contents":"EXCLUDED",
+            "database_data":"EXCLUDED",
+            "imported_caddy_files":"NOT_VERIFIED",
+            "production_changes":"NONE",
+            "offmachine_recovery_copy":"PENDING",
+            "full_rollback_rehearsal":"PENDING"
+          }
+          out=folder/"rollback-capture-evidence.json"
+          fd=os.open(out,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+          with os.fdopen(fd,"w") as f:
+              json.dump(record,f,indent=2)
+              f.write("\n")
+          assert stat.S_IMODE(out.stat().st_mode)==0o600
+          assert stat.S_IMODE(key.stat().st_mode)==0o600
+          print("M13_G17_PRIVATE_ROLLBACK_EVIDENCE=PASS")
+          PY
+          echo "M13_G17_ROLLBACK_FILE_EXPORT_TO_CLOUD=NONE"
+          echo "M13_G17_PRODUCTION_MUTATIONS=NONE"
+          echo "M13_G17_ENCRYPTED_LOCAL_ROLLBACK_CAPTURE=PASS"
