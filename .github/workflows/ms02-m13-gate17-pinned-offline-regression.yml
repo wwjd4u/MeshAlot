@@ -1,0 +1,70 @@
+name: MS-02 M13 Gate 17 Pinned Offline Regression
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-gate17-pinned-offline-regression.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-pinned-offline-regression
+  cancel-in-progress: false
+jobs:
+  offline-regression:
+    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 15
+    env:
+      GOPROXY: "off"
+      GOSUMDB: "off"
+      GOTOOLCHAIN: "local"
+      GIT_TERMINAL_PROMPT: "0"
+    steps:
+      - name: Pin verified Milestone 13 candidate for offline testing
+        uses: actions/checkout@v4
+        with:
+          ref: 4f67ee54e5ebca084e38e306e723ae0acd08e77d
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Execute non-production Go regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          test "$(git rev-parse HEAD)" = "4f67ee54e5ebca084e38e306e723ae0acd08e77d"
+          test "$(git rev-parse refs/remotes/origin/main)" = "1016c9b058690f34058dfab9cde7927e421fa469"
+          test -z "$(git status --porcelain)"
+          echo "M13_G17_PINNED_CANDIDATE=PASS"
+          echo "M13_G17_PRODUCTION_MAIN_BASELINE=PASS"
+
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-g17-regression.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          export DATABASE_URL=""
+          export PGHOST=""
+          export PGPORT=""
+          export PGUSER=""
+          export PGPASSWORD=""
+          export PGDATABASE=""
+          check() {
+            marker="$1"; shift
+            if "$@" >"$WORK/check.log" 2>&1; then
+              echo "$marker=PASS"
+            else
+              echo "$marker=FAILED_SAFE_STOP"
+              return 1
+            fi
+          }
+          check M13_G17_GO_MODULE_INTEGRITY go mod verify
+          check M13_G17_GO_TEST_ALL go test ./... -count=1
+          check M13_G17_GO_RACE go test -race ./agent -run '^TestM13(Reconnect|Persistent)' -count=1
+          check M13_G17_GO_VET go vet ./...
+          check M13_G17_GO_BUILD go build -o "$WORK/meshalot-agent" ./agent/cmd/meshalot-agent
+          test -s "$WORK/meshalot-agent"
+          test -z "$(git status --porcelain)"
+          echo "M13_G17_SOURCE_WORKTREE_UNCHANGED=PASS"
+          echo "M13_G17_OFFLINE_REGRESSION=PASS"
