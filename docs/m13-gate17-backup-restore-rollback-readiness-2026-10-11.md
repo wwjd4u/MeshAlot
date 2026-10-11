@@ -193,6 +193,47 @@ backup copy on the Mac-connected APFS volume; and independently protected
 recovery-key storage. The inventory did **not** authorize any of those
 sensitive file transfers.
 
+## Encrypted known-good production rollback capture — 2026-10-11
+
+The operator separately approved copying the running production API binary,
+systemd unit/drop-in files, and Caddyfile **only** into restricted MS-02
+storage. No environment-file contents or database records were authorized for
+this export. The operation used the existing instance-only, time-limited IAP
+SSH identity; no permanent remote access was added.
+
+- [Encrypted rollback capture — PASS](https://github.com/wwjd4u/MeshAlot/actions/runs/38168945744).
+  The previous attempt failed safely during local Python setup **before**
+  contacting production or creating an archive.
+- Captured **9** items: the hash-pinned active API executable, one systemd
+  unit fragment, six systemd drop-ins, and the Caddyfile. Original source
+  paths, hashes, ownership, and modes were recorded **inside** the encrypted
+  archive's private recovery manifest, not in public logs.
+- The production source was read only. Artifacts were streamed over pinned
+  IAP SSH directly into local GPG AES-256 encryption; no plaintext production
+  rollback archive was written on the MS-02 or uploaded to GitHub or Drive.
+- A new unique 0600 recovery passphrase was generated and retained only in
+  user-private MS-02 storage, outside the 0700 rollback archive folder.
+  Its contents were never printed or published.
+- The encrypted tar stream decrypted and all 9 members' SHA-256 hashes
+  matched the previous private production inventory. The running executable
+  also matched the earlier Step 2 fingerprint. The encrypted output has a
+  private SHA-256 checksum and local 0600 evidence record.
+- [Independent, local read-only verification — PASS](https://github.com/wwjd4u/MeshAlot/actions/runs/38169049080)
+  confirmed archive SHA-256, private key file permissions, preserved
+  evidence, and the absence of any off-machine copy. It did **not** read the
+  passphrase, decrypt again or connect to production.
+- [One-time capture workflow disabled](https://github.com/wwjd4u/MeshAlot/actions/runs/38168987214)
+  after successful export; the next job was **skipped**. Re-exporting these
+  files requires fresh authorization and an explicit workflow change.
+
+**Limits:** The saved files are a verified **partial rollback package**, not
+full disaster-recovery certification. Systemd environment-file contents,
+potential additional imported Caddy configuration and other dependent
+secrets were deliberately excluded. No off-machine copy of the encrypted
+archive or separate protected passphrase exists as verified. No live rollback
+or restoration of production binaries/configurations has been attempted.
+Existing backup directories remain inventoried but not restore-tested.
+
 ## Rollback readiness — explicit limitations
 
 The [Step 2 read-only production audit](m13-gate17-step2-production-readonly-closeout-2026-10-08.md)
@@ -206,10 +247,11 @@ contains a complete, recoverable release backup**.
 1. Verify independent recovery copy of encrypted database archive and its
    SHA-256 hash on a separate device, with a separately protected recovery
    passphrase and tested recovery instructions.
-2. Privately inventory, protect, and hash **known-good active API binary,
-   systemd unit/drop-ins, Caddy proxy configuration, and required environment
-   material** without publishing their contents or restarting production.
-   Compare these with the private Step 2 read-only evidence.
+2. The API binary, systemd unit/drop-ins, and primary Caddyfile now have
+   a verified private encrypted copy. Review remaining **environment-file
+   dependencies and any imported Caddy configuration** without publishing
+   their contents; these files were deliberately excluded from the approved
+   capture. Rehearse controlled recovery before claiming a complete package.
 3. Prepare a controlled restore/rollback playbook and staging rehearsal,
    considering dependencies, ownership, privileges, and cluster-global roles.
    A `pg_restore --no-owner --no-privileges` logical test alone does not
