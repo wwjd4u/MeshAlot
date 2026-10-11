@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   capture:
-    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
+    if: false # One-time sensitive rollback capture completed; do not re-export without new approval
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 9
     env:
