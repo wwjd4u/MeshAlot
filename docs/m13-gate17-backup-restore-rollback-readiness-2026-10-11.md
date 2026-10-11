@@ -161,6 +161,38 @@ systemd/Caddy configuration and rollback directories, then separately request
 permission before copying sensitive production rollback material. The off-Mac
 database archive transfer and independent recovery-key protection are pending.
 
+## Gate 17 production rollback inventory — 2026-10-11
+
+A newly approved, **read-only** inventory ran over the existing time-limited
+Google IAP SSH channel to the exact `meshalot-control-01` host.
+[Successful GitHub Actions read-only inventory](https://github.com/wwjd4u/MeshAlot/actions/runs/38168379468).
+
+- SSH authorization, pinned host identity, and wrong-host guard: **PASS**.
+- Running production API binary fingerprint matched the private Step 2
+  baseline (October 8): **PASS / UNCHANGED**.
+- One MeshAlot application service remained active.
+- One systemd unit fragment and six systemd drop-ins were fingerprinted
+  privately. One active unit declared an environment file; the environment
+  file's values or contents were **not** read or uploaded.
+- The Caddyfile's SHA-256 was captured in the private report and was **not**
+  emitted to GitHub logs. This creates an audit fingerprint, not a rollback
+  copy or a comparison against a previously archived Caddyfile.
+- Four existing rollback/backup directory names matched the older Step 2
+  inventory. A depth-limited, metadata-only file count was saved privately;
+  the files' contents, completeness and restorability remain **UNVERIFIED**.
+- Detailed paths and hashes remain exclusively in the checksum-verified
+  `0700` MS-02 private-audit directory, with `0600` report/checksum files.
+- **No files were exported**, and no PostgreSQL changes, service restarts,
+  deploys, Caddy edits, SSH key changes or Node001/Node002 identity changes
+  occurred during this inventory.
+
+**Still pending:** Independently preserved known-good API binary,
+systemd/Caddy and private environment rollback artifacts; their hashes,
+recovery procedures and access controls; a separate encrypted database
+backup copy on the Mac-connected APFS volume; and independently protected
+recovery-key storage. The inventory did **not** authorize any of those
+sensitive file transfers.
+
 ## Rollback readiness — explicit limitations
 
 The [Step 2 read-only production audit](m13-gate17-step2-production-readonly-closeout-2026-10-08.md)
