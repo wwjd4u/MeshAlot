@@ -53,6 +53,24 @@ Trusted MS-02 runner:
 - Production DB, Node001/Node002 enrollment, V100 tests, service states,
   and external APFS backups were not touched by the validation workflow.
 
+## Additional private rollback-report integrity validation
+
+On 2026-10-11, the trusted MS-02 runner executed a separate **local-only,
+read-only** checksum verification of the three Step 2 private audit report
+families. [Verified workflow](https://github.com/wwjd4u/MeshAlot/actions/runs/38166281459).
+
+- Production control/configuration audit: 1 private report; SHA-256 PASS.
+- Service/Caddy follow-up audit: 1 private report; SHA-256 PASS.
+- Running API binary audit: 1 private report; SHA-256 PASS.
+- No production SSH connection, file export, decryption, rollback, or
+  production mutation occurred during this check.
+- The reports and hashes remained under restrictive user-local MS-02
+  permissions; no report contents or sensitive configuration were uploaded.
+- **Known-good API binary/configuration rollback copies still NOT VERIFIED.**
+  Valid audit reports alone are not deployable rollback artifacts.
+- The Mac-attached APFS off-machine backup copy and separately protected
+  recovery passphrase both remain **PENDING**.
+
 ## Rollback readiness — explicit limitations
 
 The [Step 2 read-only production audit](m13-gate17-step2-production-readonly-closeout-2026-10-08.md)
