@@ -46,7 +46,7 @@ jobs:
           python3 - "$DIR" "$AUDITS" "$ROOT" "$KEYS" "$GITHUB_RUN_ID" "$WORK" <<'PY'
           import datetime, hashlib, json, os, re, shutil, stat, sys
           from pathlib import Path
-          ssh,audits,root,keys,run,work=(Path(v) for v in sys.argv[1:5])+(sys.argv[5],Path(sys.argv[6]))
+          ssh,audits,root,keys,run,work=tuple(Path(v) for v in sys.argv[1:5])+(sys.argv[5],Path(sys.argv[6]))
           def check(path,is_dir,mode):
               s=path.lstat()
               assert s.st_uid==os.getuid() and stat.S_IMODE(s.st_mode)==mode
