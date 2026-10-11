@@ -104,3 +104,28 @@ jobs:
           except Exception:
               die()
           PY
+      - name: Check APFS read-only tool availability without accessing drive data
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          for tool in apfs-fuse apfsutil mount.apfs fsck.apfs; do
+            key="$(printf '%s' "$tool" | tr '.-' '__' | tr '[:lower:]' '[:upper:]')"
+            if command -v "$tool" >/dev/null 2>&1; then
+              echo "M13_APFS_TOOL_${key}=PRESENT"
+            else
+              echo "M13_APFS_TOOL_${key}=ABSENT"
+            fi
+          done
+          if grep -qw apfs /proc/filesystems; then
+            echo "M13_APFS_KERNEL_FILESYSTEM=AVAILABLE"
+          else
+            echo "M13_APFS_KERNEL_FILESYSTEM=NOT_AVAILABLE"
+          fi
+          if test -c /dev/fuse; then
+            echo "M13_FUSE_DEVICE=PRESENT"
+          else
+            echo "M13_FUSE_DEVICE=ABSENT"
+          fi
+          echo "M13_APFS_READONLY_CAPABILITY_INVENTORY=PASS"
