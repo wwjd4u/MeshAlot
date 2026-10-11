@@ -1,0 +1,256 @@
+name: MS-02 M13 Gate 17 Production Rollback Read-only Inventory
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths: [.github/workflows/ms02-m13-gate17-production-rollback-inventory.yml]
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-control-readonly-audit
+  cancel-in-progress: false
+jobs:
+  inventory:
+    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 7
+    env:
+      CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+      CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+      CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+      CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+    steps:
+      - name: Inspect rollback artifact presence and hashes without exporting contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          DIR="$HOME/.local/share/meshalot-m13-iap-ssh"
+          ROOT="$HOME/.local/share/meshalot-m13-private-audits"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          test -x "$GCLOUD"
+          test -d "$DIR" && test ! -L "$DIR" && test "$(stat -c %a "$DIR")" = 700
+          test -d "$ROOT" && test ! -L "$ROOT" && test "$(stat -c %a "$ROOT")" = 700
+          test "$(stat -c %u "$ROOT")" = "$(id -u)"
+          for f in "$DIR/id_ed25519" "$DIR/known_hosts" "$DIR/registration.json"; do
+            test -f "$f" && test ! -L "$f"
+            test "$(stat -c %a "$f")" = 600
+            test "$(stat -c %u "$f")" = "$(id -u)"
+          done
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-g17-rollback-inventory.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          python3 - "$DIR/registration.json" "$WORK/user" <<'PY'
+          import datetime,json,re,sys
+          from pathlib import Path
+          data=json.loads(Path(sys.argv[1]).read_text())
+          assert data.get("target")=="meshalot-control-01"
+          assert data.get("project")=="meshalot-poc" and data.get("zone")=="us-south1-a"
+          user=data.get("username","")
+          assert re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}",user)
+          expiry=datetime.datetime.strptime(data["expires"],"%Y-%m-%dT%H:%M:%S%z")
+          assert expiry>datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(minutes=15), "Authorization expiry"
+          Path(sys.argv[2]).write_text(user)
+          print("M13_G17_IAP_AUTHORIZATION_VALID=PASS")
+          PY
+          cat > "$WORK/remote-inventory.sh" <<'REMOTE'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          umask 077
+          if test "$(hostname -s)" != meshalot-control-01; then
+            echo "M13_G17_ROLLBACK_AUDIT_WRONG_HOST=STOP"
+            exit 2
+          fi
+          echo "M13_REMOTE_HOST=PASS"
+          echo "M13_REMOTE_AUDIT_MODE=READ_ONLY"
+          
+          file_hash() {
+            local p="$1" answer=""
+            if test -f "$p" && test -r "$p"; then
+              answer="$(sha256sum -- "$p" 2>/dev/null | awk '{print $1}' || true)"
+            elif sudo -n test -f "$p" 2>/dev/null; then
+              answer="$(sudo -n sha256sum -- "$p" 2>/dev/null | awk '{print $1}' || true)"
+            fi
+            if [[ "$answer" =~ ^[0-9a-f]{64}$ ]]; then printf '%s' "$answer"
+            else printf 'UNVERIFIED'; fi
+          }
+          
+          units=0
+          active=0
+          binary_verified=0
+          fragment_verified=0
+          dropin_verified=0
+          env_declared=0
+          
+          while read -r unit enabled rest; do
+            case "$unit" in
+              meshalot*.service)
+                units=$((units+1))
+                printf 'API_UNIT=%s\n' "$unit"
+                state="$(systemctl show "$unit" --property=ActiveState --value 2>/dev/null || true)"
+                printf 'API_STATE=%s\n' "$state"
+                if test "$state" = active; then active=$((active+1)); fi
+          
+                fragment="$(systemctl show "$unit" --property=FragmentPath --value 2>/dev/null || true)"
+                if test -n "$fragment"; then
+                  printf 'UNIT_FRAGMENT_PATH=%s\n' "$fragment"
+                  digest="$(file_hash "$fragment")"
+                  printf 'UNIT_FRAGMENT_SHA256=%s\n' "$digest"
+                  if test "$digest" != UNVERIFIED; then fragment_verified=$((fragment_verified+1)); fi
+                fi
+                dropins="$(systemctl show "$unit" --property=DropInPaths --value 2>/dev/null || true)"
+                if test -n "$dropins"; then
+                  for file in $dropins; do
+                    printf 'UNIT_DROPIN_PATH=%s\n' "$file"
+                    digest="$(file_hash "$file")"
+                    printf 'UNIT_DROPIN_SHA256=%s\n' "$digest"
+                    if test "$digest" != UNVERIFIED; then dropin_verified=$((dropin_verified+1)); fi
+                  done
+                fi
+                # Only inspect EnvironmentFiles property existence, NEVER Environment.
+                envfiles="$(systemctl show "$unit" --property=EnvironmentFiles --value 2>/dev/null || true)"
+                if test -n "$envfiles"; then
+                  env_declared=$((env_declared+1))
+                  echo "API_ENVIRONMENT_FILE_DECLARED=YES"
+                else echo "API_ENVIRONMENT_FILE_DECLARED=NO"; fi
+          
+                pid="$(systemctl show "$unit" --property=MainPID --value 2>/dev/null || true)"
+                if [[ "$pid" =~ ^[0-9]+$ ]] && test "$pid" -gt 1; then
+                  exe="$(sudo -n readlink -f "/proc/$pid/exe" 2>/dev/null || readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
+                  if test -n "$exe"; then
+                    printf 'API_EXE_PATH=%s\n' "$exe"
+                    digest="$(file_hash "/proc/$pid/exe")"
+                    printf 'API_EXE_SHA256=%s\n' "$digest"
+                    if test "$digest" != UNVERIFIED; then binary_verified=$((binary_verified+1)); fi
+                  fi
+                fi
+                ;;
+            esac
+          done < <(systemctl list-unit-files 'meshalot*.service' --no-legend --no-pager 2>/dev/null || true)
+          
+          printf 'API_UNITS_COUNT=%s\n' "$units"
+          printf 'API_ACTIVE_UNITS_COUNT=%s\n' "$active"
+          printf 'API_BINARY_HASHED_COUNT=%s\n' "$binary_verified"
+          printf 'SYSTEMD_FRAGMENT_HASHED_COUNT=%s\n' "$fragment_verified"
+          printf 'SYSTEMD_DROPIN_HASHED_COUNT=%s\n' "$dropin_verified"
+          printf 'SYSTEMD_ENVFILE_DECLARED_UNIT_COUNT=%s\n' "$env_declared"
+          printf 'CADDYFILE_SHA256=%s\n' "$(file_hash /etc/caddy/Caddyfile)"
+          
+          backup_root=/opt/meshalot/backups
+          listing=""
+          if test -d "$backup_root" && test -r "$backup_root"; then
+            listing="$(find "$backup_root" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null || true)"
+          elif sudo -n test -d "$backup_root" 2>/dev/null; then
+            listing="$(sudo -n find "$backup_root" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null || true)"
+          fi
+          count=0
+          if test -n "$listing"; then
+            while IFS= read -r directory; do
+              test -n "$directory" || continue
+              count=$((count+1))
+              if test "$count" -gt 35; then echo "BACKUP_INVENTORY_EXCEEDS_LIMIT=STOP"; exit 5; fi
+              printf 'BACKUP_DIR=%s\n' "$(basename -- "$directory")"
+              number=UNREADABLE
+              if test -r "$directory"; then
+                number="$(find "$directory" -mindepth 1 -maxdepth 3 -type f -printf '.' 2>/dev/null | wc -c)"
+              elif sudo -n test -d "$directory" 2>/dev/null; then
+                number="$(sudo -n find "$directory" -mindepth 1 -maxdepth 3 -type f -printf '.' 2>/dev/null | wc -c)"
+              fi
+              printf 'BACKUP_DIR_SHALLOW_FILE_COUNT=%s\n' "$number"
+            done <<< "$listing"
+          fi
+          printf 'BACKUP_DIR_COUNT=%s\n' "$count"
+          echo "BACKUP_DIR_RESTORE_VERIFICATION=NOT_PERFORMED"
+          echo "M13_G17_PRODUCTION_REMOTE_READONLY_INVENTORY=COMPLETE"
+          REMOTE
+          bash -n "$WORK/remote-inventory.sh"
+          set +e
+          guard="$(bash "$WORK/remote-inventory.sh" 2>/dev/null)"
+          guard_rc="$?"
+          set -e
+          test "$guard_rc" -eq 2
+          test "$guard" = 'M13_G17_ROLLBACK_AUDIT_WRONG_HOST=STOP'
+          echo "M13_G17_WRONG_HOST_GUARD=PASS"
+          
+          REPORT="$ROOT/gate17-rollback-readonly-$(date -u +%Y%m%dT%H%M%SZ)-run-$GITHUB_RUN_ID.txt"
+          test ! -e "$REPORT" && test ! -L "$REPORT"
+          PROXY="$GCLOUD compute start-iap-tunnel %h %p --project=meshalot-poc --zone=us-south1-a --listen-on-stdin --quiet --verbosity=error"
+          USER="$(cat "$WORK/user")"
+          set +e
+          timeout --signal=TERM --kill-after=5s 115 ssh \
+            -F /dev/null -T -o "ProxyCommand=$PROXY" \
+            -o BatchMode=yes -o ConnectTimeout=30 -o ConnectionAttempts=1 \
+            -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$DIR/known_hosts" \
+            -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no \
+            -o LogLevel=ERROR -i "$DIR/id_ed25519" \
+            "$USER@meshalot-control-01" 'bash -s' \
+            <"$WORK/remote-inventory.sh" >"$REPORT" 2>"$WORK/ssh-error"
+          RC="$?"
+          set -e
+          chmod 600 "$REPORT"
+          if test "$RC" -ne 0; then
+            echo "M13_G17_REMOTE_ROLLBACK_INVENTORY=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          grep -Fxq "M13_REMOTE_HOST=PASS" "$REPORT"
+          grep -Fxq "M13_G17_PRODUCTION_REMOTE_READONLY_INVENTORY=COMPLETE" "$REPORT"
+          sha256sum -- "$REPORT" >"$REPORT.sha256"
+          chmod 600 "$REPORT.sha256"
+          (cd "$ROOT" && sha256sum --check --status "$(basename "$REPORT").sha256")
+          echo "M13_G17_PRIVATE_INVENTORY_CHECKSUM=PASS"
+          
+          python3 - "$ROOT" "$REPORT" <<'PY'
+          import hashlib,os,re,stat,sys
+          from pathlib import Path
+          root=Path(sys.argv[1])
+          report=Path(sys.argv[2])
+          def verified(path):
+              s=path.lstat()
+              assert stat.S_ISREG(s.st_mode) and s.st_uid==os.getuid()
+              assert stat.S_IMODE(s.st_mode)==0o600
+              assert 0<s.st_size<8*1024*1024
+              cs=Path(str(path)+".sha256")
+              t=cs.lstat()
+              assert stat.S_ISREG(t.st_mode) and t.st_uid==os.getuid()
+              assert stat.S_IMODE(t.st_mode)==0o600
+              assert cs.read_text()==hashlib.sha256(path.read_bytes()).hexdigest()+"  "+str(path)+"\n"
+              return path.read_text().splitlines()
+          base=sorted(root.glob("step2-api-binary-*.txt"))
+          control=sorted(root.glob("step2-control-*.txt"))
+          assert len(base)==len(control)==1, "Baseline not uniquely identified"
+          old=verified(base[0])
+          oldcontrol=verified(control[0])
+          new=verified(report)
+          def vals(lines,prefix):
+              return [x[len(prefix):] for x in lines if x.startswith(prefix)]
+          def one_int(lines,key):
+              a=vals(lines,key)
+              assert len(a)==1 and a[0].isdigit()
+              return int(a[0])
+          old_hashes={x for x in vals(old,"API_EXE_SHA256=") if re.fullmatch(r"[0-9a-f]{64}",x)}
+          new_hashes={x for x in vals(new,"API_EXE_SHA256=") if re.fullmatch(r"[0-9a-f]{64}",x)}
+          assert old_hashes, "No verifiable prior API fingerprint"
+          assert new_hashes, "Current API fingerprint unavailable"
+          assert old_hashes==new_hashes, "RUNNING_PRODUCTION_API_HASH_DRIFT_SAFE_STOP"
+          print("M13_G17_RUNNING_API_BINARY_UNCHANGED_SINCE_STEP2=PASS")
+          
+          old_dirs=sorted(vals(oldcontrol,"BACKUP_DIR="))
+          new_dirs=sorted(vals(new,"BACKUP_DIR="))
+          print("M13_G17_EXISTING_BACKUP_DIR_NAMES_UNCHANGED="+("PASS" if old_dirs==new_dirs else "REQUIRES_REVIEW"))
+          print("M13_G17_BACKUP_DIRECTORY_COUNT="+str(one_int(new,"BACKUP_DIR_COUNT=")))
+          print("M13_G17_ACTIVE_API_SERVICE_COUNT="+str(one_int(new,"API_ACTIVE_UNITS_COUNT=")))
+          print("M13_G17_SYSTEMD_UNIT_HASHED_COUNT="+str(one_int(new,"SYSTEMD_FRAGMENT_HASHED_COUNT=")))
+          print("M13_G17_SYSTEMD_DROPIN_HASHED_COUNT="+str(one_int(new,"SYSTEMD_DROPIN_HASHED_COUNT=")))
+          print("M13_G17_ENVFILE_DECLARATION_UNIT_COUNT="+str(one_int(new,"SYSTEMD_ENVFILE_DECLARED_UNIT_COUNT=")))
+          caddy=vals(new,"CADDYFILE_SHA256=")
+          assert len(caddy)==1
+          print("M13_G17_CADDY_FINGERPRINT="+("VERIFIED_PRIVATE" if re.fullmatch(r"[0-9a-f]{64}",caddy[0]) else "UNVERIFIED"))
+          assert one_int(new,"API_ACTIVE_UNITS_COUNT=")>=1
+          print("M13_G17_BACKUP_ROLLBACK_CONTENTS=NOT_VERIFIED")
+          print("M13_G17_PRODUCTION_FILE_EXPORT=NONE")
+          print("M13_G17_REMOTE_READONLY_INVENTORY=PASS")
+          PY
+          echo "M13_G17_PRODUCTION_CHANGES=NONE"
