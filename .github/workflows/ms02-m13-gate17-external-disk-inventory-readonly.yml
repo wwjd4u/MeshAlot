@@ -11,7 +11,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 4
     steps:
-      - name: Detect external 1TB backup drive without mounting or reading files
+      - name: Inspect external disk sizes and mount status without accessing files
         shell: bash
         run: |
           set -euo pipefail
@@ -21,11 +21,47 @@ jobs:
           test "$HOME" = "/home/jason_guynes"
           python3 - <<'PY'
           import json, os, subprocess, sys
-          from pathlib import Path
 
           def die():
               print("M13_EXTERNAL_DISK_INVENTORY=FAILED_SAFE_STOP")
               sys.exit(1)
+
+          def flatten(d):
+              yield d
+              for child in d.get("children", []):
+                  yield from flatten(child)
+
+          def gib(value):
+              return int(value or 0) // (1024**3)
+
+          def print_volumes(prefix, disk):
+              known_fs = {"ext4", "xfs", "btrfs", "exfat", "vfat", "ntfs", "ntfs3", "f2fs"}
+              mounted = []
+              for item in flatten(disk):
+                  if item.get("fstype") and item.get("type") != "disk":
+                      fs = str(item["fstype"]).lower()
+                      print(prefix + "_VOLUME_FSTYPE=" + (fs if fs in known_fs else "OTHER"))
+                  for mp in item.get("mountpoints") or []:
+                      if mp and mp != "/":
+                          mounted.append((item, mp))
+              print(prefix + "_MOUNTED_VOLUME_COUNT=" + str(len(mounted)))
+              for i, (item, mp) in enumerate(mounted, 1):
+                  fs = (item.get("fstype") or "unknown").lower()
+                  print(f"{prefix}_MOUNT_{i}_FSTYPE=" + (fs if fs in known_fs else "OTHER"))
+                  try:
+                      info = os.statvfs(mp)
+                      print(f"{prefix}_MOUNT_{i}_FREE_GIB=" + str((info.f_bavail * info.f_frsize)//(1024**3)))
+                  except OSError:
+                      print(f"{prefix}_MOUNT_{i}_FREE_GIB=UNKNOWN")
+                  try:
+                      options = subprocess.check_output(
+                          ["findmnt", "-n", "-o", "OPTIONS", "--target", mp],
+                          text=True, timeout=5
+                      ).strip().split(",")
+                      print(f"{prefix}_MOUNT_{i}_READONLY=" +
+                            ("YES" if "ro" in options else "NO" if "rw" in options else "UNKNOWN"))
+                  except Exception:
+                      print(f"{prefix}_MOUNT_{i}_READONLY=UNKNOWN")
 
           try:
               raw = subprocess.check_output(
@@ -33,56 +69,30 @@ jobs:
                    "NAME,TYPE,TRAN,SIZE,FSTYPE,MOUNTPOINTS,RO,RM,HOTPLUG"],
                   text=True, timeout=15
               )
-              disks = json.loads(raw)["blockdevices"]
-              usb = [d for d in disks if
-                     d.get("type") == "disk" and d.get("tran") == "usb"]
+              disks = [d for d in json.loads(raw)["blockdevices"] if d.get("type") == "disk"]
+              usb = [d for d in disks if d.get("tran") == "usb"]
+              other = [d for d in disks if d.get("tran") != "usb"]
+              print("M13_USB_DISK_COUNT=" + str(len(usb)))
+              for i, disk in enumerate(usb, 1):
+                  prefix = f"M13_USB_DISK_{i}"
+                  print(prefix + "_SIZE_GIB=" + str(gib(disk.get("size"))))
+                  print(prefix + "_HW_READONLY=" + ("YES" if disk.get("ro") else "NO"))
+                  print_volumes(prefix, disk)
+
+              # Capacity-only summary of other disk transports. Never print labels,
+              # serials, device paths, mount paths, file names, or volume contents.
+              print("M13_NONUSB_DISK_COUNT=" + str(len(other)))
+              for i, disk in enumerate(other, 1):
+                  print(f"M13_NONUSB_DISK_{i}_SIZE_GIB=" + str(gib(disk.get("size"))))
+                  print(f"M13_NONUSB_DISK_{i}_TRANSPORT=" + (
+                      disk.get("tran") if disk.get("tran") in ("sata", "nvme", "usb", "scsi") else "OTHER"
+                  ))
+
               candidates = [d for d in usb if
                             800_000_000_000 <= int(d.get("size") or 0) <= 1_200_000_000_000]
-
-              print("M13_USB_DISK_COUNT=" + str(len(usb)))
               print("M13_USB_1TB_CANDIDATES=" + str(len(candidates)))
-              if len(candidates) != 1:
-                  print("M13_EXTERNAL_1TB_DRIVE=NOT_UNIQUELY_IDENTIFIED")
-                  print("M13_EXTERNAL_DISK_INVENTORY=PASS_READONLY")
-                  sys.exit(0)
-
-              disk = candidates[0]
-              print("M13_EXTERNAL_1TB_DRIVE=DETECTED")
-              print("M13_EXTERNAL_DISK_HW_READONLY=" + ("YES" if disk.get("ro") else "NO"))
-              def flatten(d):
-                  yield d
-                  for child in d.get("children", []):
-                      yield from flatten(child)
-              items = list(flatten(disk))
-              encrypted = any((x.get("fstype") or "").lower() == "crypto_luks" for x in items)
-              print("M13_EXTERNAL_DISK_LUKS_VOLUME=" + ("YES" if encrypted else "NOT_IDENTIFIED"))
-
-              mounted = []
-              for item in items:
-                  for mountpoint in item.get("mountpoints") or []:
-                      if mountpoint and mountpoint != "/":
-                          mounted.append((item, mountpoint))
-              print("M13_EXTERNAL_MOUNTED_FILESYSTEM_COUNT=" + str(len(mounted)))
-              for index, (item, mountpoint) in enumerate(mounted, 1):
-                  fs = (item.get("fstype") or "unknown").lower()
-                  # Emit only standardized type, never label/UUID/device name/mount path.
-                  known_fs = {"ext4", "xfs", "btrfs", "exfat", "vfat", "ntfs", "ntfs3", "f2fs"}
-                  print(f"M13_EXTERNAL_VOLUME_{index}_FSTYPE=" + (fs if fs in known_fs else "OTHER"))
-                  try:
-                      info = os.statvfs(mountpoint)
-                      available_gib = (info.f_bavail * info.f_frsize) // (1024**3)
-                      print(f"M13_EXTERNAL_VOLUME_{index}_FREE_GIB={available_gib}")
-                  except OSError:
-                      print(f"M13_EXTERNAL_VOLUME_{index}_FREE_GIB=UNKNOWN")
-                  try:
-                      options = subprocess.check_output(
-                          ["findmnt", "-n", "-o", "OPTIONS", "--target", mountpoint],
-                          text=True, timeout=5
-                      ).strip().split(",")
-                      print(f"M13_EXTERNAL_VOLUME_{index}_MOUNT_READONLY=" +
-                            ("YES" if "ro" in options else "NO" if "rw" in options else "UNKNOWN"))
-                  except Exception:
-                      print(f"M13_EXTERNAL_VOLUME_{index}_MOUNT_READONLY=UNKNOWN")
+              print("M13_EXTERNAL_1TB_DRIVE=" + (
+                  "DETECTED" if len(candidates) == 1 else "NOT_UNIQUELY_IDENTIFIED"))
               print("M13_EXTERNAL_DISK_INVENTORY=PASS_READONLY")
           except Exception:
               die()
