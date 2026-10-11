@@ -128,6 +128,39 @@ rollback-artifact capture. Preparation and checks based on existing local
 evidence can continue without new cloud access. Do not infer that the
 successful database-only logical restore covers binary/configuration rollback.
 
+## Temporary VM-specific SSH renewal — 2026-10-11
+
+The operator explicitly approved a **24-hour renewal of the same existing
+Ed25519 public key**, limited to the instance `meshalot-control-01`, for
+read-only rollback auditing. No new account or SSH identity was generated,
+no project-wide SSH key or IAM policy changed, and no production service or
+database state was modified.
+
+- [Guarded instance metadata renewal attempt](https://github.com/wwjd4u/MeshAlot/actions/runs/38167622592)
+  verified the single existing key-entry replacement, preservation of other
+  VM and project metadata, and the private local registration update. The
+  GitHub job concluded **failure** due to a closing-quotation typo in its
+  final status line **after** those verification markers had passed; it
+  must not be represented as a successful job.
+- [Independent read-only verification](https://github.com/wwjd4u/MeshAlot/actions/runs/38167753474):
+  **SUCCESS**, including matching local/remote key and 24-hour expiration,
+  preserved previous private registration history, unchanged project login
+  policy, strict pinned-host-key IAP SSH authentication, and no remote
+  mutations or file exports.
+- The one-time mutating renewal workflow was then **disabled at the job guard**
+  on the infrastructure branch to prevent an unattended future extension
+  without a new operator approval. The read-only verification workflow remains
+  available.
+- The temporary authorization automatically expires about 24 hours after
+  the registered October 11 renewal; do not assume it remains valid across
+  future handoffs. Future extensions require renewed authorization and an
+  independent scope check.
+
+**Next checkpoint:** Read-only inventory of the existing production API,
+systemd/Caddy configuration and rollback directories, then separately request
+permission before copying sensitive production rollback material. The off-Mac
+database archive transfer and independent recovery-key protection are pending.
+
 ## Rollback readiness — explicit limitations
 
 The [Step 2 read-only production audit](m13-gate17-step2-production-readonly-closeout-2026-10-08.md)
