@@ -1,0 +1,107 @@
+name: MS-02 M13 Gate17 Local Evidence Read-only Validation
+
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-gate17-local-evidence-readonly.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meshalot-m13-local-readonly-evidence
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Validate local-only recovery evidence
+    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 5
+    steps:
+      - name: Verify local backup checksum, key file mode, and operator restore evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          
+          # Intentionally no checkout, SSH, gcloud, GPG decryption, production DB, or secret printing.
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import socket
+          import stat
+          import sys
+          from pathlib import Path
+          
+          def require(ok):
+              if not ok:
+                  raise RuntimeError("safe stop")
+          
+          try:
+              require(os.environ.get("GITHUB_REPOSITORY") == "wwjd4u/MeshAlot")
+              require(os.environ.get("GITHUB_REF") == "refs/heads/infra/ms02-runner-gateway")
+              require(os.environ.get("RUNNER_NAME") == "meshalot-ms02")
+              require(socket.gethostname().split(".")[0] == "wwjd4u-MS-02-Ultra")
+              require(os.getuid() == Path("/home/jason_guynes").stat().st_uid)
+              require(Path.home() == Path("/home/jason_guynes"))
+          
+              run_id = "m13-g17-step3b-20261009T152401Z-4ccaf982"
+              home = Path.home()
+              root = home / ".local/share/meshalot-m13-private-backups"
+              keys = home / ".local/share/meshalot-m13-backup-keys"
+              folder = root / run_id
+              archive = folder / "meshalot-production-pg16.dump.gpg"
+              checksum = folder / "meshalot-production-pg16.dump.gpg.sha256"
+              evidence = folder / "m13-step3c-restore-evidence.json"
+              key = keys / (run_id + ".passphrase")
+          
+              def validate(path, is_dir, mode):
+                  s = path.lstat()
+                  require(s.st_uid == os.getuid())
+                  require(stat.S_IMODE(s.st_mode) == mode)
+                  require(stat.S_ISDIR(s.st_mode) if is_dir else stat.S_ISREG(s.st_mode))
+                  return s
+          
+              for path in (root, keys, folder):
+                  validate(path, True, 0o700)
+              for path in (archive, checksum, evidence, key):
+                  validate(path, False, 0o600)
+          
+              h = hashlib.sha256()
+              with archive.open("rb") as stream:
+                  for block in iter(lambda: stream.read(1024 * 1024), b""):
+                      h.update(block)
+              digest = h.hexdigest()
+              require(0 < archive.stat().st_size < 2 * 1024**3)
+              require(checksum.read_text(encoding="utf-8") ==
+                      digest + "  " + str(archive) + "\n")
+              print("M13_G17_ARCHIVE_SHA256=PASS")
+          
+              # Never open/read the recovery passphrase; only its ownership/type/mode.
+              print("M13_G17_RECOVERY_KEY_PERMISSIONS=PASS")
+          
+              record = json.loads(evidence.read_text(encoding="utf-8"))
+              require(isinstance(record, dict))
+              require(record.get("run_id") == run_id)
+              require(record.get("archive_sha256") == digest)
+              require(record.get("archive_size_bytes") == archive.stat().st_size)
+              require(record.get("evidence_source") == "Operator-provided terminal results")
+              require(record.get("postgres_version") == 16)
+              require(record.get("isolated_full_restore") == "PASS")
+              require(record.get("migrations_1_through_8") == "PASS")
+              require(record.get("restored_table_reads") == "PASS")
+              require(record.get("production_restore") == "NOT PERFORMED")
+              print("M13_G17_OPERATOR_RESTORE_EVIDENCE=PASS")
+              print("M13_G17_INDEPENDENT_RECOVERY_COPY=NOT_VERIFIED")
+          except Exception:
+              print("M13_G17_LOCAL_EVIDENCE_VALIDATION=FAILED_SAFE_STOP")
+              sys.exit(1)
+          PY
+          
+          # Image metadata inspection only. No container, restore, or daemon changes.
+          docker image inspect postgres:16-alpine >/dev/null
+          echo "M13_G17_POSTGRES16_IMAGE_PRESENT=PASS"
+          echo "M13_G17_LOCAL_READONLY_VALIDATION=PASS"
