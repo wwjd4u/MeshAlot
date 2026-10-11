@@ -100,6 +100,34 @@ a synthetic database test in addition to the earlier Gate 16 9→10 test.
 It is **not** a rehearsal using the restored production backup, nor approval
 for migration, release, or application cutover.
 
+## Gate 17 local rollback-readiness classification — 2026-10-11
+
+The trusted MS-02 runner re-evaluated the **existing, checksum-verified**
+private Step 2 production audit reports **without initiating an SSH/IAP
+connection**. [Successful sanitized classification](https://github.com/wwjd4u/MeshAlot/actions/runs/38167302922).
+
+- Original production-control audit and migration history 1–8: PASS.
+- Original production service and Caddy loopback health evidence: PASS.
+- Original running API binary SHA-256 evidence: PASS.
+- Four pre-existing production backup directories were inventoried in the
+  older audit, but **their recoverability is NOT VERIFIED**.
+- Actual rollback copies of the active API binary, its systemd unit/drop-ins,
+  Caddy configuration, and required private environment material:
+  **NOT VERIFIED**.
+- Independent backup copy on the Mac-attached APFS disk: **NOT VERIFIED**.
+- The original **24-hour, instance-specific IAP SSH authorization is EXPIRED**
+  as of this read-only local check. Its existing metadata must not be
+  changed or extended without fresh user approval; other keys and IAM
+  settings must remain preserved.
+- No live production connection, database export, service restart, migration,
+  or host changes were made.
+
+**Safe stop:** A fresh, limited-scope operator authorization is required
+before reinstating any control-server access and completing the production
+rollback-artifact capture. Preparation and checks based on existing local
+evidence can continue without new cloud access. Do not infer that the
+successful database-only logical restore covers binary/configuration rollback.
+
 ## Rollback readiness — explicit limitations
 
 The [Step 2 read-only production audit](m13-gate17-step2-production-readonly-closeout-2026-10-08.md)
