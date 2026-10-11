@@ -1,0 +1,130 @@
+name: MS-02 M13 Gate 17 Local Recovery Readiness Classification
+
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-gate17-local-readiness-classification.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meshalot-m13-local-recovery-readiness
+  cancel-in-progress: false
+
+jobs:
+  classify:
+    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 5
+    steps:
+      - name: Classify preserved local Step 2 audit evidence and time-limited access
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          python3 - <<'PY'
+          import datetime
+          import hashlib
+          import json
+          import os
+          import re
+          import stat
+          import sys
+          from pathlib import Path
+
+          def need(value):
+              if not value:
+                  raise RuntimeError("safe-stop")
+
+          def check_file(p):
+              info = p.lstat()
+              need(stat.S_ISREG(info.st_mode))
+              need(info.st_uid == os.getuid())
+              need(stat.S_IMODE(info.st_mode) == 0o600)
+              need(info.st_size > 0 and info.st_size < 8 * 1024 * 1024)
+
+          def get_report(root, glob):
+              options = list(root.glob(glob))
+              need(len(options) == 1)
+              p = options[0]
+              check_file(p)
+              sha = Path(str(p) + ".sha256")
+              check_file(sha)
+              digest = hashlib.sha256(p.read_bytes()).hexdigest()
+              need(sha.read_text(encoding="utf-8") == digest + "  " + str(p) + "\n")
+              return p.read_text(encoding="utf-8").splitlines()
+
+          def values(lines, prefix):
+              return [x[len(prefix):] for x in lines if x.startswith(prefix)]
+
+          try:
+              home = Path("/home/jason_guynes")
+              root = home / ".local/share/meshalot-m13-private-audits"
+              s = root.lstat()
+              need(stat.S_ISDIR(s.st_mode))
+              need(s.st_uid == os.getuid())
+              need(stat.S_IMODE(s.st_mode) == 0o700)
+
+              control = get_report(root, "step2-control-*.txt")
+              follow = get_report(root, "step2-followup-*.txt")
+              binary = get_report(root, "step2-api-binary-*.txt")
+
+              need("M13_GATE17_STEP2_HOSTNAME_CONFIRMED=PASS" in control)
+              need("M13_GATE17_STEP2_READ_ONLY_AUDIT_COMPLETE=YES" in control)
+              need("M13_GATE17_STEP2_PRODUCTION_CHANGES=NONE" in control)
+              print("M13_G17_ORIGINAL_CONTROL_AUDIT=PASS")
+
+              migrations = values(control, "MIGRATION=")
+              versions = []
+              for x in migrations:
+                  match = re.fullmatch(r"(\d+):([a-z0-9_.]+):([0-9a-f]{12})", x)
+                  need(match is not None)
+                  need(match.group(2).startswith(f"{int(match.group(1)):06d}_"))
+                  versions.append(int(match.group(1)))
+              need(versions == list(range(1, 9)))
+              need("M13_GATE17_STEP2_MIGRATION_QUERY=PASS_READ_ONLY" in control)
+              print("M13_G17_ORIGINAL_MIGRATION_HISTORY_1_TO_8=PASS")
+
+              need("CADDY_REVERSE_PROXY_DIRECTIVE=PRESENT" in control)
+              need("CADDY_API_PATH_REFERENCE=PRESENT" in control)
+              need("CADDY_LOOPBACK_UPSTREAM_REFERENCE=PRESENT" in control)
+              need("M13_FOLLOWUP_HOST=VERIFIED" in follow)
+              need("M13_FOLLOWUP_READ_ONLY=PASS" in follow)
+              need("active" in values(follow, "API_UNIT_STATE="))
+              endpoints = values(follow, "CADDY_PROXY_HEALTH_TARGET=")
+              need(any(x.endswith("HTTP_CODE=200") for x in endpoints))
+              print("M13_G17_ORIGINAL_SERVICE_AND_PROXY_READINESS=PASS")
+
+              need("M13_PROD_BINARY_BASELINE_READONLY=COMPLETE" in binary)
+              need("active" in values(binary, "API_STATE="))
+              exe_hashes = values(binary, "API_EXE_SHA256=")
+              need(any(re.fullmatch(r"[0-9a-f]{64}", h) for h in exe_hashes))
+              print("M13_G17_ORIGINAL_RUNNING_API_FINGERPRINT=PASS")
+
+              backup_dirs = values(control, "BACKUP_DIR=")
+              need("BACKUP_INVENTORY=LISTED_READ_ONLY" in control)
+              print("M13_G17_ORIGINAL_PRODUCTION_BACKUP_DIR_COUNT=" + str(len(backup_dirs)))
+              print("M13_G17_ROLLBACK_BINARY_AND_CONFIG_COPIES=NOT_VERIFIED")
+              print("M13_G17_EXTERNAL_RECOVERY_COPY=NOT_VERIFIED")
+
+              auth_record = home / ".local/share/meshalot-m13-iap-ssh/registration.json"
+              check_file(auth_record)
+              auth = json.loads(auth_record.read_text(encoding="utf-8"))
+              need(auth.get("target") == "meshalot-control-01")
+              need(auth.get("project") == "meshalot-poc")
+              need(auth.get("zone") == "us-south1-a")
+              end = datetime.datetime.strptime(auth["expires"], "%Y-%m-%dT%H:%M:%S%z")
+              now = datetime.datetime.now(datetime.timezone.utc)
+              print("M13_G17_IAP_TIME_LIMITED_AUTH=" + ("VALID" if end > now else "EXPIRED"))
+              print("M13_G17_NO_PRODUCTION_CONNECTION=PASS")
+              print("M13_G17_LOCAL_READINESS_CLASSIFICATION=PASS")
+          except Exception:
+              print("M13_G17_LOCAL_READINESS_CLASSIFICATION=FAILED_SAFE_STOP")
+              sys.exit(1)
+          PY
