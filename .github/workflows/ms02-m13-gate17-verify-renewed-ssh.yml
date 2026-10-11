@@ -138,4 +138,4 @@ jobs:
             exit 1
           fi
           echo "M13_G17_NO_PRODUCTION_CHANGES=PASS"
-          echo "M13_G17_READONLY_RENEWAL_VERIFICATION=PASS
+          echo "M13_G17_READONLY_RENEWAL_VERIFICATION=PASS"
