@@ -1,0 +1,77 @@
+name: MS-02 M13 Gate17 Local SSH Network Read-only Inventory
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths: [.github/workflows/ms02-m13-g17-local-ssh-network-readonly.yml]
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-local-network-inventory
+  cancel-in-progress: false
+jobs:
+  inventory:
+    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 4
+    steps:
+      - name: Inspect MS-02 LAN address and SSH listener without changing services
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          python3 - <<'PY'
+          import ipaddress,json,os,subprocess,sys
+          from pathlib import Path
+          def run(args):
+              return subprocess.check_output(args,text=True,stderr=subprocess.DEVNULL,timeout=12)
+          try:
+              data=json.loads(run(["ip","-j","-4","addr","show","scope","global"]))
+              candidates=[]
+              for iface in data:
+                  ifname=iface.get("ifname","")
+                  for addr in iface.get("addr_info",[]):
+                      ip=addr.get("local","")
+                      try: parsed=ipaddress.ip_address(ip)
+                      except ValueError: continue
+                      if parsed.version==4 and parsed.is_private and not parsed.is_loopback:
+                          if ifname.startswith(("enp","eno","ens","eth","wlp","wlan")):
+                              candidates.append((ifname,ip))
+              print("M13_MS02_LAN_IPV4_CANDIDATES="+str(len(candidates)))
+              for idx,(iface,ip) in enumerate(candidates[:8],1):
+                  print(f"M13_MS02_LAN_{idx}_IFACE={iface}")
+                  print(f"M13_MS02_LAN_{idx}_IP={ip}")
+              try:
+                  route=json.loads(run(["ip","-j","-4","route","get","1.1.1.1"]))
+                  source=route[0].get("prefsrc") or route[0].get("src")
+                  if source and ipaddress.ip_address(source).is_private:
+                      print("M13_MS02_DEFAULT_ROUTE_SOURCE_IP="+source)
+                  else: print("M13_MS02_DEFAULT_ROUTE_SOURCE_IP=NOT_VERIFIED")
+              except Exception:
+                  print("M13_MS02_DEFAULT_ROUTE_SOURCE_IP=NOT_VERIFIED")
+              listening=run(["ss","-H","-ltn"])
+              ports=set()
+              for line in listening.splitlines():
+                  parts=line.split()
+                  if len(parts)>3:
+                      endpoint=parts[3]
+                      try: ports.add(int(endpoint.rsplit(":",1)[1]))
+                      except Exception: pass
+              print("M13_MS02_SSH_TCP22_LISTENING="+("YES" if 22 in ports else "NO"))
+              for service in ("ssh","sshd"):
+                  p=subprocess.run(["systemctl","is-active",service],capture_output=True,text=True,timeout=10)
+                  state=p.stdout.strip()
+                  print("M13_MS02_"+service.upper()+"_SERVICE="+(state if state in ("active","inactive","failed") else "OTHER"))
+              ssh=Path.home()/".ssh"
+              authorized=ssh/"authorized_keys"
+              if authorized.exists() and not authorized.is_symlink() and authorized.is_file():
+                  print("M13_MS02_AUTHORIZED_KEYS_FILE=PRESENT")
+              else:
+                  print("M13_MS02_AUTHORIZED_KEYS_FILE=NOT_VERIFIED")
+              print("M13_MS02_LOCAL_NETWORK_SSH_INVENTORY=PASS_READ_ONLY")
+          except Exception:
+              print("M13_MS02_LOCAL_NETWORK_SSH_INVENTORY=FAILED_SAFE_STOP")
+              sys.exit(1)
+          PY
