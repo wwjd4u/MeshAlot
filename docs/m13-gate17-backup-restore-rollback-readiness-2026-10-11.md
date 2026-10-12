@@ -432,3 +432,41 @@ the operator's approval to continue documentation work.
 Gate 17 OPEN. The next single controlled step should
 classify missing environment-file metadata under separately reviewed
 read-only authorization or an acceptable stage-only substitute.
+
+
+## Step 3E.3 — existing production SSH access preflight (2026-10-12)
+
+**Status: BLOCKED / SAFE STOP (no live dependency inspection).**
+
+Operator approved a further narrowly scoped *read-only* environment-file
+metadata check. Before connecting to the production VM, a one-time trusted
+MS-02 runner job inspected only the existing local time-limited IAP SSH
+registration metadata and permitted host identity:
+
+- [Preflight run 38299425609](https://github.com/wwjd4u/MeshAlot/actions/runs/38299425609):
+  **SUCCESS** for the local preflight, but registered authorization state
+  **EXPIRED_OR_INSUFFICIENT** against the required 15-minute access margin.
+- Exact results: `M13_STEP3E3_EXISTING_IAP_AUTH=EXPIRED_OR_INSUFFICIENT`;
+  `M13_STEP3E3_REMOTE_ENV_METADATA=NOT_ATTEMPTED`;
+  `M13_STEP3E3_PRODUCTION_CONNECTION=NONE`;
+  `M13_STEP3E3_NO_ACCESS_RENEWAL=PASS`;
+  `M13_STEP3E3_PRODUCTION_CHANGES=NONE`.
+- No read of private SSH-key contents, no recovery-key access, no new IAM
+  user, no SSH credential renewal, no production connection, no privileged
+  `stat`, no service restart and no configuration change.
+- The one-shot workflow was disabled after the run, and its
+  [next run was SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38299488841).
+  The one-time infrastructure workflow change did not modify production
+  `main`.
+- The **two declared systemd environment-file dependencies remain
+  unverified**. The earlier 3E.1 metadata check did not prove whether
+  either one exists or is missing; no change to that classification is
+  warranted.
+
+**Next decision boundary:** if live production metadata inspection is
+needed, obtain fresh explicit operator authorization before renewing the
+*existing*, instance-scoped SSH registration. Such renewal alone does not
+confer elevated file metadata permissions; if a narrow privileged read
+is required, request separate explicit approval, without changing
+system permissions. No secret file contents may be exported or logged.
+Staging and production rollout remain unauthorized; Gate 17 stays OPEN.
