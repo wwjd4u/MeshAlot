@@ -168,3 +168,22 @@ systemd environment-file declarations via a separately reviewed minimal
 read-only metadata method, or design a fully equivalent stage-only
 dependency substitute; do not escalate privilege or copy secret contents
 without express approval.
+
+### Addendum — Step 3E.5 approved administrative file metadata (2026-10-12)
+
+[Step 3E.5 metadata-only evidence](https://github.com/wwjd4u/MeshAlot/actions/runs/38309656972)
+verified that both declared environment-file references resolve to regular
+files and that only non-secret filesystem metadata was accessible through
+pre-existing, non-interactive `stat` privileges. Paths and their
+owner/mode/size metadata remain confined to the private MS-02 report.
+The one-time workflow was disabled; the later execution was SKIPPED.
+
+**Checklist delta:** existence/type/metadata visibility for both declared
+environment-file references has moved from UNVERIFIED to
+**PASS (metadata only)**. Their *contents, actual recovery material,
+separate-key custody, systemd service restoration and application startup
+in an isolated staging environment remain NOT VERIFIED*.
+Historical entries above are preserved as they stood when the plan was
+authored; this addendum supersedes only the metadata-visibility blocker.
+This is not a staging rehearsal, an escrow approval, or a live-cutover
+authorization. Gate 17 is OPEN.
