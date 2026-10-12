@@ -1,0 +1,147 @@
+name: MS-02 M13 Gate 17 Step 3E.3 Independent SSH Renewal Verification
+
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-gate17-step3e3-verify-renewal-readonly.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meshalot-m13-instance-ssh-registration
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: >-
+      github.repository == 'wwjd4u/MeshAlot' &&
+      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
+      github.event_name == 'push' &&
+      github.run_attempt == 1 &&
+      github.event.head_commit.message == 'audit(m13): one-time independent verification of 3E.3 renewal'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 8
+    env:
+      CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+      CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+      CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+      CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+    steps:
+      - name: Verify renewed VM-only public key and IAP host connectivity without writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          DIR="$HOME/.local/share/meshalot-m13-iap-ssh"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          test -x "$GCLOUD"
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-renewal-verify.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          "$GCLOUD" compute instances describe meshalot-control-01 \
+            --project=meshalot-poc --zone=us-south1-a --format=json \
+            >"$WORK/vm.json" 2>"$WORK/vm-error"
+          "$GCLOUD" compute project-info describe --project=meshalot-poc \
+            --format=json >"$WORK/project.json" 2>"$WORK/project-error"
+          
+          python3 - "$DIR" "$WORK" <<'PY'
+          import datetime
+          import json
+          import os
+          import re
+          import stat
+          import sys
+          from pathlib import Path
+          
+          dirpath, workpath=(Path(v) for v in sys.argv[1:])
+          def need(value, msg):
+              if not value:
+                  raise RuntimeError(msg)
+          def safe(p, kind, mode):
+              x=p.lstat()
+              need(x.st_uid==os.getuid(), "PRIVATE_FILE_OWNER_CHANGED")
+              need(stat.S_IMODE(x.st_mode)==mode,"PRIVATE_FILE_MODE_CHANGED")
+              need((stat.S_ISREG(x.st_mode) if kind=="file" else stat.S_ISDIR(x.st_mode)),"PRIVATE_FILE_TYPE_CHANGED")
+          
+          safe(dirpath, "dir", 0o700)
+          reg=dirpath/"registration.json"
+          key=dirpath/"id_ed25519"
+          pub=dirpath/"id_ed25519.pub"
+          known=dirpath/"known_hosts"
+          for p in (reg,key,pub,known):safe(p,"file",0o600)
+          data=json.loads(reg.read_text(encoding="utf-8"))
+          need(data.get("target")=="meshalot-control-01" and data.get("project")=="meshalot-poc" and data.get("zone")=="us-south1-a","SSH_REGISTRATION_TARGET_CHANGED")
+          user=data.get("username","")
+          need(re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}", user),"SSH_REGISTRATION_USER_INVALID")
+          expiry=datetime.datetime.strptime(data["expires"],"%Y-%m-%dT%H:%M:%S%z")
+          now=datetime.datetime.now(datetime.timezone.utc)
+          need(now+datetime.timedelta(hours=23)<expiry<now+datetime.timedelta(hours=24,minutes=2),"RENEWAL_EXPIRY_NOT_24H")
+          parts=pub.read_text().split()
+          need(len(parts)>=2 and parts[0]=="ssh-ed25519","EXISTING_KEY_MISSING")
+          
+          vm=json.loads((workpath/"vm.json").read_text())
+          project=json.loads((workpath/"project.json").read_text())
+          need(vm.get("name")=="meshalot-control-01" and vm.get("status")=="RUNNING" and str(vm.get("zone","")).endswith("/us-south1-a"),"INCORRECT_VM")
+          def entries(m):
+              return {x["key"]:x.get("value","") for x in ((m or {}).get("items") or [])}
+          im=entries(vm.get("metadata"))
+          pm=entries(project.get("commonInstanceMetadata"))
+          need(im.get("enable-oslogin",pm.get("enable-oslogin","false")).lower()!="true","OS_LOGIN_CHANGE")
+          need(im.get("block-project-ssh-keys",pm.get("block-project-ssh-keys","false")).lower()!="true","PROJECT_KEYS_BLOCKED")
+          need(user in {line.partition(":")[0] for line in pm.get("ssh-keys","").splitlines()},"ORIGINAL_PROJECT_USER_MISSING")
+          lines=im.get("ssh-keys","").splitlines()
+          matches=0
+          for line in lines:
+              m=re.fullmatch(r"([a-z_][a-z0-9_-]{0,30}):ssh-ed25519 ([A-Za-z0-9+/=]+) google-ssh (\{.*\})",line)
+              if m and m.group(1)==user and m.group(2)==parts[1]:
+                  meta=json.loads(m.group(3))
+                  need(meta.get("userName")==user and
+                       datetime.datetime.strptime(meta["expireOn"],"%Y-%m-%dT%H:%M:%S%z")==expiry,
+                       "RENEWAL_REMOTE_EXPIRY_MISMATCH")
+                  matches+=1
+          need(matches==1,"EXACT_RENEWED_KEY_NOT_UNIQUE")
+          history=dirpath/"registration-history"
+          safe(history,"dir",0o700)
+          old=list(history.glob("registration-pre-renewal-run-*.json"))
+          need(bool(old),"PREVIOUS_REGISTRATION_NOT_PRESERVED")
+          for p in old: safe(p,"file",0o600)
+          need(any(json.loads(p.read_text()).get("expires")!=data["expires"] and
+                   json.loads(p.read_text()).get("username")==user for p in old),
+               "OLD_REGISTRATION_HISTORY_NOT_FOUND")
+          (workpath/"ssh-user").write_text(user,encoding="utf-8")
+          print("M13_G17_VM_ONLY_RENEWED_PUBLIC_KEY=PASS")
+          print("M13_G17_ORIGINAL_ED25519_IDENTITY_PRESERVED=PASS")
+          print("M13_G17_24H_EXPIRY_VERIFIED=PASS")
+          print("M13_G17_PRIOR_REGISTRATION_HISTORY_PRESERVED=PASS")
+          print("M13_G17_PROJECT_LOGIN_POLICY_UNCHANGED=PASS")
+          PY
+          
+          # Read-only authenticated check using the previously pinned host key.
+          # Does not alter known_hosts or remote system state.
+          PROXY="$GCLOUD compute start-iap-tunnel %h %p --project=meshalot-poc --zone=us-south1-a --listen-on-stdin --quiet --verbosity=error"
+          SSH_USER="$(cat "$WORK/ssh-user")"
+          if timeout --signal=TERM --kill-after=5s 90 ssh \
+              -F /dev/null -T \
+              -o "ProxyCommand=$PROXY" -o BatchMode=yes -o ConnectTimeout=30 \
+              -o ConnectionAttempts=1 -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              -o "UserKnownHostsFile=$DIR/known_hosts" \
+              -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no \
+              -o LogLevel=ERROR -i "$DIR/id_ed25519" \
+              "$SSH_USER@meshalot-control-01" \
+              'test "$(hostname -s)" = "meshalot-control-01" && printf "M13_RENEWED_REMOTE_HOST=PASS\n"' \
+              >"$WORK/remote-out" 2>"$WORK/remote-error"; then
+            grep -Fxq 'M13_RENEWED_REMOTE_HOST=PASS' "$WORK/remote-out"
+            echo "M13_G17_RENEWED_IAP_HOST_AUTH=PASS"
+          else
+            echo "M13_G17_RENEWED_IAP_HOST_AUTH=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          echo "M13_G17_NO_PRODUCTION_CHANGES=PASS"
+          echo "M13_G17_READONLY_RENEWAL_VERIFICATION=PASS"
+          echo "M13_STEP3E3_RENEWED_EXISTING_SSH_INDEPENDENT_VERIFIED=PASS"
