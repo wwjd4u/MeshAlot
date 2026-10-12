@@ -10,7 +10,10 @@ concurrency:
   cancel-in-progress: false
 jobs:
   inventory:
-    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway' && github.event.head_commit.message == 'audit(m13): approved one-time Step 3E.1 read-only dependency inventory'
+    if: >-
+      github.repository == 'wwjd4u/MeshAlot' &&
+      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
+      github.event.head_commit.message == 'audit(m13): approved one-time Step 3E.1 read-only dependency inventory'
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 7
     env:
