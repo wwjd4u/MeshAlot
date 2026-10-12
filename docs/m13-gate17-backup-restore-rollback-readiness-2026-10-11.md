@@ -234,6 +234,48 @@ archive or separate protected passphrase exists as verified. No live rollback
 or restoration of production binaries/configurations has been attempted.
 Existing backup directories remain inventoried but not restore-tested.
 
+## Mac-connected external backup destination and trusted SSH — 2026-10-11
+
+Operator-provided Mac Terminal results verified the following; this section
+records **user-supplied terminal evidence** rather than a remote Mac runner
+audit.
+
+- Physical external Toshiba: 2 TB APFS container. Existing encrypted
+  Time Machine volume `TOSHIBA EXT` was preserved and remains a separate
+  APFS Backup-role volume with an approximately 1.36 TB quota.
+- The new **external** APFS volume is `MeshAlot-Backup` (singular),
+  mounted at `/Volumes/MeshAlot-Backup`, reported by macOS as encrypted
+  and unlocked with a **400 GB quota**. It is distinct from the protected
+  Time Machine volume. Previous accidental `MeshAlot-Backups` internal
+  volume was marked for removal; do not assume its deletion was
+  independently verified.
+- Current MS-02 LAN SSH endpoint from trusted local-only runner inventory:
+  `192.168.5.98:22`, replacing the obsolete `192.168.5.131`.
+  [Runner verification](https://github.com/wwjd4u/MeshAlot/actions/runs/38188173920).
+- Trusted ED25519 **server host key** fingerprint read from MS-02:
+  `SHA256:q8bmG7nOFS17NCNIOcAR4Z5Cc+L7O1KJd0Q66K9yEq0`.
+  [Runner verification](https://github.com/wwjd4u/MeshAlot/actions/runs/38188347513).
+  The Mac used `ssh-keyscan`, compared it to that exact fingerprint, and
+  appended the matching public host key to `~/.ssh/known_hosts`.
+- The Mac's existing `google_compute_engine` user private key was not
+  accepted by the MS-02 for `jason_guynes`. **Do not assume key-based login
+  works, and do not create a new SSH identity as a shortcut.**
+- Mac-to-MS-02 SSH **password authentication PASSED twice** with strict
+  host-key checking and explicitly disabled public-key authentication. The
+  remote `hostname -s` returned `wwjd4u-MS-02-Ultra`.
+- No MeshAlot encrypted archive or checksum has yet been copied onto the
+  external volume as of this handoff. Both original archives and their
+  original recovery keys remain in private MS-02 storage.
+
+**NEXT CONTROLLED OPERATOR STEP:** Create a distinct private directory on
+`/Volumes/MeshAlot-Backup`, then transfer **encrypted archives plus checksum
+files only** from MS-02 using the now-verified password-based SSH route.
+Use exclusive/no-overwrite writes and check hashes on the external destination.
+Original recovery passphrases MUST NOT travel with the archives or be printed
+to GitHub, Drive or chat. Do not start a new DB dump, regenerate either key,
+modify production, or claim off-machine recovery until both copies are
+independently SHA-verified. Use one numbered step at a time.
+
 ## Rollback readiness — explicit limitations
 
 The [Step 2 read-only production audit](m13-gate17-step2-production-readonly-closeout-2026-10-08.md)
