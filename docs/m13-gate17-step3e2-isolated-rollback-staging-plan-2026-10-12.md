@@ -12,10 +12,10 @@ authorized by this document.
 - Governing guide: **AI Mesh POC Build, Test, and Release Guide**, Milestone 13.
 - [Gate 17 controlled rollout plan](m13-gate17-controlled-live-rollout-plan-2026-10-07.md);
   [Gate 17 backup/restore/rollback readiness record](m13-gate17-backup-restore-rollback-readiness-2026-10-11.md).
-- Production \`main\` was independently read as
-  \`1016c9b058690f34058dfab9cde7927e421fa469\` when preparing this plan.
+- Production `main` was independently read as
+  `1016c9b058690f34058dfab9cde7927e421fa469` when preparing this plan.
   Tested M13 application candidate in the Gate 17 evidence is
-  \`4f67ee54e5ebca084e38e306e723ae0acd08e77d\`; neither is permission
+  `4f67ee54e5ebca084e38e306e723ae0acd08e77d`; neither is permission
   to deploy. Production PostgreSQL is major 16, migrations **1–8 only**;
   migrations 9–10 are not applied to production.
 - Gate 17 Step 3B original encrypted logical archive had GPG/SHA-256/TOC
@@ -29,8 +29,8 @@ authorized by this document.
   were intentionally excluded. No complete service rollback is proven.
 - Step 3D operator Mac Terminal verified two existing encrypted archives,
   two matching SHA-256 sidecars, exactly four restricted files on the
-  separate **encrypted Toshiba APFS** \`MeshAlot-Backup\` volume. The existing
-  Time Machine \`TOSHIBA EXT\` volume shares that **same physical disk** and
+  separate **encrypted Toshiba APFS** `MeshAlot-Backup` volume. The existing
+  Time Machine `TOSHIBA EXT` volume shares that **same physical disk** and
   remains protected. Neither archive was regenerated.
 - Step 3D.5: operator reports both original passphrases stored and reopened
   successfully in separate private RoboForm Safenotes. Clipboard-clear PASS.
@@ -49,9 +49,9 @@ authorized by this document.
 
 | Component | Existing evidence | Outstanding proof / disposition |
 | --- | --- | --- |
-| Encrypted PostgreSQL16 logical archive | Original and off-MS-02 SHA-256 matches; one prior isolated logical restore PASS | Document exact *later* recovery recipe, global database roles, owners, ACLs, extensions, grants and dependent runtime identities. A \`--no-owner --no-privileges\` test does not validate these. |
+| Encrypted PostgreSQL16 logical archive | Original and off-MS-02 SHA-256 matches; one prior isolated logical restore PASS | Document exact *later* recovery recipe, global database roles, owners, ACLs, extensions, grants and dependent runtime identities. A `--no-owner --no-privileges` test does not validate these. |
 | Encrypted known-good API executable | In nine-member encrypted rollback archive, original hash-pinned | In authorized **isolated** environment, prove artifact extraction and executable/architecture compatibility without touching live executable |
-| Systemd unit fragment and six drop-ins | Encrypted, archived, checked against private fingerprints | Identify \`User\`/\`Group\`, \`ExecStart\`, \`WorkingDirectory\`, ordering, required paths, permissions and override precedence; staging-only \`systemd-analyze verify\` and start/stop behavior |
+| Systemd unit fragment and six drop-ins | Encrypted, archived, checked against private fingerprints | Identify `User`/`Group`, `ExecStart`, `WorkingDirectory`, ordering, required paths, permissions and override precedence; staging-only `systemd-analyze verify` and start/stop behavior |
 | Systemd environment-file declarations | Two declarations identified | **BLOCKED:** classify each underlying distinct path, whether optional/required, owner/mode/existence and safe recovery mechanism. Contents intentionally not archived; no path/content in public evidence |
 | Primary Caddyfile | Encrypted and hash-verified; inspected bounded import directives = 0 | In isolated context validate syntax, route/upstream and WebSocket behavior. TLS certificate storage, plugins/modules and additional runtime/config sources not established |
 | Caddy imported file material | No imports detected in inspected primary file | Confirm via approved runtime/config-dependency review when justified; avoid treating primary-file static parsing as complete dependency proof |
@@ -108,7 +108,7 @@ authorized by this document.
    a GitHub secret or shared staging log. No unattended runner secret access.
 9. From the existing private recovery manifest, stage the known-good API
    executable, unit and drop-ins, and primary Caddyfile at **remapped stage
-   paths**, never \`/etc/systemd\`, \`/etc/caddy\` or live release paths of any
+   paths**, never `/etc/systemd`, `/etc/caddy` or live release paths of any
    operational host. Preserve and verify mapped ownership/mode constraints.
    Configure dummy stage-only environment values and local test credentials,
    not exported production credentials.
