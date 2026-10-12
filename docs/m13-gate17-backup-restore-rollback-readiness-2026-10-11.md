@@ -363,3 +363,48 @@ plan an isolated staging rollback rehearsal. No production migrations,
 services, files, identities, SSH policies, provider controls, or historic
 V100 evidence were modified by these copy/vault steps. Production cutover
 remains blocked pending separate explicit operator approval.
+
+
+## Gate 17 Step 3E.1 — read-only rollback dependency inventory (2026-10-12)
+
+**Authorization and limits:** Operator explicitly approved a read-only
+inventory of the production systemd environment-file dependencies and
+primary Caddyfile import declarations. The inspected production host was
+the established `meshalot-control-01` over the previously authorized,
+host-key-pinned, time-limited Google IAP SSH path. No extension of SSH
+authorization, additional IAM identity, new key, migration, production
+deployment, service restart, or new backup was performed.
+
+- [Trusted runner inspection](https://github.com/wwjd4u/MeshAlot/actions/runs/38295531951):
+  **SUCCESS**. One production MeshAlot service unit identified.
+- Two **systemd environment-file declarations** were discovered and
+  parsed. Both underlying file-metadata lookups remained **UNVERIFIED**
+  under the available read-only inspection; **neither was confirmed
+  missing**. No environment-file contents or secret values were accessed.
+- The **primary Caddyfile was read for import directives** on the
+  production host, without publishing its contents. The bounded parser
+  identified **zero import directives**, zero unresolved references,
+  and zero parsing faults within the inspected primary file. This does
+  not certify unrelated Caddy runtime dependencies.
+- Private JSON evidence and SHA-256 checksum were preserved in the
+  pre-existing, owner-restricted MS-02 audit directory. GitHub logs
+  contain only sanitized statuses/counts, never environment values,
+  recovery passphrases, or raw Caddy configuration.
+- The initial workflow-definition attempt
+  [failed before starting a job](https://github.com/wwjd4u/MeshAlot/actions/runs/38295457188);
+  corrected code ran successfully at the link above. The one-time
+  workflow was then disabled and its [next execution was SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38295774465),
+  preserving the least-privilege boundary.
+- An optional attempt to arrange an additional privileged file-metadata
+  follow-up was **not executed**. No privileged inspection outcome is
+  claimed; environment-file presence, ownership, modes and backup
+  completeness remain **pending**.
+
+**Decision:** Step 3E.1 is **PARTIAL PASS / DEPENDENCIES UNVERIFIED**.
+The existing encrypted binary/systemd/Caddy recovery archive remains a
+verified *partial* package only; there is still no complete,
+tested rollback of environment files, service ownership, global
+PostgreSQL roles, or staged system restart. Gate 17 remains **OPEN**.
+Proceed only with separately reviewed, non-disruptive recovery planning
+until the unresolved dependencies are classified. No main-branch or
+production configuration changes were made.
