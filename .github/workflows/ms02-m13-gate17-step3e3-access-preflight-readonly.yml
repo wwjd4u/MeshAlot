@@ -11,10 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   preflight:
-    if: >-
-      github.repository == 'wwjd4u/MeshAlot' &&
-      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
-      github.event.head_commit.message == 'audit(m13): one-time Step 3E.3 existing-access preflight'
+    if: false # completed one-time Step 3E.3 preflight; no rerun without review
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 3
     steps:
