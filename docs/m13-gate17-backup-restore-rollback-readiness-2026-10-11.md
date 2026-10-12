@@ -524,3 +524,52 @@ remains a verified *partial* package. An additional read-only dependency
 check must not infer elevated privileges from this authorization.
 Gate 17 remains **OPEN**; no production migration/deployment/restart,
 Node001/Node002 identity change, backup regeneration, or V100 rerun occurred.
+
+## Step 3E.4 — read-only environment-file metadata inspection (2026-10-12)
+
+**Operator instruction:** Continue the agreed Gate 17 read-only metadata
+inspection, using the existing time-limited VM-specific IAP identity.
+If non-elevated inspection cannot access required files, STOP; do not
+escalate privilege or read secret contents.
+
+- [One-time scoped run 38305625613](https://github.com/wwjd4u/MeshAlot/actions/runs/38305625613)
+  **SUCCESS** for correct host, SSH time-limit/host-key checks, command
+  execution, safe metadata-only classification and private evidence SHA-256.
+  The inspected target was `meshalot-control-01` (one MeshAlot service).
+- `EnvironmentFiles` declaration count: **2**, matching Step 3E.1.
+  Unprivileged `lstat` metadata lookups: **0 accessible**;
+  **2 ACCESS_DENIED**; **0 conclusively missing**; **0 parse faults
+  or unresolved references**. Two declarations are not evidence of
+  two distinct files.
+- No `sudo`, credential renewal, file-content reads, Caddy reread,
+  shell access beyond the approved inspection, permissions/ownership
+  edits, service restart, migration, data extraction, new backups,
+  recovery-key use, or production configuration changes.
+- Detailed path names and metadata categories are confined to the
+  existing owner-restricted `0700` MS-02 private audit directory
+  in `0600` JSON and corresponding checksum files. Only sanitized
+  PASS/count/classification markers were written to GitHub logs.
+  `M13_STEP3E4_ENV_METADATA_CLASSIFICATION=BLOCKED_REVIEW_REQUIRED`;
+  `M13_STEP3E4_SECRET_CONTENTS_READ=NO`;
+  `M13_STEP3E4_PRIVILEGE_ESCALATION=NONE`;
+  `M13_STEP3E4_PRODUCTION_CHANGES=NONE`;
+  `M13_STEP3E4_PRIVATE_EVIDENCE_SHA256=PASS`.
+- The one-time inspection job was **disabled immediately after completion**;
+  its next [run 38305686863](https://github.com/wwjd4u/MeshAlot/actions/runs/38305686863)
+  was independently confirmed **SKIPPED**.
+
+**Step 3E.4 result: READ-ONLY CHECK COMPLETE / SAFE-STOP ACCESS DENIED.**
+Neither the existence nor the ownership/mode of either environment-file
+dependency is proven, so complete rollback readiness is still **BLOCKED**.
+This is an authorization/visibility gap, **not proof of lost files or
+broken production service**. The previously verified encrypted archive,
+RoboForm operator confirmation, Node001/Node002 identities, historical
+benchmarks, V100 evidence and Time Machine backups remain preserved.
+
+**Decision required before Step 3E.5:** Obtain explicit, separate
+operator approval for a least-privilege *metadata-only* administrative
+check of the two declared paths, or choose a stage-only substitute
+that does not require inspecting production file metadata.
+The current user's approval does **not** authorize sudo, privilege
+escalation, secret-value export, a production mutation or a staging
+rollout. Gate 17 remains **OPEN**.
