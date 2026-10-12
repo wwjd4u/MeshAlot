@@ -15,12 +15,7 @@ concurrency:
 
 jobs:
   renew:
-    if: >-
-      github.repository == 'wwjd4u/MeshAlot' &&
-      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
-      github.event_name == 'push' &&
-      github.run_attempt == 1 &&
-      github.event.head_commit.message == 'auth(m13): operator-approved one-time 24h IAP renewal for Step 3E.3'
+    if: false # operator-approved 24h renewal complete; prevent further access extensions
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 10
     env:
