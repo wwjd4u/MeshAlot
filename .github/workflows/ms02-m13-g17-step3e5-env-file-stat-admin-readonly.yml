@@ -1,0 +1,191 @@
+name: MS-02 M13 Gate 17 Step 3E.5 Environment Dependency Metadata (Read Only)
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-g17-step3e5-env-file-stat-admin-readonly.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-control-readonly-audit
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: >-
+      github.repository == 'wwjd4u/MeshAlot' &&
+      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
+      github.event_name == 'push' &&
+      github.run_attempt == 1 &&
+      github.event.head_commit.message == 'audit(m13): approved one-time Step 3E.5 administrative metadata-only stat'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 7
+    env:
+      CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+      CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+      CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+      CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+    steps:
+      - name: Read only declared environment-file metadata via existing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = meshalot-ms02
+          test "$(hostname -s)" = wwjd4u-MS-02-Ultra
+          test "$(id -un)" = jason_guynes
+          test "$HOME" = /home/jason_guynes
+          DIR="$HOME/.local/share/meshalot-m13-iap-ssh"
+          ROOT="$HOME/.local/share/meshalot-m13-private-audits"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          test -x "$GCLOUD"
+          for d in "$DIR" "$ROOT"; do
+            test -d "$d" && test ! -L "$d"
+            test "$(stat -c %a "$d")" = 700
+            test "$(stat -c %u "$d")" = "$(id -u)"
+          done
+          for f in "$DIR/id_ed25519" "$DIR/known_hosts" "$DIR/registration.json"; do
+            test -f "$f" && test ! -L "$f"
+            test "$(stat -c %a "$f")" = 600
+            test "$(stat -c %u "$f")" = "$(id -u)"
+          done
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-g17-3e5.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          python3 - "$DIR/registration.json" "$WORK/ssh-user" <<'PY'
+          import datetime,json,re,sys
+          from pathlib import Path
+          r=json.loads(Path(sys.argv[1]).read_text())
+          assert r.get("target")=="meshalot-control-01"
+          assert (r.get("project"),r.get("zone"))==("meshalot-poc","us-south1-a")
+          assert re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}",r.get("username",""))
+          expiry=datetime.datetime.strptime(r["expires"],"%Y-%m-%dT%H:%M:%S%z")
+          assert expiry>datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(minutes=15),"IAP authorization expired"
+          Path(sys.argv[2]).write_text(r["username"])
+          print("M13_STEP3E5_EXISTING_IAP_AUTH=PASS")
+          PY
+
+          cat >"$WORK/remote.sh" <<'REMOTE'
+          #!/bin/bash
+          set -euo pipefail
+          if test "$(hostname -s)" != meshalot-control-01; then
+            echo M13_STEP3E5_WRONG_HOST_STOP
+            exit 42
+          fi
+          python3 - <<'PY'
+          import errno,json,os,re,stat,subprocess
+          def systemctl(args):
+              p=subprocess.run(["systemctl"]+args,capture_output=True,timeout=8,check=False)
+              if p.returncode != 0: raise RuntimeError("SYSTEMCTL_READ_UNAVAILABLE")
+              return p.stdout.decode("utf-8","replace").strip()
+          listing=systemctl(["list-unit-files","meshalot*.service","--no-legend","--no-pager"])
+          units=[]
+          for line in listing.splitlines():
+              parts=line.split()
+              if parts and re.fullmatch(r"meshalot[A-Za-z0-9_.@-]*\.service",parts[0]):
+                  units.append(parts[0])
+          if len(units)!=1:raise RuntimeError("UNEXPECTED_SERVICE_COUNT")
+          raw=systemctl(["show",units[0],"--property=EnvironmentFiles","--value"])
+          pattern=r"(\S+)\s+\(ignore_errors=(yes|no)\)"
+          declared=list(re.finditer(pattern,raw))
+          if len(declared)!=2 or re.sub(pattern,"",raw).strip():
+              raise RuntimeError("ENVIRONMENTFILES_PARSE_MISMATCH")
+          findings=[]
+          for match in declared:
+              path=match.group(1)
+              required=match.group(2)=="no"
+              if not path.startswith("/") or any(x in path for x in "*?[]{}"):
+                  findings.append(dict(path=path,required=required,state="UNRESOLVED_REFERENCE"))
+                  continue
+              try:
+                  # Existing non-interactive administrative stat only.
+                  probe=subprocess.run(
+                      ["sudo","-n","--","/usr/bin/stat","-c","%F|%a|%u|%g|%s","--",path],
+                      capture_output=True,check=False,timeout=8)
+                  if probe.returncode!=0:
+                      findings.append(dict(path=path,required=required,
+                          state="NO_PREAUTHORIZED_STAT_ACCESS"))
+                      continue
+                  fields=probe.stdout.decode("ascii","strict").strip().split("|")
+                  if len(fields)!=5:
+                      findings.append(dict(path=path,required=required,
+                          state="UNVERIFIED_STAT_FORMAT"))
+                      continue
+                  filetype,mode,uid,gid,size=fields
+                  if not (mode.isdigit() and uid.isdigit() and
+                          gid.isdigit() and size.isdigit()):
+                      findings.append(dict(path=path,required=required,
+                          state="UNVERIFIED_STAT_FORMAT"))
+                      continue
+                  kind=("REGULAR" if filetype=="regular file" else
+                        "SYMLINK" if filetype=="symbolic link" else "OTHER")
+                  findings.append(dict(path=path,required=required,
+                      state="METADATA_AVAILABLE",kind=kind,
+                      uid=int(uid),gid=int(gid),mode=mode,
+                      size_bytes=int(size)))
+              except (OSError,subprocess.TimeoutExpired,UnicodeError):
+                  findings.append(dict(path=path,required=required,
+                      state="UNVERIFIED_STAT_FAILURE"))
+          print(json.dumps(dict(schema="m13-g17-3e5-v1",remote_hostname="meshalot-control-01",
+              service_count=1,declarations=findings,secret_contents_read=False,
+              elevated_access=True,production_changes=False),
+              separators=(",",":"),sort_keys=True))
+          PY
+          REMOTE
+
+          bash -n "$WORK/remote.sh"
+          set +e
+          GUARD="$(bash "$WORK/remote.sh" 2>/dev/null)"
+          RC="$?"
+          set -e
+          test "$RC" -eq 42 && test "$GUARD" = M13_STEP3E5_WRONG_HOST_STOP
+          echo "M13_STEP3E5_WRONG_HOST_GUARD=PASS"
+
+          REPORT="$ROOT/m13-g17-step3e5-env-metadata-$(date -u +%Y%m%dT%H%M%SZ)-run-$GITHUB_RUN_ID.json"
+          test ! -e "$REPORT" && test ! -L "$REPORT"
+          USER="$(cat "$WORK/ssh-user")"
+          PROXY="$GCLOUD compute start-iap-tunnel %h %p --project=meshalot-poc --zone=us-south1-a --listen-on-stdin --quiet --verbosity=error"
+          set +e
+          timeout --signal=TERM --kill-after=5s 115 ssh \
+            -F /dev/null -T -o "ProxyCommand=$PROXY" \
+            -o BatchMode=yes -o ConnectTimeout=30 -o ConnectionAttempts=1 \
+            -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$DIR/known_hosts" \
+            -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no \
+            -o LogLevel=ERROR -i "$DIR/id_ed25519" \
+            "$USER@meshalot-control-01" 'bash -s' \
+            <"$WORK/remote.sh" >"$REPORT" 2>"$WORK/ssh-errors"
+          RC="$?"
+          set -e
+          chmod 600 "$REPORT"
+          if test "$RC" -ne 0; then
+            echo "M13_STEP3E5_REMOTE_READONLY_METADATA=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          python3 - "$REPORT" <<'PY'
+          import json,os,stat,sys
+          from pathlib import Path
+          p=Path(sys.argv[1]);s=p.lstat()
+          assert stat.S_ISREG(s.st_mode) and s.st_uid==os.getuid() and stat.S_IMODE(s.st_mode)==0o600
+          assert 120<s.st_size<16384,"Invalid report size"
+          r=json.loads(p.read_text())
+          assert r["schema"]=="m13-g17-3e5-v1"
+          assert r["remote_hostname"]=="meshalot-control-01"
+          assert r["service_count"]==1
+          assert r["secret_contents_read"] is False
+          assert r["elevated_access"] is True
+          assert r["production_changes"] is False
+          d=r["declarations"]
+          assert len(d)==2
+          kinds=[x["state"] for x in d]
+          print("M13_STEP3E5_ENV_DECLARATIONS=2")
+          for key in ("METADATA_AVAILABLE","NO_PREAUTHORIZED_STAT_ACCESS","UNRESOLVED_REFERENCE","UNVERIFIED_STAT_FORMAT","UNVERIFIED_STAT_FAILURE"):
+              print("M13_STEP3E5_"+key+"_COUNT="+str(kinds.count(key)))
+          passed=all(x["state"]=="METADATA_AVAILABLE" and x.get("kind")=="REGULAR" for x in d)
+          print("M13_STEP3E5_ENV_METADATA_CLASSIFICATION="+("PASS" if passed else "BLOCKED_REVIEW_REQUIRED"))
+          print("M13_STEP3E5_SECRET_CONTENTS_READ=NO")
+          print("M13_STEP3E5_PRIVILEGED_READ=EXISTING_NONINTERACTIVE_STAT_ONLY")
+          print("M13_STEP3E5_PRODUCTION_CHANGES=NONE")
+          PY
+          sha256sum -- "$REPORT" >"$REPORT.sha256"
+          chmod 600 "$REPORT.sha256"
+          (cd "$ROOT" && sha256sum --check --status "$(basename "$REPORT").sha256")
+          echo "M13_STEP3E5_PRIVATE_EVIDENCE_SHA256=PASS"
