@@ -573,3 +573,56 @@ that does not require inspecting production file metadata.
 The current user's approval does **not** authorize sudo, privilege
 escalation, secret-value export, a production mutation or a staging
 rollout. Gate 17 remains **OPEN**.
+
+## Step 3E.5 — approved environment-file administrative metadata-only inventory (2026-10-12)
+
+**Outcome: PASS for metadata-only classification; Gate 17 remains OPEN.**
+Operator's "let's continue" following the explicit Step 3E.5 scoped administrative
+inspection proposal was treated as permission for that *specific read-only
+metadata check only*. It did not authorize new SSH identities, IAM policy
+changes, production file mutations, reading environment values, or deployment.
+
+- [Approved one-time run 38309656972](https://github.com/wwjd4u/MeshAlot/actions/runs/38309656972):
+  **SUCCESS**, with pinned known-host verification via the already renewed,
+  time-limited, instance-specific Google IAP SSH identity to the exact
+  `meshalot-control-01` host. Private evidence was saved on MS-02 with
+  mode `0600` and its SHA-256 checksum verified.
+- Exactly **two systemd EnvironmentFiles declarations** were evaluated.
+  **Two of two** permitted non-interactive administrative `/usr/bin/stat`
+  metadata lookups succeeded using existing sudo authorization; each
+  referenced path classified as a **regular file**. There were no
+  unauthorized-stat, unresolved-reference, or metadata format failures.
+  Two declarations do not necessarily represent two distinct physical files.
+- Full underlying path names, file owners/groups, permission modes and
+  sizes are contained **only** in the existing restrictive private MS-02
+  evidence record. No production secret contents, environment-variable
+  values, recovery keys, or decrypted archive members were read or
+  printed in GitHub logs, Drive, or chat.
+- Job results:
+  `M13_STEP3E5_ENV_DECLARATIONS=2`,
+  `M13_STEP3E5_METADATA_AVAILABLE_COUNT=2`,
+  `M13_STEP3E5_ENV_METADATA_CLASSIFICATION=PASS`,
+  `M13_STEP3E5_SECRET_CONTENTS_READ=NO`,
+  `M13_STEP3E5_PRIVILEGED_READ=EXISTING_NONINTERACTIVE_STAT_ONLY`,
+  `M13_STEP3E5_PRODUCTION_CHANGES=NONE`,
+  `M13_STEP3E5_PRIVATE_EVIDENCE_SHA256=PASS`.
+- The one-time administrative workflow was **disabled** on infrastructure
+  branch immediately after completion. Its
+  [subsequent run 38309714447](https://github.com/wwjd4u/MeshAlot/actions/runs/38309714447)
+  was confirmed **SKIPPED**. No unattended repeat elevated reads are enabled.
+
+**Resolved:** previous Step 3E.1/3E.4 inability to verify the two systemd
+environment-file path entries and basic filesystem metadata. This is
+*metadata verification only*, not recovery authorization or evidence
+that their contents are included in the existing encrypted rollback
+archive (they remain explicitly excluded).
+
+**Remaining release blockers:** establish an operator-controlled,
+encrypted, separately approved method to recover required environment
+values without publishing them or storing them beside archived backups;
+verify systemd/Caddy/TLS runtime dependencies and PostgreSQL global
+roles/permissions; run an approved isolated stage-only rollback rehearsal;
+then obtain explicit approval before any production cutover.
+Preserve original DB/API archives, RoboForm Safenotes, Time Machine,
+Node001/Node002 identities, M8/M9 scores, M11 controls and V100 evidence.
+No such additional work was executed by Step 3E.5. **Gate 17 OPEN.**
