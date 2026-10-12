@@ -1,0 +1,40 @@
+name: MS-02 M13 Gate17 Trusted SSH Host Fingerprint
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths: [.github/workflows/ms02-m13-g17-host-fingerprint-readonly.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 3
+    steps:
+      - name: Read only public ED25519 SSH host fingerprint from verified MS-02
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          python3 - <<'PY'
+          import os,stat,subprocess,sys
+          from pathlib import Path
+          try:
+              path=Path("/etc/ssh/ssh_host_ed25519_key.pub")
+              s=path.lstat()
+              assert stat.S_ISREG(s.st_mode) and not stat.S_ISLNK(s.st_mode)
+              assert s.st_uid==0 and s.st_size>0 and s.st_size<1024
+              parts=path.read_text().split()
+              assert len(parts)>=2 and parts[0]=="ssh-ed25519"
+              out=subprocess.check_output(["ssh-keygen","-lf",str(path),"-E","sha256"],text=True,timeout=8)
+              fingerprint=next(x for x in out.split() if x.startswith("SHA256:"))
+              assert fingerprint and len(fingerprint)<90
+              print("M13_MS02_SSH_ED25519_FINGERPRINT="+fingerprint)
+              print("M13_MS02_SSH_HOST_FINGERPRINT_READONLY=PASS")
+          except Exception:
+              print("M13_MS02_SSH_HOST_FINGERPRINT_READONLY=FAILED_SAFE_STOP")
+              sys.exit(1)
+          PY
