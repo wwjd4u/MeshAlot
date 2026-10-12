@@ -1,0 +1,251 @@
+name: MS-02 M13 Gate 17 Step 3E.1 Dependency Inventory (Read Only)
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths: [.github/workflows/ms02-m13-gate17-step3e1-dependency-inventory-readonly.yml]
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-control-readonly-audit
+  cancel-in-progress: false
+jobs:
+  inventory:
+    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway' && github.event.head_commit.message == 'audit(m13): approved one-time Step 3E.1 read-only dependency inventory'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 7
+    env:
+      CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+      CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+      CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+      CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+    steps:
+      - name: Read-only production dependency metadata via pinned IAP SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          DIR="$HOME/.local/share/meshalot-m13-iap-ssh"
+          ROOT="$HOME/.local/share/meshalot-m13-private-audits"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          test -x "$GCLOUD"
+          for d in "$DIR" "$ROOT"; do
+            test -d "$d" && test ! -L "$d"
+            test "$(stat -c %a "$d")" = 700
+            test "$(stat -c %u "$d")" = "$(id -u)"
+          done
+          for f in "$DIR/id_ed25519" "$DIR/known_hosts" "$DIR/registration.json"; do
+            test -f "$f" && test ! -L "$f"
+            test "$(stat -c %a "$f")" = 600
+            test "$(stat -c %u "$f")" = "$(id -u)"
+          done
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-g17-3e1.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          python3 - "$DIR/registration.json" "$WORK/ssh-user" <<'PY'
+          import datetime,json,re,sys
+          from pathlib import Path
+          reg=json.loads(Path(sys.argv[1]).read_text())
+          assert reg.get("target")=="meshalot-control-01"
+          assert reg.get("project")=="meshalot-poc"
+          assert reg.get("zone")=="us-south1-a"
+          user=reg.get("username","")
+          assert re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}",user)
+          expiry=datetime.datetime.strptime(reg["expires"],"%Y-%m-%dT%H:%M:%S%z")
+          assert expiry>datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(minutes=10), "IAP authorization expiring or expired"
+          Path(sys.argv[2]).write_text(user)
+          print("M13_STEP3E1_EXISTING_IAP_AUTH_WINDOW=PASS")
+          PY
+          cat >"$WORK/remote.sh" <<'REMOTE'
+          #!/bin/bash
+          set -euo pipefail
+          if test "$(hostname -s)" != "meshalot-control-01"; then
+            echo M13_STEP3E1_WRONG_HOST_STOP
+            exit 2
+          fi
+          python3 - <<'PY'
+          import glob,json,os,re,shlex,stat,subprocess,sys
+          from pathlib import Path
+          def call(argv,timeout=8):
+              try:
+                  p=subprocess.run(argv,capture_output=True,timeout=timeout,check=False)
+                  return p.stdout if p.returncode==0 else None
+              except (OSError,subprocess.TimeoutExpired):
+                  return None
+          def meta(name):
+              p=Path(name)
+              result={"path":str(p),"state":"UNKNOWN"}
+              try:
+                  s=p.lstat()
+                  result.update(state="EXISTS",type=("FILE" if stat.S_ISREG(s.st_mode) else "SYMLINK" if stat.S_ISLNK(s.st_mode) else "OTHER"),mode=oct(stat.S_IMODE(s.st_mode)),owner_uid=s.st_uid,group_gid=s.st_gid,size=s.st_size)
+              except FileNotFoundError:
+                  result["state"]="MISSING"
+              except OSError:
+                  result["state"]="INACCESSIBLE"
+              return result
+          unit_raw=call(["systemctl","list-unit-files","meshalot*.service","--no-legend","--no-pager"])
+          assert unit_raw is not None, "unit listing unavailable"
+          units=[]
+          for line in unit_raw.decode("utf-8","replace").splitlines():
+              name=line.split()[0] if line.split() else ""
+              if re.fullmatch(r"meshalot[a-zA-Z0-9_.@-]*\.service",name):units.append(name)
+          assert 0<len(units)<=5,"unexpected number of service units"
+          service=[]
+          for name in units:
+              raw=call(["systemctl","show",name,"--property=EnvironmentFiles","--value"])
+              entry={"service":name,"state":"UNVERIFIED","files":[]}
+              if raw is not None:
+                  spec=raw.decode("utf-8","replace").strip()
+                  groups=list(re.finditer(r"(\S+)\s+\(ignore_errors=(yes|no)\)",spec))
+                  remainder=re.sub(r"(\S+)\s+\(ignore_errors=(yes|no)\)","",spec).strip()
+                  entry["state"]="PASS" if not remainder else "PARSE_UNVERIFIED"
+                  for m in groups:
+                      source=m.group(1)
+                      entry["files"].append({"required":m.group(2)=="no","metadata":meta(source)})
+              service.append(entry)
+          caddy=Path("/etc/caddy/Caddyfile")
+          caddy_root=Path("/etc/caddy").resolve()
+          caddy_details={"primary":meta(caddy),"read_status":"UNVERIFIED","imports":[]}
+          visited=set()
+          pending=[(caddy,0)]
+          parse_faults=0
+          def caddy_read(path):
+              try:
+                  p=Path(path)
+                  s=p.stat()
+                  if not stat.S_ISREG(s.st_mode) or not 0<s.st_size<=512*1024:
+                      return None
+                  try:
+                      return p.read_bytes().decode("utf-8","replace")
+                  except (OSError,PermissionError):
+                      data=call(["sudo","-n","cat","--",str(p)],timeout=4)
+                      return data.decode("utf-8","replace") if data is not None and len(data)<=512*1024 else None
+              except OSError:
+                  return None
+          while pending and len(visited)<40:
+              source,depth=pending.pop(0)
+              try:
+                  resolved=source.resolve()
+              except OSError:
+                  parse_faults+=1
+                  continue
+              if str(resolved) in visited:continue
+              if resolved!=caddy and not (str(resolved).startswith(str(caddy_root)+"/")):
+                  parse_faults+=1
+                  continue
+              visited.add(str(resolved))
+              content=caddy_read(source)
+              if content is None:
+                  parse_faults+=1
+                  if source==caddy:caddy_details["read_status"]="UNREADABLE"
+                  continue
+              if source==caddy:caddy_details["read_status"]="READ"
+              snippets=set(re.findall(r"(?m)^\s*\(\s*([A-Za-z_][\w.-]*)\s*\)\s*\{",content))
+              for line in content.splitlines():
+                  line=line.strip()
+                  if not re.match(r"^import(?:\s|$)",line):continue
+                  try:
+                      tokens=shlex.split(line,comments=True)
+                  except ValueError:
+                      parse_faults+=1
+                      continue
+                  if len(tokens)<2:
+                      parse_faults+=1
+                      continue
+                  target=tokens[1]
+                  if target in snippets:
+                      caddy_details["imports"].append({"kind":"SNIPPET","source":str(source)})
+                      continue
+                  if "{" in target or "}" in target:
+                      caddy_details["imports"].append({"kind":"DYNAMIC_UNRESOLVED","source":str(source)})
+                      continue
+                  path=Path(target)
+                  if not path.is_absolute():path=source.parent/path
+                  matches=glob.glob(str(path))[:41]
+                  if len(matches)>40:
+                      parse_faults+=1
+                      continue
+                  if not matches:
+                      caddy_details["imports"].append({"kind":"NO_FILE_MATCH_OR_SNIPPET","source":str(source),"target":target})
+                  for f in matches:
+                      info=meta(f)
+                      within=False
+                      try:
+                          rp=Path(f).resolve()
+                          within=(rp==caddy_root or str(rp).startswith(str(caddy_root)+"/"))
+                      except OSError:pass
+                      kind="FILE_WITHIN_CADDY_ROOT" if within else "EXTERNAL_FILE_REFERENCE"
+                      caddy_details["imports"].append({"kind":kind,"metadata":info,"source":str(source)})
+                      if within and depth<3 and info["state"]=="EXISTS" and info.get("type")=="FILE":
+                          pending.append((Path(f),depth+1))
+          if pending:parse_faults+=1
+          caddy_details["parse_faults"]=parse_faults
+          caddy_details["inspected_files"]=len(visited)
+          out={"schema":"meshalot-m13-g17-step3e1-v1","remote_hostname":"meshalot-control-01","service":service,"caddy":caddy_details,"production_changes":"NONE","secrets_or_file_contents_exported":False}
+          print(json.dumps(out,separators=(",",":"),sort_keys=True))
+          PY
+          REMOTE
+          bash -n "$WORK/remote.sh"
+          set +e
+          guard="$(bash "$WORK/remote.sh" 2>/dev/null)"
+          rc="$?"
+          set -e
+          test "$rc" -eq 2 && test "$guard" = "M13_STEP3E1_WRONG_HOST_STOP"
+          echo "M13_STEP3E1_WRONG_HOST_GUARD=PASS"
+          REPORT="$ROOT/m13-g17-step3e1-private-$(date -u +%Y%m%dT%H%M%SZ)-run-$GITHUB_RUN_ID.json"
+          test ! -e "$REPORT" && test ! -L "$REPORT"
+          PROXY="$GCLOUD compute start-iap-tunnel %h %p --project=meshalot-poc --zone=us-south1-a --listen-on-stdin --quiet --verbosity=error"
+          USER="$(cat "$WORK/ssh-user")"
+          set +e
+          timeout --signal=TERM --kill-after=5s 120 ssh \
+            -F /dev/null -T -o "ProxyCommand=$PROXY" \
+            -o BatchMode=yes -o ConnectTimeout=30 -o ConnectionAttempts=1 \
+            -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$DIR/known_hosts" \
+            -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no \
+            -o LogLevel=ERROR -i "$DIR/id_ed25519" \
+            "$USER@meshalot-control-01" 'bash -s' <"$WORK/remote.sh" \
+            >"$REPORT" 2>"$WORK/ssh-errors"
+          rc="$?"
+          set -e
+          chmod 600 "$REPORT"
+          if test "$rc" -ne 0; then
+            echo "M13_STEP3E1_REMOTE_INSPECTION=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          python3 - "$REPORT" <<'PY'
+          import hashlib,json,os,stat,sys
+          from pathlib import Path
+          path=Path(sys.argv[1])
+          s=path.lstat()
+          assert stat.S_ISREG(s.st_mode) and s.st_uid==os.getuid() and stat.S_IMODE(s.st_mode)==0o600
+          assert 100<s.st_size<512*1024
+          r=json.loads(path.read_text())
+          assert r["schema"]=="meshalot-m13-g17-step3e1-v1"
+          assert r["remote_hostname"]=="meshalot-control-01"
+          assert r["production_changes"]=="NONE"
+          assert r["secrets_or_file_contents_exported"] is False
+          env=[f for x in r["service"] for f in x["files"]]
+          print("M13_STEP3E1_SYSTEMD_SERVICES="+str(len(r["service"])))
+          print("M13_STEP3E1_ENVFILE_DECLARATIONS="+str(len(env)))
+          print("M13_STEP3E1_ENVFILE_PRESENT="+str(sum(f["metadata"]["state"]=="EXISTS" for f in env)))
+          print("M13_STEP3E1_ENVFILE_MISSING_REQUIRED="+str(sum(f["metadata"]["state"]=="MISSING" and f["required"] for f in env)))
+          print("M13_STEP3E1_ENVFILE_METADATA_UNKNOWN="+str(sum(f["metadata"]["state"] in ("UNKNOWN","INACCESSIBLE") for f in env)))
+          print("M13_STEP3E1_ENVFILE_PARSE_STATUS="+("PASS" if all(x["state"]=="PASS" for x in r["service"]) else "REVIEW"))
+          c=r["caddy"]
+          print("M13_STEP3E1_CADDY_PRIMARY_READ="+c["read_status"])
+          print("M13_STEP3E1_CADDY_IMPORT_DECLARATIONS="+str(len(c["imports"])))
+          print("M13_STEP3E1_CADDY_IMPORTED_FILES="+str(sum(x["kind"]=="FILE_WITHIN_CADDY_ROOT" for x in c["imports"])))
+          print("M13_STEP3E1_CADDY_EXTERNAL_REFERENCES="+str(sum(x["kind"]=="EXTERNAL_FILE_REFERENCE" for x in c["imports"])))
+          print("M13_STEP3E1_CADDY_UNRESOLVED_REFERENCES="+str(sum(x["kind"] in ("DYNAMIC_UNRESOLVED","NO_FILE_MATCH_OR_SNIPPET") for x in c["imports"])))
+          print("M13_STEP3E1_CADDY_PARSE_FAULTS="+str(c["parse_faults"]))
+          print("M13_STEP3E1_PRODUCTION_CHANGES=NONE")
+          print("M13_STEP3E1_SECRET_CONTENTS_EXPORTED=NO")
+          print("M13_STEP3E1_REMOTE_DEPENDENCY_INVENTORY=PASS_WITH_CLASSIFICATION")
+          PY
+          sha256sum -- "$REPORT" >"$REPORT.sha256"
+          chmod 600 "$REPORT.sha256"
+          (cd "$ROOT" && sha256sum --check --status "$(basename "$REPORT").sha256")
+          echo "M13_STEP3E1_PRIVATE_EVIDENCE_CHECKSUM=PASS"
