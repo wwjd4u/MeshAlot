@@ -6,6 +6,8 @@ Date: 2026-10-11 (US Central)
 record, not permission to deploy, change production, start a service, apply
 migrations, or disrupt provider nodes.
 
+**Operator continuation (2026-10-12):** Step 3D external encrypted archive copy and four-file integrity verification are PASS from operator-provided Mac Terminal output; two recovery passphrases were saved and checked in separate RoboForm Safenotes per operator confirmation, with clipboard clearing PASS. Gate 17 remains OPEN; see appended checkpoint. Historic sections below retain their 2026-10-11 as-of status.
+
 ## Verified baselines
 
 - Governing document: **AI Mesh POC Build, Test, and Release Guide**,
@@ -314,3 +316,50 @@ backdoors.
 **Current decision:** Do not close Gate 17, do not merge the M13 work branch
 into production `main`, and do not advance to a live rollout until recovery
 protection and all authorization gates are independently satisfied.
+
+## Operator continuation — 2026-10-12: external archives and RoboForm
+
+**Scope:** This section records the user's Mac Terminal output and verbal
+confirmations. It does not represent a GitHub runner audit of the Mac or
+independent retrieval/decryption from RoboForm. Do not copy archive bytes or
+passphrases to this repository, to GitHub Actions logs, to Google Drive,
+or into chat.
+
+- **Step 3D.1 private destination: PASS.** Operator-created folder
+  `/Volumes/MeshAlot-Backup/M13-G17-20261011-Encrypted-Archives` on the
+  400 GB quota encrypted Toshiba APFS volume, after checking external
+  device and recorded volume UUID. Directory mode `0700`.
+- **Step 3D.2 existing encrypted PostgreSQL16 archive: COPY/SHA-256 PASS.**
+  Copied archive plus associated checksum over strict-host-key/password
+  LAN SSH from MS-02 without replacing the original archive.
+- **Step 3D.3 existing encrypted API/systemd/Caddy rollback archive:
+  COPY/SHA-256 PASS.** Copied only encrypted archive and corresponding
+  checksum, preserving the original MS-02 file.
+- **Step 3D.4 external inventory: PASS.** Operator Terminal output showed
+  exactly four files; both original recorded SHA-256 digests matched the
+  external copies; all four files mode `0600`, folder mode `0700`.
+  The Toshiba volume is an off-MS-02 copy but shares the same physical disk
+  as the existing distinct, protected Time Machine APFS volume; it is not an
+  independent physical failure domain from Time Machine.
+- **Step 3D.5 recovery-key vault copies: OPERATOR CONFIRMED.** Existing
+  PostgreSQL16 and API rollback decryption passphrases were stored in two
+  separate private RoboForm Safenotes. The operator stated both were saved
+  and verified. SSH source-key checks required mode `0600`. The original
+  MS-02 passphrase files were preserved. The final current clipboard clear
+  was evidenced by `M13_STEP3D_RECOVERY_CLIPBOARD_CLEARED=PASS`.
+  No passphrase values are included in this record. Any clipboard-history or
+  Universal Clipboard retention was not independently verified.
+
+**Not yet proven:** a separate fresh recovery/decryption test using the
+RoboForm copies (not attempted); password-vault recovery if the Mac/MS-02 is
+lost; complete API/Caddy/systemd rollback dependency coverage; global
+PostgreSQL roles and file ownership; and a production-shaped isolated
+rollback rehearsal. The previously completed database logical restore and
+rollback-archive member checks must not be repeated without a concrete need.
+
+**Next governing Gate 17 scope:** inventory absent environment-file
+and imported Caddy dependencies by approved metadata-only inspection, then
+plan an isolated staging rollback rehearsal. No production migrations,
+services, files, identities, SSH policies, provider controls, or historic
+V100 evidence were modified by these copy/vault steps. Production cutover
+remains blocked pending separate explicit operator approval.
