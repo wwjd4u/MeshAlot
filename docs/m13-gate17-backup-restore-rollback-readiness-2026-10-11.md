@@ -470,3 +470,57 @@ confer elevated file metadata permissions; if a narrow privileged read
 is required, request separate explicit approval, without changing
 system permissions. No secret file contents may be exported or logged.
 Staging and production rollout remain unauthorized; Gate 17 stays OPEN.
+
+## Step 3E.3 continuation — approved 24-hour VM-only SSH renewal (2026-10-12)
+
+**OPERATOR-APPROVED SCOPE:** The operator expressly authorized renewal
+of the *existing* Ed25519 SSH registration for 24 hours, limited to
+`meshalot-control-01`, to support the pending read-only environment-file
+dependency inspection. The renewal did **not** authorize elevated access,
+credential export, IAM policy changes, production service/database changes,
+or a Gate 17 deployment.
+
+- [One-time renewal execution](https://github.com/wwjd4u/MeshAlot/actions/runs/38301400277):
+  **SUCCESS** on the trusted `meshalot-ms02` runner. The existing
+  private/public keypair and username matched, the previously registered
+  expiry was expired, and exactly **one matching VM-instance SSH public
+  key metadata entry** was replaced with the same key and a 24-hour
+  expiry. A guarded before/after inspection confirmed other instance
+  metadata, project-wide metadata, login policy and VM tags unchanged.
+  Original local registration JSON was preserved in its owner-restricted
+  versioned history; the updated local registration used mode `0600`.
+  Successful log markers include:
+  `M13_G17_24H_VM_ONLY_SSH_RENEWAL=PASS`,
+  `M13_G17_NEW_VM_KEY_ENTRY_VERIFIED=PASS`,
+  `M13_G17_OTHER_VM_METADATA_UNCHANGED=PASS`,
+  `M13_G17_PROJECT_METADATA_UNCHANGED=PASS`, and
+  `M13_STEP3E3_EXISTING_VM_ONLY_SSH_RENEWAL=PASS`.
+- [Independent read-only verification](https://github.com/wwjd4u/MeshAlot/actions/runs/38301521800):
+  **SUCCESS**, including the exact existing Ed25519 public key,
+  24-hour expiry, prior local registration history, unchanged project
+  SSH policy, and a real pinned-host-key Google IAP SSH hostname-only
+  connection to `meshalot-control-01`.
+  `M13_STEP3E3_RENEWED_EXISTING_SSH_INDEPENDENT_VERIFIED=PASS`.
+  Production service and database changes: **NONE**.
+- One-time renewal workflow **disabled after success**; next
+  [run 38301470342](https://github.com/wwjd4u/MeshAlot/actions/runs/38301470342)
+  **SKIPPED**.
+  One-time independent verification workflow **disabled after success**;
+  next [run 38301589809](https://github.com/wwjd4u/MeshAlot/actions/runs/38301589809)
+  **SKIPPED**. This prevents unattended re-authorization or repeated
+  production access checks.
+- The new 24-hour expiration was calculated during the successful
+  2026-10-12 ~20:00 UTC job, so the access is scheduled to expire
+  approximately 2026-10-13 ~20:00 UTC (~3 PM US Central).
+  Never treat this estimate as a durable authorization; each subsequent
+  connection must first check the exact private registration expiry
+  and the scope/host-key safeguards.
+
+**Current Gate 17 state:** SSH renewal and independent authentication
+verification **PASS**. Environment-file metadata for the two systemd
+declarations **NOT YET RECHECKED**; secret contents and any privileged
+`stat` were not accessed. The known-good encrypted rollback archive
+remains a verified *partial* package. An additional read-only dependency
+check must not infer elevated privileges from this authorization.
+Gate 17 remains **OPEN**; no production migration/deployment/restart,
+Node001/Node002 identity change, backup regeneration, or V100 rerun occurred.
