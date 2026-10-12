@@ -1,0 +1,59 @@
+name: MS-02 M13 Gate 17 Step 3E.3 Existing IAP Access Preflight
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-gate17-step3e3-access-preflight-readonly.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-3e3-preflight
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: >-
+      github.repository == 'wwjd4u/MeshAlot' &&
+      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
+      github.event.head_commit.message == 'audit(m13): one-time Step 3E.3 existing-access preflight'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 3
+    steps:
+      - name: Classify existing time-limited credential without production connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          python3 - <<'PY'
+          import datetime
+          import json
+          import os
+          import re
+          import stat
+          from pathlib import Path
+
+          root = Path.home() / ".local/share/meshalot-m13-iap-ssh"
+          s = root.lstat()
+          assert stat.S_ISDIR(s.st_mode) and s.st_uid == os.getuid()
+          assert stat.S_IMODE(s.st_mode) == 0o700
+          p = root / "registration.json"
+          fs = p.lstat()
+          assert stat.S_ISREG(fs.st_mode) and fs.st_uid == os.getuid()
+          assert stat.S_IMODE(fs.st_mode) == 0o600
+          r = json.loads(p.read_text())
+          assert r.get("target") == "meshalot-control-01"
+          assert r.get("project") == "meshalot-poc"
+          assert r.get("zone") == "us-south1-a"
+          assert re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}", r.get("username", ""))
+          expiry = datetime.datetime.strptime(r["expires"], "%Y-%m-%dT%H:%M:%S%z")
+          now = datetime.datetime.now(datetime.timezone.utc)
+          state = "VALID_WITH_15M_MARGIN" if expiry > now + datetime.timedelta(minutes=15) else "EXPIRED_OR_INSUFFICIENT"
+          print("M13_STEP3E3_EXISTING_IAP_AUTH=" + state)
+          print("M13_STEP3E3_REMOTE_ENV_METADATA=NOT_ATTEMPTED")
+          print("M13_STEP3E3_PRODUCTION_CONNECTION=NONE")
+          print("M13_STEP3E3_PRIVATE_KEY_CONTENTS=NOT_READ")
+          print("M13_STEP3E3_NO_ACCESS_RENEWAL=PASS")
+          print("M13_STEP3E3_PRODUCTION_CHANGES=NONE")
+          PY
