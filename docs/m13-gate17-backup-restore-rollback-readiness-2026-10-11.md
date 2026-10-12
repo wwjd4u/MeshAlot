@@ -408,3 +408,27 @@ PostgreSQL roles, or staged system restart. Gate 17 remains **OPEN**.
 Proceed only with separately reviewed, non-disruptive recovery planning
 until the unresolved dependencies are classified. No main-branch or
 production configuration changes were made.
+
+## Gate 17 Step 3E.2 — isolated rollback staging plan (2026-10-12)
+
+**PLAN COMPLETE / EXECUTION NOT STARTED.** The [Step 3E.2
+dependency checklist and isolated staging rehearsal plan](docs/m13-gate17-step3e2-isolated-rollback-staging-plan-2026-10-12.md)
+defines explicit scope approvals, remaining environment-file and runtime
+dependency classifications, an isolated synthetic-first staging design,
+future authorized archive-use procedures, negative/failure tests,
+evidence requirements, and safe-stop conditions. No environment was
+created, no recovery passphrase accessed, no existing backup decrypted,
+no production metadata re-inspected, and no live system or CI test
+was executed as part of this planning step.
+
+**Existing blockers:** metadata for both systemd environment-file
+declarations remains unverified; complete Caddy/runtime dependencies
+and PostgreSQL global roles/grants/ownership are not demonstrated;
+no full rollback rehearsal is complete. The earlier Gate 17 Step 3E.1
+inspection remains PARTIAL PASS. No scope increase is inferred from
+the operator's approval to continue documentation work.
+
+**Result:** 3E.2 DOCUMENTED; 3E staging execution PENDING;
+Gate 17 OPEN. The next single controlled step should
+classify missing environment-file metadata under separately reviewed
+read-only authorization or an acceptable stage-only substitute.
