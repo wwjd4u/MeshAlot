@@ -11,7 +11,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   caddy:
+    # One-time Caddy synthetic recovery passed in Actions run 38449591265; disabled after use.
     if: >-
+      false &&
       github.repository == 'wwjd4u/MeshAlot' &&
       github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
       github.event_name == 'push' &&
