@@ -1,0 +1,258 @@
+name: MS-02 M13 G17-1 Synthetic PG16 Global Ownership Recovery
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-g17-g1-pg16-owner-recovery-20261013.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-isolated-staging
+  cancel-in-progress: false
+jobs:
+  recovery:
+    if: >-
+      github.repository == 'wwjd4u/MeshAlot' &&
+      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
+      github.event_name == 'push' &&
+      github.run_attempt == 1 &&
+      github.event.head_commit.message == 'test(m13): one-time synthetic PG16 global ownership restore'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 12
+    steps:
+      - name: Checkout pinned previously validated M13 source
+        uses: actions/checkout@v4
+        with:
+          ref: 4f67ee54e5ebca084e38e306e723ae0acd08e77d
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Create synthetic roles then reconstruct fresh PG16 globals ownership and ACLs
+        shell: bash
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          test "$(git rev-parse HEAD)" = "4f67ee54e5ebca084e38e306e723ae0acd08e77d"
+          test "$(git rev-parse refs/remotes/origin/main)" = "1016c9b058690f34058dfab9cde7927e421fa469"
+          test -z "$(git status --porcelain)"
+          test -f database/runtime-grants.sql
+          docker image inspect postgres:16-alpine >/dev/null
+          docker info >/dev/null
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-g17-owner-recovery.XXXXXXXX")"
+          CID=""
+          cleanup() {
+            result="$?"
+            trap - EXIT
+            success=1
+            if test -n "$CID"; then
+              docker rm -f -v "$CID" >/dev/null 2>&1 || success=0
+              docker container inspect "$CID" >/dev/null 2>&1 && success=0
+            fi
+            if test -d "$WORK"; then
+              rm -rf -- "$WORK" || success=0
+            fi
+            if test "$success" = 1; then
+              echo "M13_G17_G1_OWNER_RESTORE_DISPOSABLE_CLEANUP=PASS"
+            else
+              echo "M13_G17_G1_OWNER_RESTORE_DISPOSABLE_CLEANUP=REVIEW_REQUIRED"
+              result=1
+            fi
+            exit "$result"
+          }
+          trap cleanup EXIT
+          mkdir -m 700 "$WORK/stage" "$WORK/stage/migrations" "$WORK/tools"
+          cp database/migrate.py "$WORK/stage/migrate.py"
+          cp database/migrations/*.up.sql "$WORK/stage/migrations/"
+          start_stage() {
+            CID="$(docker run -d --rm --pull=never --network=none \
+              --read-only --user=70:70 --cap-drop=ALL \
+              --security-opt=no-new-privileges --pids-limit=128 \
+              --memory=4g --memory-swap=4g --cpus=2 \
+              --tmpfs /var/lib/postgresql/data:rw,nosuid,nodev,noexec,size=1g,uid=70,gid=70,mode=0700 \
+              --tmpfs /var/run/postgresql:rw,nosuid,nodev,noexec,size=16m,uid=70,gid=70,mode=0700 \
+              --tmpfs /tmp:rw,nosuid,nodev,noexec,size=64m,uid=70,gid=70,mode=1777 \
+              -e POSTGRES_HOST_AUTH_METHOD=trust \
+              postgres:16-alpine -c listen_addresses=)"
+            test -n "$CID"
+            test "$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$CID")" = none
+            test "$(docker inspect -f '{{.HostConfig.Memory}}' "$CID")" = 4294967296
+            test "$(docker inspect -f '{{.HostConfig.NanoCpus}}' "$CID")" = 2000000000
+            test "$(docker inspect -f '{{.HostConfig.ReadonlyRootfs}}' "$CID")" = true
+            test "$(docker inspect -f '{{.HostConfig.Privileged}}' "$CID")" = false
+            test -z "$(docker inspect -f '{{range $k, $v := .HostConfig.Binds}}{{printf "%s" $k}}{{end}}' "$CID")"
+            test "$(docker inspect -f '{{len .HostConfig.PortBindings}}' "$CID")" = 0
+            ready=0
+            for i in $(seq 1 30); do
+              if docker exec "$CID" pg_isready -h /var/run/postgresql -U postgres >/dev/null 2>&1; then
+                ready=1
+                break
+              fi
+              sleep 1
+            done
+            test "$ready" = 1
+            test "$(docker exec "$CID" psql -X -qAt -U postgres -h /var/run/postgresql -d postgres \
+              -v ON_ERROR_STOP=1 -c "SELECT current_setting('server_version_num')::integer/10000")" = 16
+            echo "M13_G17_G1_OWNER_RESTORE_STAGE_ISOLATION_PG16=PASS"
+          }
+          psql_stage() {
+            docker exec -i "$CID" psql -X -qAt -v ON_ERROR_STOP=1 \
+              -U postgres -h /var/run/postgresql -d meshalot_g17owner -c "$1"
+          }
+          start_stage
+          docker exec "$CID" psql -X -q -v ON_ERROR_STOP=1 -U postgres \
+            -h /var/run/postgresql -d postgres \
+            -c "CREATE ROLE meshalot_stage_owner LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT" \
+            >"$WORK/owner-role-out" 2>"$WORK/owner-role-error"
+          docker exec "$CID" psql -X -q -v ON_ERROR_STOP=1 -U postgres \
+            -h /var/run/postgresql -d postgres \
+            -c "CREATE ROLE meshalot LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT" \
+            >"$WORK/runtime-role-out" 2>"$WORK/runtime-role-error"
+          docker exec "$CID" createdb -U postgres -h /var/run/postgresql \
+            --owner=meshalot_stage_owner meshalot_g17owner
+          cat >"$WORK/tools/psql" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec docker exec -i -e PGHOST=/var/run/postgresql "$M13_G17_DB_CONTAINER" \
+            psql -U meshalot_stage_owner "$@"
+          SH
+          chmod 0700 "$WORK/tools/psql"
+          export M13_G17_DB_CONTAINER="$CID"
+          export PATH="$WORK/tools:$PATH"
+          unset PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE PGSERVICE || true
+          if python3 "$WORK/stage/migrate.py" apply --database meshalot_g17owner \
+            >"$WORK/schema-setup" 2>"$WORK/schema-errors"; then
+            echo "M13_G17_G1_OWNER_STAGE_MIGRATIONS_AS_NONADMIN_OWNER=PASS"
+          else
+            echo "M13_G17_G1_OWNER_STAGE_MIGRATIONS_AS_NONADMIN_OWNER=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          if docker exec -i "$CID" psql -X -q -v ON_ERROR_STOP=1 \
+              -U meshalot_stage_owner -h /var/run/postgresql -d meshalot_g17owner \
+              <database/runtime-grants.sql >"$WORK/grants-out" 2>"$WORK/grants-errors"; then
+            echo "M13_G17_G1_OWNER_STAGE_TRACKED_GRANTS=PASS"
+          else
+            echo "M13_G17_G1_OWNER_STAGE_TRACKED_GRANTS=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          docker exec "$CID" psql -X -q -v ON_ERROR_STOP=1 \
+            -U meshalot_stage_owner -h /var/run/postgresql -d meshalot_g17owner \
+            -c "CREATE TABLE public.g17_recovery_fixture (id integer PRIMARY KEY, evidence text NOT NULL);
+                INSERT INTO public.g17_recovery_fixture VALUES (1, 'synthetic-only');
+                GRANT SELECT ON public.g17_recovery_fixture TO meshalot;" \
+            >"$WORK/fixture-out" 2>"$WORK/fixture-errors"
+          test "$(psql_stage "SELECT
+             (SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=current_database())='meshalot_stage_owner'
+             AND (SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid='public.nodes'::regclass)='meshalot_stage_owner'
+             AND (SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid='meshalot_meta.schema_migrations'::regclass)='meshalot_stage_owner'")" = t
+          echo "M13_G17_G1_OWNER_SOURCE_OWNERSHIP=PASS"
+          docker exec "$CID" pg_dumpall -U postgres -h /var/run/postgresql \
+            --globals-only --no-role-passwords >"$WORK/all-globals.sql"
+          awk '!/^CREATE ROLE postgres;$/ && !/^ALTER ROLE postgres WITH /' \
+            "$WORK/all-globals.sql" >"$WORK/stage-globals.sql"
+          test "$(grep -c '^CREATE ROLE ' "$WORK/stage-globals.sql")" = 2
+          grep -qx 'CREATE ROLE meshalot;' "$WORK/stage-globals.sql"
+          grep -qx 'CREATE ROLE meshalot_stage_owner;' "$WORK/stage-globals.sql"
+          test "$(grep -c '^ALTER ROLE ' "$WORK/stage-globals.sql")" = 2
+          if grep -Eiq 'PASSWORD|ENCRYPTED|SCRAM|md5' "$WORK/stage-globals.sql"; then
+            echo "M13_G17_G1_OWNER_NO_SECRET_GLOBALS=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          docker exec "$CID" pg_dump -U meshalot_stage_owner -h /var/run/postgresql \
+            --format=custom --dbname=meshalot_g17owner >"$WORK/synthetic-db.dump"
+          test -s "$WORK/synthetic-db.dump"
+          echo "M13_G17_G1_OWNER_SYNTHETIC_GLOBALS_AND_LOGICAL_DUMP=PASS"
+          old="$CID"
+          docker rm -f -v "$old" >/dev/null
+          test -z "$(docker ps -aq --filter "id=$old")"
+          CID=""
+          echo "M13_G17_G1_OWNER_SOURCE_CLUSTER_DISPOSED=PASS"
+          start_stage
+          if docker exec -i "$CID" psql -X -q -v ON_ERROR_STOP=1 -U postgres \
+              -h /var/run/postgresql -d postgres <"$WORK/stage-globals.sql" \
+              >"$WORK/restore-globals-out" 2>"$WORK/restore-globals-errors"; then
+            echo "M13_G17_G1_OWNER_FRESH_GLOBAL_ROLE_RECONSTRUCTION=PASS"
+          else
+            echo "M13_G17_G1_OWNER_FRESH_GLOBAL_ROLE_RECONSTRUCTION=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          if docker exec -i "$CID" pg_restore -U postgres -h /var/run/postgresql \
+              --create --exit-on-error --dbname=postgres <"$WORK/synthetic-db.dump" \
+              >"$WORK/restore-db-out" 2>"$WORK/restore-db-errors"; then
+            echo "M13_G17_G1_OWNER_FRESH_DB_RECONSTRUCTION=PASS"
+          else
+            echo "M13_G17_G1_OWNER_FRESH_DB_RECONSTRUCTION=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          cat >"$WORK/validate.py" <<'PY'
+          import subprocess,sys,re
+          cid=sys.argv[1]
+          def sql(role,statement,db="meshalot_g17owner"):
+              p=subprocess.run(["docker","exec",cid,"psql","-X","-qAt",
+                 "-v","ON_ERROR_STOP=1","-v","VERBOSITY=sqlstate",
+                 "-U",role,"-h","/var/run/postgresql","-d",db,"-c",statement],
+                 text=True,capture_output=True,timeout=20)
+              return p
+          def check(label,role,query,want="t",db="meshalot_g17owner"):
+              p=sql(role,query,db)
+              if p.returncode or p.stdout.strip()!=want:
+                  print("M13_G17_G1_"+label+"=FAILED_SAFE_STOP")
+                  sys.exit(2)
+              print("M13_G17_G1_"+label+"=PASS")
+          check("OWNER_ROLE_ATTRIBUTES","postgres",
+            "SELECT count(*)=2 AND bool_and(rolcanlogin AND NOT rolsuper AND "
+            "NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication AND "
+            "NOT rolbypassrls AND NOT rolinherit) FROM pg_roles "
+            "WHERE rolname IN ('meshalot','meshalot_stage_owner')")
+          check("OWNER_SEPARATION","postgres",
+            "SELECT (SELECT oid FROM pg_roles WHERE rolname='meshalot') <> "
+            "(SELECT oid FROM pg_roles WHERE rolname='meshalot_stage_owner') "
+            "AND NOT EXISTS (SELECT 1 FROM pg_auth_members m JOIN pg_roles r "
+            "ON m.member=r.oid WHERE r.rolname='meshalot')")
+          check("OWNER_DATABASE","postgres",
+            "SELECT pg_get_userbyid(datdba)='meshalot_stage_owner' "
+            "FROM pg_database WHERE datname=current_database()")
+          check("OWNER_SCHEMA_OBJECTS","postgres",
+            "SELECT bool_and(pg_get_userbyid(relowner)='meshalot_stage_owner') "
+            "FROM pg_class WHERE oid IN "
+            "('public.nodes'::regclass,'public.node_status'::regclass,"
+            "'public.node_ratings'::regclass,'public.g17_recovery_fixture'::regclass,"
+            "'meshalot_meta.schema_migrations'::regclass)")
+          check("OWNER_FUNCTION","postgres",
+            "SELECT pg_get_userbyid(proowner)='meshalot_stage_owner' "
+            "FROM pg_proc WHERE oid="
+            "'public.insert_node_rating(text,integer,integer,integer,integer,"
+            "integer,boolean,boolean,boolean,boolean,boolean,text,timestamptz)'::regprocedure")
+          check("OWNER_MIGRATION_LEDGER","postgres",
+            "SELECT count(*)=10 AND min(version)=1 AND max(version)=10 "
+            "FROM meshalot_meta.schema_migrations")
+          check("OWNER_SYNTHETIC_RECORD_RESTORED","postgres",
+            "SELECT count(*)=1 FROM public.g17_recovery_fixture "
+            "WHERE id=1 AND evidence='synthetic-only'")
+          check("OWNER_RUNTIME_READ_RESTORED","meshalot",
+            "SELECT evidence FROM public.g17_recovery_fixture WHERE id=1","synthetic-only")
+          check("OWNER_RUNTIME_LIMITS_RESTORED","postgres",
+            "SELECT has_table_privilege('meshalot','public.g17_recovery_fixture','SELECT') "
+            "AND NOT has_table_privilege('meshalot','public.g17_recovery_fixture','UPDATE') "
+            "AND NOT has_schema_privilege('meshalot','public','CREATE')")
+          for label,query in [
+              ("OWNER_FORBIDDEN_WRITE","UPDATE public.g17_recovery_fixture "
+               "SET evidence='blocked' WHERE id=1"),
+              ("OWNER_FORBIDDEN_MIGRATION_ACCESS",
+               "SELECT version FROM meshalot_meta.schema_migrations LIMIT 0")]:
+              p=sql("meshalot",query)
+              if p.returncode==0 or not re.search(r"\b42501\b",p.stderr):
+                  print("M13_G17_G1_"+label+"=FAILED_UNEXPECTED_RESULT")
+                  sys.exit(3)
+              print("M13_G17_G1_"+label+"=PASS")
+          print("M13_G17_G1_SYNTHETIC_OWNER_AND_GLOBAL_RECOVERY=PASS")
+          PY
+          python3 "$WORK/validate.py" "$CID"
+          test -z "$(git status --porcelain)"
+          echo "M13_G17_G1_OWNER_SOURCE_WORKTREE_UNCHANGED=PASS"
+          echo "M13_G17_G1_OWNER_PRODUCTION_ARCHIVES_SECRETS_IDENTITIES=NOT_ACCESSED"
+          echo "M13_G17_G1_OWNER_REAL_PRODUCTION_GLOBALS=NOT_VALIDATED"
