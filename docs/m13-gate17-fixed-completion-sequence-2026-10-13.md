@@ -362,3 +362,24 @@ not present on MS-02. The one-time preflight was disabled, with
 No image pull, container, staging network, secret, or production access
 performed. **Request operator approval** before pulling the digest-pinned
 image or launching a sandbox. G17/1 IN PROGRESS.
+
+## 2026-10-13 PG16 real-global-role recovery design (planning only)
+
+[Gate 17/1 PostgreSQL 16 real-global-role recovery runbook](m13-g17-g1-postgres16-real-globals-recovery-runbook-2026-10-13.md)
+has been added to the M13 development branch. This records the **operator-controlled
+metadata inventory**, private password-free global-role recovery-asset and
+ownership/ACL-preserving isolated restore acceptance path. It **does not**
+claim those operations have occurred. Previously accepted database-only
+logical restore, synthetic PG16 runtime ACL acceptance and synthetic
+fresh-cluster global-role/ownership recovery remain PASS and will **not**
+be repeated merely for confirmation.
+
+**Still OPEN:** real production role/membership/ownership dependencies,
+a protected production globals recovery asset and verified off-machine
+copy, actual privileged/authentication reconstruction, protected Caddy/TLS
+storage dependencies, and the G17/2 full API/systemd/Caddy rollback.
+**Next checkpoint:** obtain **separate operator approval** before any
+read-only production PG role/ownership metadata inspection; do not run
+database commands, retrieve private recovery material, create a new
+privileged access route or touch services under this documentation-only
+update. G17/1 IN PROGRESS; G17/2–G17/7 NOT STARTED; M13 OPEN.
