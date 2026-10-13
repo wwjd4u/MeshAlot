@@ -16,7 +16,7 @@ jobs:
       github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
       github.event_name == 'push' &&
       github.run_attempt == 1 &&
-      github.event.head_commit.message == 'test(m13): remove Caddy file capability in isolated synthetic stage'
+      github.event.head_commit.message == 'test(m13): correct capability-bound Caddy synthetic stage execution'
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 12
     steps:
@@ -406,107 +406,7 @@ jobs:
              --cap-drop=ALL --security-opt=no-new-privileges --read-only \
              "$DERIVED" list-modules --skip-standard \
              >"$WORK/module-out" 2>"$WORK/module-err"; then
-            if test -z "$(grep -E '^[[:alnum:]_]+([./-][[:alnum:]_]+)*             --user=10001:10001 --cap-drop=ALL --security-opt=no-new-privileges \
-             --tmpfs /config:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
-             --tmpfs /data:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
-             --tmpfs /tmp:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
-             --entrypoint /usr/bin/caddy "$DERIVED" validate \
-             --config /stage/Caddyfile --adapter caddyfile \
-             >"$WORK/validate-good-out" 2>"$WORK/validate-good-error"; then
-            echo "M13_G17_CADDY_KNOWN_GOOD_CONFIG_VALIDATION=PASS"
-          else
-            echo "M13_G17_CADDY_KNOWN_GOOD_CONFIG_VALIDATION=FAILED_SAFE_STOP"
-            exit 1
-          fi
-          if docker run --rm --pull=never --network=none --read-only \
-             --user=10001:10001 --cap-drop=ALL --security-opt=no-new-privileges \
-             --tmpfs /config:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
-             --tmpfs /data:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
-             --tmpfs /tmp:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
-             --entrypoint /usr/bin/caddy "$DERIVED" validate \
-             --config /stage/Caddyfile-invalid --adapter caddyfile \
-             >"$WORK/validate-bad-out" 2>"$WORK/validate-bad-error"; then
-            echo "M13_G17_CADDY_INVALID_CONFIG_REJECTION=FAILED_UNSAFE"
-            exit 1
-          else
-            echo "M13_G17_CADDY_INVALID_CONFIG_REJECTION=PASS"
-          fi
-          CID="$(docker run -d --rm --pull=never --platform=linux/amd64 --network=none \
-            --read-only --user=10001:10001 --cap-drop=ALL \
-            --security-opt=no-new-privileges --pids-limit=96 \
-            --memory=4g --memory-swap=4g --cpus=2 \
-            --tmpfs /config:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
-            --tmpfs /data:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
-            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
-            "$DERIVED")"
-          test -n "$CID"
-          docker inspect "$CID" >"$WORK/container-inspect.json"
-          python3 - "$WORK/container-inspect.json" <<'PY'
-          import json,sys
-          o=json.load(open(sys.argv[1]))[0]
-          h=o["HostConfig"]
-          assert h["NetworkMode"]=="none"
-          assert h["Memory"]==4294967296 and h["NanoCpus"]==2000000000
-          assert h["MemorySwap"]==4294967296 and h["PidsLimit"]==96
-          assert h["ReadonlyRootfs"] and not h["Privileged"]
-          assert h.get("Binds") in (None,[])
-          assert h.get("PortBindings") in (None,{})
-          assert h.get("CapDrop") and "ALL" in h["CapDrop"]
-          assert "no-new-privileges" in h.get("SecurityOpt",[])
-          assert o["Config"]["User"]=="10001:10001"
-          assert not (o.get("NetworkSettings") or {}).get("Ports") or all(
-            value is None for value in o["NetworkSettings"]["Ports"].values())
-          print("M13_G17_CADDY_STAGE_NO_NETWORK_NO_PORTS_NO_BINDS_RESOURCE_CAP=PASS")
-          PY
-          READY=0
-          for i in $(seq 1 25); do
-            if docker exec "$CID" /stage/stage-tool health \
-              >"$WORK/health-check-out" 2>"$WORK/health-check-error"; then
-              READY=1
-              break
-            fi
-            sleep 1
-          done
-          test "$READY" = 1 || { echo "M13_G17_CADDY_STAGE_BACKEND_READY=FAILED_SAFE_STOP"; exit 1; }
-          echo "M13_G17_CADDY_STAGE_BACKEND_READY=PASS"
-          if docker exec "$CID" /stage/stage-tool probe; then
-            echo "M13_G17_CADDY_REAL_TLS_WSS_AUTH_ACCEPTANCE=PASS"
-          else
-            echo "M13_G17_CADDY_REAL_TLS_WSS_AUTH_ACCEPTANCE=FAILED_SAFE_STOP"
-            exit 1
-          fi
-          if docker exec "$CID" /usr/bin/caddy reload \
-               --config /stage/Caddyfile-broken --adapter caddyfile \
-               >"$WORK/broken-reload-out" 2>"$WORK/broken-reload-err"; then
-            echo "M13_G17_CADDY_STAGE_ONLY_FAULT_RELOAD=PASS"
-          else
-            echo "M13_G17_CADDY_STAGE_ONLY_FAULT_RELOAD=FAILED_SAFE_STOP"
-            exit 1
-          fi
-          if docker exec "$CID" /stage/stage-tool broken; then
-            echo "M13_G17_CADDY_EXPECTED_STAGE_PROXY_OUTAGE=PASS"
-          else
-            echo "M13_G17_CADDY_EXPECTED_STAGE_PROXY_OUTAGE=FAILED_SAFE_STOP"
-            exit 1
-          fi
-          if docker exec "$CID" /usr/bin/caddy reload \
-              --config /stage/Caddyfile --adapter caddyfile \
-              >"$WORK/recovery-reload-out" 2>"$WORK/recovery-reload-err"; then
-            echo "M13_G17_CADDY_KNOWN_GOOD_CONFIG_RESTORED=PASS"
-          else
-            echo "M13_G17_CADDY_KNOWN_GOOD_CONFIG_RESTORED=FAILED_SAFE_STOP"
-            exit 1
-          fi
-          if docker exec "$CID" /stage/stage-tool probe; then
-            echo "M13_G17_CADDY_STAGE_HTTPS_WSS_RECOVERY=PASS"
-          else
-            echo "M13_G17_CADDY_STAGE_HTTPS_WSS_RECOVERY=FAILED_SAFE_STOP"
-            exit 1
-          fi
-          echo "M13_G17_CADDY_PRODUCTION_AND_RECOVERY_KEYS=NOT_ACCESSED"
-          echo "M13_G17_CADDY_REAL_CERTIFICATE_STORAGE=NOT_TESTED"
-          echo "M13_G17_CADDY_ONE_TIME_SYNTHETIC_ACCEPTANCE=PASS"
- "$WORK/module-out" || true)"; then
+            if test -z "$(grep -E '^[[:alnum:]_]+([./-][[:alnum:]_]+)*$' "$WORK/module-out" || true)"; then
               echo "M13_G17_CADDY_STAGE_NONSTANDARD_MODULES=ZERO"
             else
               echo "M13_G17_CADDY_STAGE_NONSTANDARD_MODULES=UNEXPECTED_STOP"
