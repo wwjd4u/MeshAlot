@@ -11,12 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   bootstrap:
-    if: >-
-      github.repository == 'wwjd4u/MeshAlot' &&
-      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
-      github.event_name == 'push' &&
-      github.run_attempt == 1 &&
-      github.event.head_commit.message == 'test(m13): approved isolated PG16 staging bootstrap fix network none inspector'
+    if: false # one-time approved isolated PostgreSQL16 stage bootstrap passed; disable repeated execution
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 6
     steps:
