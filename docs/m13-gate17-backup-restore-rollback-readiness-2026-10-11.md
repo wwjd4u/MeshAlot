@@ -626,3 +626,69 @@ then obtain explicit approval before any production cutover.
 Preserve original DB/API archives, RoboForm Safenotes, Time Machine,
 Node001/Node002 identities, M8/M9 scores, M11 controls and V100 evidence.
 No such additional work was executed by Step 3E.5. **Gate 17 OPEN.**
+
+## Gate 17 / G17-1 supplemental environment recovery archive (2026-10-13)
+
+**OPERATOR APPROVED** limited export of only the two existing systemd
+`EnvironmentFiles` declarations previously pinned by Step 3E.5,
+using the **existing** API-rollback GPG passphrase. Production file
+values may be accessed solely to create a separate encrypted recovery
+supplement. No additional identities, new keys, VM/IAM permissions,
+service changes, public storage or plaintext export authorized.
+
+- [One-time trusted runner job 38404900223](https://github.com/wwjd4u/MeshAlot/actions/runs/38404900223):
+  **SUCCESS**. MS-02 independently checked the SHA-256-protected
+  private Step 3E.5 metadata report and existing 24-hour host-specific
+  IAP registration. The production remote script pinned the **two**
+  declared paths, required/optional flags, owner, group, mode, size,
+  regular-file types and unmodified file identity, and checked
+  `meshalot-control-01` hostname before content access.
+- The two declared environment file *entries* were read under the
+  existing non-interactive admin capability, streamed in protected
+  IAP SSH, and immediately encrypted to local MS-02 restricted
+  storage via GPG symmetric AES256. **No plaintext files were saved
+  off the production server**. Two declarations are not by themselves
+  proof of two distinct underlying files.
+- The **existing**, private, mode `0600`
+  `m13-g17-rollback-38168945744.passphrase` was used from MS-02.
+  This is the **same API Rollback Recovery Key** that the operator
+  had stored in RoboForm; it was not regenerated, copied to the
+  archive directory, printed or uploaded. The original nine-member
+  API/systemd/Caddy archive and the separate database archive
+  remain unchanged.
+- New local restricted directory:
+  `$HOME/.local/share/meshalot-m13-private-rollbacks/m13-g17-env-supplement-38404900223`.
+  Only the separately encrypted
+  `meshalot-systemd-env-supplement.tar.gpg` and associated
+  `.sha256` sidecar belong in an off-machine archive transfer.
+  A **private** `env-supplement-evidence.json` is held separately
+  in this MS-02 folder and must **not** be uploaded to public CI,
+  Google Drive or chat.
+- The new ciphertext was decrypted only in-memory in a private runner
+  verification pipeline (not extracted to disk), and both member
+  SHA-256 values, byte lengths, owner/group/mode, source path matches
+  and source-host manifest were verified against the previously pinned
+  metadata. `M13_G17_ENVSUPP_TWO_PINNED_CONTENTS=PASS`;
+  `M13_G17_ENVSUPP_NEW_ARCHIVE_VALIDATION=PASS`;
+  `M13_G17_ENVSUPP_PRIVATE_EVIDENCE=PASS`;
+  `M13_G17_ENVSUPP_LOCAL_ENCRYPTED_ARCHIVE=PASS`.
+- No plaintext values, secret names/paths from the private manifest,
+  passphrases or archives were published to CI logs or Google Drive.
+  No production file/service/database writes, new backup of DB/API,
+  re-enrollment, benchmark rerun, or Time Machine operation occurred.
+- Immediately after the single capture, the workflow was disabled;
+  [next run 38405043699](https://github.com/wwjd4u/MeshAlot/actions/runs/38405043699)
+  confirmed **SKIPPED**. Future export requires fresh authorization.
+
+**Classification:** Supplemental encrypted config **capture and local
+integrity PASS**, not yet independent off-machine redundancy.
+`OFFMACHINE_COPY=PENDING`. The Toshiba encrypted APFS archive volume
+was disconnected for safekeeping and not touched by this job.
+Do **not** close G17/1 until the new supplement and checksum have been
+transferred to the external encrypted APFS volume and checked.
+Only then review global PG roles/grants, Caddy/TLS module/storage
+dependencies and isolated staging rehearsal prerequisites.
+
+Full production restoration, separate vault-sourced recovery practice,
+and the end-to-end Milestone 13 real outage/reboot acceptance remain
+unproven. Gate 17 **OPEN**.
