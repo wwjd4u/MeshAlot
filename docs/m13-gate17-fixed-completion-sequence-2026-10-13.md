@@ -334,3 +334,21 @@ private-key content accessed. One-time workflow disabled and
 failure/recovery test, plus production certificate-storage/renewal strategy
 and API/systemd/Caddy rollback dependencies. G17/2 NOT STARTED.
 No production cutover authorization has been given.
+
+## 2026-10-13 Caddy staging digest preflight
+
+Docker Hub's [official Caddy `2.11.4-alpine` linux/amd64 listing](https://hub.docker.com/layers/library/caddy/2.11.4-alpine/images/sha256-040e9f7480b80b6d4a7e5013a21159b950a63dcbdb956e38abe2387fb28d9ec0)
+identifies an image manifest digest `sha256:040e9f7480b80b6d4a7e5013a21159b950a63dcbdb956e38abe2387fb28d9ec0` and an
+index digest `sha256:6aeddd44c3078b0f9a35206472a11420648a79c184603ef95957d0a20044cb2b`. The proposed *future*
+stage reference is `docker.io/library/caddy@sha256:040e9f7480b80b6d4a7e5013a21159b950a63dcbdb956e38abe2387fb28d9ec0`
+on `linux/amd64`, not a mutable tag. This identifies a precise image
+for synthetic staging but does not prove identity with the production
+service executable or its active TLS modules/storage.
+
+[MS-02 read-only preflight](https://github.com/wwjd4u/MeshAlot/actions/runs/38442965161)
+PASS: Docker and test tooling present; matching Caddy v2.11.4 binary/image
+not present on MS-02. The one-time preflight was disabled, with
+[subsequent run SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38443288594).
+No image pull, container, staging network, secret, or production access
+performed. **Request operator approval** before pulling the digest-pinned
+image or launching a sandbox. G17/1 IN PROGRESS.
