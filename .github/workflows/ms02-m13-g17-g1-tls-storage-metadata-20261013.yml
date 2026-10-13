@@ -1,0 +1,236 @@
+name: MS-02 M13 G17-1 TLS Storage Metadata Only
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-g17-g1-tls-storage-metadata-20261013.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-control-readonly-audit
+  cancel-in-progress: false
+jobs:
+  tls_metadata:
+    if: >-
+      github.repository == 'wwjd4u/MeshAlot' &&
+      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
+      github.event_name == 'push' &&
+      github.run_attempt == 1 &&
+      github.actor == 'wwjd4u' &&
+      github.event.head_commit.message == 'test(m13): one-time approved read-only TLS storage classification'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 8
+    env:
+      CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+      CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+      CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+      CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+    steps:
+      - name: Inspect metadata with previously approved, pinned, time-limited access; no secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          DIR="$HOME/.local/share/meshalot-m13-iap-ssh"
+          ROOT="$HOME/.local/share/meshalot-m13-private-audits"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          test -x "$GCLOUD"
+          for d in "$DIR" "$ROOT"; do
+            test -d "$d" && test ! -L "$d"
+            test "$(stat -c %a "$d")" = 700
+            test "$(stat -c %u "$d")" = "$(id -u)"
+          done
+          for f in "$DIR/id_ed25519" "$DIR/known_hosts" "$DIR/registration.json"; do
+            test -f "$f" && test ! -L "$f"
+            test "$(stat -c %a "$f")" = 600
+            test "$(stat -c %u "$f")" = "$(id -u)"
+          done
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-g17-tls-metadata.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          if python3 - "$DIR/registration.json" "$WORK/username" <<'PY'
+          from pathlib import Path
+          import json,datetime,re,sys
+          d=json.loads(Path(sys.argv[1]).read_text())
+          assert d.get("target")=="meshalot-control-01"
+          assert d.get("project")=="meshalot-poc" and d.get("zone")=="us-south1-a"
+          username=d.get("username","")
+          assert re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}",username)
+          expires=datetime.datetime.strptime(d["expires"],"%Y-%m-%dT%H:%M:%S%z")
+          assert expires>datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(minutes=12), "EXPIRED_OR_INSUFFICIENT"
+          Path(sys.argv[2]).write_text(username)
+          PY
+          then
+            echo M13_G17_TLS_EXISTING_IAP_AUTH=VALID_WITH_MARGIN
+          else
+            echo M13_G17_TLS_EXISTING_IAP_AUTH=BLOCKED_SAFE_STOP
+            echo M13_G17_TLS_PRODUCTION_CONNECTION=NOT_ATTEMPTED
+            exit 1
+          fi
+          cat >"$WORK/remote.sh" <<'REMOTE'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if test "$(hostname -s)" != "meshalot-control-01"; then
+            echo "M13_G17_TLS_WRONG_HOST_STOP"
+            exit 41
+          fi
+          python3 - <<'PY'
+          import json,os,re,pwd,stat,subprocess
+          from pathlib import Path
+          def getprop(prop):
+              try:
+                  r=subprocess.run(["systemctl","show","caddy.service","--property="+prop,"--value"],
+                                   capture_output=True,timeout=6,check=False)
+                  return r.stdout.decode("utf-8","replace").strip() if r.returncode==0 and len(r.stdout)<30000 else None
+              except (OSError,subprocess.TimeoutExpired):
+                  return None
+          def metadata(path):
+              try:
+                  st=Path(path).lstat()
+                  typ="DIRECTORY" if stat.S_ISDIR(st.st_mode) else "FILE" if stat.S_ISREG(st.st_mode) else "SYMLINK" if stat.S_ISLNK(st.st_mode) else "OTHER"
+                  return {"type":typ,"uid":st.st_uid,"gid":st.st_gid,"mode":format(stat.S_IMODE(st.st_mode),"04o")}
+              except PermissionError: return {"type":"ACCESS_DENIED"}
+              except FileNotFoundError: return {"type":"MISSING"}
+              except OSError: return {"type":"UNVERIFIED"}
+          user=getprop("User")
+          home=None
+          if user and re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}",user):
+              try: home=pwd.getpwnam(user).pw_dir
+              except KeyError: pass
+          roots={}
+          roots["service_state_base"]=metadata("/var/lib/caddy")
+          roots["service_default_candidate"]=metadata("/var/lib/caddy/.local/share/caddy")
+          if home and home.startswith("/") and ".." not in home.split("/"):
+              roots["configured_user_home"]=metadata(home)
+              roots["user_default_candidate"]=metadata(os.path.join(home,".local","share","caddy"))
+          cfg=Path("/etc/caddy/Caddyfile")
+          flags={"primary_readable":False}
+          try:
+              st=cfg.lstat()
+              if stat.S_ISREG(st.st_mode) and 0<st.st_size<512*1024:
+                  lines=cfg.read_text(errors="replace").splitlines()
+                  valid=[ln.strip() for ln in lines if ln.strip() and not ln.lstrip().startswith("#")]
+                  flags.update({
+                     "primary_readable":True,
+                     "explicit_tls":sum(bool(re.match(r"^tls(?:\s|$)",ln)) for ln in valid),
+                     "explicit_storage":sum(bool(re.match(r"^storage(?:\s|$)",ln)) for ln in valid),
+                     "explicit_acme":sum(bool(re.match(r"^(?:acme_ca|acme_dns|acme_eab|cert_issuer|cert_issuers)(?:\s|$)",ln)) for ln in valid),
+                     "auto_https_settings":sum(bool(re.match(r"^auto_https(?:\s|$)",ln)) for ln in valid),
+                     "imports":sum(bool(re.match(r"^import(?:\s|$)",ln)) for ln in valid)
+                  })
+          except OSError:
+              pass
+          execstart=getprop("ExecStart")
+          output={
+              "schema":"meshalot-m13-g17-tls-metadata-v1",
+              "scope":"READONLY_NO_SUDO",
+              "hostname":"meshalot-control-01",
+              "service":{
+                 "active_state":getprop("ActiveState"),
+                 "user_configured":bool(user),
+                 "user_home_known":bool(home),
+                 "execstart_primary_config":bool(execstart and "/etc/caddy/Caddyfile" in execstart),
+                 "state_directory_configured":bool(getprop("StateDirectory")),
+                 "storage_override_not_excluded":True
+              },
+              "storage_paths":roots,
+              "caddyfile_flags":flags,
+              "active_storage_root_proven":False,
+              "effective_auto_https_issuer_proven":False,
+              "effective_acme_renewal_configuration_proven":False,
+              "private_key_bytes_read":False,
+              "certificate_bytes_read":False,
+              "environment_values_read":False,
+              "sudo_or_privilege_escalation":False,
+              "production_writes":"NONE"
+          }
+          print(json.dumps(output,sort_keys=True,separators=(",",":")))
+          PY
+          REMOTE
+          bash -n "$WORK/remote.sh"
+          set +e
+          WRONG_OUTPUT="$(bash "$WORK/remote.sh" 2>/dev/null)"
+          WRONG_STATUS="$?"
+          set -e
+          test "$WRONG_STATUS" = 41 && test "$WRONG_OUTPUT" = M13_G17_TLS_WRONG_HOST_STOP
+          echo M13_G17_TLS_WRONG_HOST_GUARD=PASS
+          REPORT="$ROOT/m13-g17-tls-classification-$(date -u +%Y%m%dT%H%M%SZ)-$GITHUB_RUN_ID.json"
+          test ! -e "$REPORT" && test ! -L "$REPORT"
+          PROXY="$GCLOUD compute start-iap-tunnel %h %p --project=meshalot-poc --zone=us-south1-a --listen-on-stdin --quiet --verbosity=error"
+          set +e
+          timeout --signal=TERM --kill-after=5s 115 ssh -F /dev/null -T \
+            -o "ProxyCommand=$PROXY" -o BatchMode=yes -o ConnectTimeout=30 \
+            -o ConnectionAttempts=1 -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$DIR/known_hosts" \
+            -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no \
+            -o LogLevel=ERROR -i "$DIR/id_ed25519" \
+            "$(cat "$WORK/username")@meshalot-control-01" 'bash -s' \
+            <"$WORK/remote.sh" >"$REPORT" 2>"$WORK/ssh-stderr"
+          RC="$?"
+          set -e
+          chmod 600 "$REPORT" 2>/dev/null || true
+          if test "$RC" -ne 0; then
+            echo M13_G17_TLS_REMOTE_METADATA=FAILED_SAFE_STOP
+            echo M13_G17_TLS_PRODUCTION_WRITES=NONE
+            exit 1
+          fi
+          python3 - "$REPORT" <<'PY'
+          import json,os,stat,sys
+          from pathlib import Path
+          path=Path(sys.argv[1]); st=path.lstat()
+          assert stat.S_ISREG(st.st_mode) and st.st_uid==os.getuid() and stat.S_IMODE(st.st_mode)==0o600
+          obj=json.loads(path.read_text())
+          assert obj["schema"]=="meshalot-m13-g17-tls-metadata-v1"
+          assert obj["hostname"]=="meshalot-control-01"
+          assert obj["scope"]=="READONLY_NO_SUDO"
+          assert obj["production_writes"]=="NONE"
+          for flag in ("private_key_bytes_read","certificate_bytes_read","environment_values_read","sudo_or_privilege_escalation","active_storage_root_proven","effective_auto_https_issuer_proven","effective_acme_renewal_configuration_proven"):
+              assert obj[flag] is False
+          allowed={"DIRECTORY","FILE","SYMLINK","OTHER","MISSING","ACCESS_DENIED","UNVERIFIED"}
+          print("M13_G17_TLS_REMOTE_METADATA=PASS")
+          print("M13_G17_TLS_SERVICE_ACTIVE="+str(obj["service"]["active_state"]=="active"))
+          print("M13_G17_TLS_SERVICE_EXEC_CONFIG_HINT="+str(obj["service"]["execstart_primary_config"]))
+          for key in ("service_state_base","service_default_candidate","configured_user_home","user_default_candidate"):
+              typ=obj["storage_paths"].get(key,{}).get("type","UNVERIFIED")
+              assert typ in allowed
+              print("M13_G17_TLS_"+key.upper()+"="+typ)
+          f=obj["caddyfile_flags"]
+          print("M13_G17_TLS_PRIMARY_CADDYFILE_READABLE="+str(f["primary_readable"]))
+          for key in ("explicit_tls","explicit_storage","explicit_acme","auto_https_settings","imports"):
+              v=f.get(key,"UNVERIFIED")
+              assert v=="UNVERIFIED" or isinstance(v,int) and 0<=v<1000
+              print("M13_G17_TLS_CONFIG_"+key.upper()+"="+str(v))
+          print("M13_G17_TLS_ACTIVE_STORAGE_ROOT=UNVERIFIED")
+          print("M13_G17_TLS_EFFECTIVE_ISSUER_AND_RENEWAL=UNVERIFIED")
+          print("M13_G17_TLS_PRIVATE_KEYS_CERTS_ENV_VALUES=NOT_READ")
+          print("M13_G17_TLS_SUDO=NONE")
+          print("M13_G17_TLS_PRODUCTION_WRITES=NONE")
+          PY
+          sha256sum "$REPORT" >"$REPORT.sha256"
+          chmod 600 "$REPORT.sha256"
+          (cd "$ROOT" && sha256sum --check --status "$(basename "$REPORT").sha256")
+          echo M13_G17_TLS_PRIVATE_EVIDENCE_SHA256=PASS
+          python3 - <<'PY'
+          import ssl,socket
+          host="api.meshalot.com"
+          try:
+              ctx=ssl.create_default_context()
+              with socket.create_connection((host,443),timeout=5) as s:
+                  with ctx.wrap_socket(s,server_hostname=host) as tls:
+                      cert=tls.getpeercert()
+                      assert cert
+                      subj=set(x for v in cert.get("subjectAltName",[]) for x in [v] if x[0]=="DNS")
+                      assert ("DNS",host) in subj
+                      issuer={n:v for tup in cert.get("issuer",()) for n,v in tup}
+                      org=(issuer.get("organizationName") or "")[:70]
+                      cn=(issuer.get("commonName") or "")[:70]
+                      print("M13_G17_TLS_PUBLIC_CERT_CHAIN=TRUSTED")
+                      print("M13_G17_TLS_PUBLIC_CERT_HOSTNAME=PASS")
+                      print("M13_G17_TLS_PUBLIC_CERT_ISSUER_ORG="+org.replace("\n"," ") if org else "M13_G17_TLS_PUBLIC_CERT_ISSUER_ORG=UNVERIFIED")
+                      print("M13_G17_TLS_PUBLIC_CERT_ISSUER_CN="+cn.replace("\n"," ") if cn else "M13_G17_TLS_PUBLIC_CERT_ISSUER_CN=UNVERIFIED")
+          except (OSError,ssl.SSLError,AssertionError) as ex:
+              print("M13_G17_TLS_PUBLIC_CERT=UNVERIFIED_READONLY_NO_CHANGE")
+          PY
