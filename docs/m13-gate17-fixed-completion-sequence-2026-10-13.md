@@ -58,9 +58,16 @@ of skipping ahead to unrelated work.
 - [x] Identify code-level PG16 global role/grant, Caddy/TLS and
   systemd runtime recovery dependencies **without accessing secrets or
   production**. See [G17/1 static dependency inventory](m13-g17-g1-postgres-caddy-dependency-inventory-2026-10-13.md).
-- [ ] Verify these dependencies in a separately authorized isolated
-  stage. This remains a release blocker: static source inspection is
-  not live role/grant restoration or Caddy/TLS validation.
+- [x] Execute **new targeted PostgreSQL 16 runtime ACL acceptance**
+  in the approved isolated 2-CPU/4-GiB, network-none, synthetic-only
+  staging environment, using exact pinned M13 source and tracked grants.
+  Allowed operations and 8 expected-denied operations PASS.
+  [Evidence](https://github.com/wwjd4u/MeshAlot/actions/runs/38426678379).
+  **No real production global role/membership restoration has been tested.**
+- [ ] Verify remaining **full recovery dependencies**, including real
+  PostgreSQL global roles/ownership, Caddy/TLS runtime materials,
+  and stage-only service rollback; synthetic ACL PASS is not equivalent
+  to complete production recovery.
 - [x] Operator approved existing MS-02 as a disposable **PG16 synthetic-only** staging target, bounded to 2 logical CPUs, 4 GiB RAM, Docker `--network=none`, no host bind mounts or ports. [Successful one-time bootstrap and isolation proof](https://github.com/wwjd4u/MeshAlot/actions/runs/38419118910); container and tmpfs cleaned. This is **not** a complete rollback rehearsal.
 - [x] One-time MS-02 runner staging resource preflight PASS on 2026-10-13;
   **no staging environment has been created**. [Evidence](https://github.com/wwjd4u/MeshAlot/actions/runs/38399945655).
@@ -172,13 +179,13 @@ See [G17/1 dependency inventory](m13-g17-g1-postgres-caddy-dependency-inventory-
 Caddy/TLS runtime validation or isolated staging execution yet.
 
 ## Next *single* action
-Use the already approved disposable, isolated PG16/synthetic-only
-stage to verify **new** runtime database roles, grants and denied
-operations against tracked M13 schema expectations. Do **not** use
-production-derived archive bytes, passwords, real node identities
-or existing passphrases without fresh, separate approval.
-Previously verified migration and restore tests are not to be repeated
-unless the specific new test requires a fixture to establish its setup.
+Review the remaining Caddy/TLS and PostgreSQL **global**
+ownership/recovery dependencies before G17/2. Synthetic runtime ACLs
+are verified. Do not open or decrypt production-derived archives,
+use vault credentials, access real node identities or deploy to live
+services without specific authorization. The next executable stage
+test should close an untested recovery dependency rather than repeat
+the completed migration or ACL tests.
 
 ## 2026-10-13 staged-resource readiness snapshot (read-only)
 The trusted MS-02 runner independently returned 14 logical CPUs,
@@ -226,4 +233,36 @@ completed successfully:
 Caddy/TLS dependencies and recovery strategy meet acceptance.
 **G17/2 remains NOT STARTED**; no known-good API/config archive has been
 used in staging. M13 remains OPEN.
+
+## 2026-10-13 targeted PostgreSQL16 runtime ACL acceptance
+
+[One-time PG16 synthetic role/grant test](https://github.com/wwjd4u/MeshAlot/actions/runs/38426678379)
+completed successfully on the approved MS-02 Docker runner. Using pinned
+application source `4f67ee54e5ebca084e38e306e723ae0acd08e77d`,
+the tracked migrations were applied **only as a fixture setup** for the
+new actual ACL tests; this is not a repeat claim of the already-passed
+8→9→10 migration upgrade test.
+
+- Exactly PostgreSQL16, `--network=none`, 2 CPUs/4 GiB memory,
+  no bind mounts or host ports; in-memory disposable database.
+- Stage-only `meshalot` role was LOGIN, non-SUPERUSER, no CREATEDB,
+  CREATEROLE, REPLICATION, BYPASSRLS or inherited administrative roles.
+- Actual checked-in `database/runtime-grants.sql` executed in stage
+  after tracked migrations 1–10. Authorized column reads, node telemetry
+  UPDATE and node-rating function execution PASSED.
+- **Eight intentional forbidden actions all returned PostgreSQL
+  SQLSTATE 42501**, including restricted user fields, unauthorized user
+  updates, direct ratings insertion, wallet deletion, schema/table DDL,
+  migration-ledger reads and role creation. No unwanted table/role was
+  created.
+- Worktree unchanged; no real node IDs, recovery keys, private backups,
+  production connections or V100 tests accessed.
+- Container and all disposable temporary files removed: explicit PASS.
+  One-time workflow subsequently disabled; [follow-up run SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38426776392).
+
+**G17/1 still IN PROGRESS** because production global role/owner
+reconstruction, actual Caddy/TLS runtime dependency recovery and an
+isolated API/systemd/Caddy rollback have not been proven. This ACL test
+does not authorize production migration or cutover. G17/2 has not
+started and M13 Gate 17 remains OPEN.
 
