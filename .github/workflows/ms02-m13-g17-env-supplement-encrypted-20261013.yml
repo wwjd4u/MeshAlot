@@ -11,12 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   capture:
-    if: >-
-      github.repository == 'wwjd4u/MeshAlot' &&
-      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
-      github.event_name == 'push' &&
-      github.run_attempt == 1 &&
-      github.event.head_commit.message == 'backup(m13): operator-approved one-time encrypted environment supplement'
+    if: false # Operator-approved encrypted supplement captured; prevent any re-export
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 9
     env:
