@@ -1,0 +1,202 @@
+name: MS-02 M13 Gate17 G17-1 PG16 Actual Runtime ACL Acceptance
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-g17-g1-pg16-runtime-acl-test-20261013.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-isolated-staging
+  cancel-in-progress: false
+jobs:
+  acl:
+    if: >-
+      github.repository == 'wwjd4u/MeshAlot' &&
+      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
+      github.event_name == 'push' &&
+      github.run_attempt == 1 &&
+      github.event.head_commit.message == 'test(m13): one-time isolated PG16 runtime ACL acceptance'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout previously validated immutable M13 source
+        uses: actions/checkout@v4
+        with:
+          ref: 4f67ee54e5ebca084e38e306e723ae0acd08e77d
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Execute synthetic-only PostgreSQL16 authorization tests and cleanup
+        shell: bash
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          test "$(git rev-parse HEAD)" = "4f67ee54e5ebca084e38e306e723ae0acd08e77d"
+          test "$(git rev-parse refs/remotes/origin/main)" = "1016c9b058690f34058dfab9cde7927e421fa469"
+          test -z "$(git status --porcelain)"
+          test -f database/runtime-grants.sql
+          docker image inspect postgres:16-alpine >/dev/null
+          docker info >/dev/null
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-g17-runtime-acl.XXXXXXXX")"
+          CID=""
+          cleanup() {
+            result="$?"
+            trap - EXIT
+            success=1
+            if test -n "$CID"; then
+              docker rm -f -v "$CID" >/dev/null 2>&1 || success=0
+              docker container inspect "$CID" >/dev/null 2>&1 && success=0
+            fi
+            if test -d "$WORK"; then rm -rf -- "$WORK" || success=0; fi
+            if test "$success" = 1; then
+              echo "M13_G17_G1_RUNTIME_ACL_DISPOSABLE_CLEANUP=PASS"
+            else
+              echo "M13_G17_G1_RUNTIME_ACL_DISPOSABLE_CLEANUP=REVIEW_REQUIRED"
+              result=1
+            fi
+            exit "$result"
+          }
+          trap cleanup EXIT
+          mkdir -m 700 "$WORK/stage" "$WORK/stage/migrations" "$WORK/tools"
+          cp database/migrate.py "$WORK/stage/migrate.py"
+          cp database/migrations/*.up.sql "$WORK/stage/migrations/"
+          CID="$(docker run -d --rm --pull=never --network=none \
+            --read-only --user=70:70 --cap-drop=ALL \
+            --security-opt=no-new-privileges --pids-limit=128 \
+            --memory=4g --memory-swap=4g --cpus=2 \
+            --tmpfs /var/lib/postgresql/data:rw,nosuid,nodev,noexec,size=1g,uid=70,gid=70,mode=0700 \
+            --tmpfs /var/run/postgresql:rw,nosuid,nodev,noexec,size=16m,uid=70,gid=70,mode=0700 \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=64m,uid=70,gid=70,mode=1777 \
+            -e POSTGRES_HOST_AUTH_METHOD=trust \
+            postgres:16-alpine -c listen_addresses=)"
+          test -n "$CID"
+          test "$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$CID")" = none
+          test "$(docker inspect -f '{{.HostConfig.Memory}}' "$CID")" = 4294967296
+          test "$(docker inspect -f '{{.HostConfig.NanoCpus}}' "$CID")" = 2000000000
+          test -z "$(docker inspect -f '{{range $k, $v := .HostConfig.Binds}}{{printf "%s" $k}}{{end}}' "$CID")"
+          echo "M13_G17_G1_RUNTIME_ACL_ISOLATION=PASS"
+
+          ready=0
+          for i in $(seq 1 24); do
+            if docker exec "$CID" pg_isready -h /var/run/postgresql -U postgres >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" = 1
+          v="$(docker exec "$CID" psql -X -qAt -U postgres -h /var/run/postgresql -d postgres -v ON_ERROR_STOP=1 \
+            -c "SELECT current_setting('server_version_num')::integer / 10000")"
+          test "$v" = 16
+          echo "M13_G17_G1_RUNTIME_ACL_POSTGRES16=PASS"
+
+          docker exec "$CID" createdb -U postgres -h /var/run/postgresql meshalot_m13test
+          docker exec "$CID" psql -X -q -v ON_ERROR_STOP=1 -U postgres -h /var/run/postgresql -d meshalot_m13test \
+            -c "CREATE ROLE meshalot LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT" \
+            >"$WORK/setup-out" 2>"$WORK/setup-err"
+
+          cat >"$WORK/tools/psql" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec docker exec -i -e PGHOST=/var/run/postgresql "$M13_G17_DB_CONTAINER" psql -U postgres "$@"
+          SH
+          chmod 0700 "$WORK/tools/psql"
+          export M13_G17_DB_CONTAINER="$CID"
+          export PATH="$WORK/tools:$PATH"
+          unset PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE PGSERVICE || true
+
+          # Tracked migration application is prerequisite schema setup for
+          # this new ACL test, NOT a repeat claim about 8->10 migration acceptance.
+          if python3 "$WORK/stage/migrate.py" apply --database meshalot_m13test \
+            >"$WORK/schema-setup" 2>"$WORK/schema-errors"; then
+            echo "M13_G17_G1_SCHEMA_SETUP_V10_FOR_ACL_ONLY=PASS"
+          else
+            echo "M13_G17_G1_SCHEMA_SETUP_V10_FOR_ACL_ONLY=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          if docker exec -i "$CID" psql -X -q -v ON_ERROR_STOP=1 -U postgres \
+              -h /var/run/postgresql -d meshalot_m13test \
+              <database/runtime-grants.sql >"$WORK/grant-out" 2>"$WORK/grant-error"; then
+            echo "M13_G17_G1_RUNTIME_GRANTS_APPLIED_IN_STAGE=PASS"
+          else
+            echo "M13_G17_G1_RUNTIME_GRANTS_APPLIED_IN_STAGE=FAILED_SAFE_STOP"
+            exit 1
+          fi
+
+          cat >"$WORK/acl_checks.py" <<'PY'
+          import subprocess,sys,re
+          cid=sys.argv[1]
+          def sql(role,query):
+              cmd=["docker","exec",cid,"psql","-X","-qAt","-v","ON_ERROR_STOP=1",
+                   "-v","VERBOSITY=sqlstate","-U",role,"-h","/var/run/postgresql",
+                   "-d","meshalot_m13test","-c",query]
+              p=subprocess.run(cmd,capture_output=True,text=True,timeout=15)
+              return p
+          def allowed(label,statement,result=None):
+              p=sql("meshalot",statement)
+              if p.returncode!=0 or (result is not None and p.stdout.strip()!=result):
+                  print("M13_G17_G1_"+label+"=FAILED_SAFE_STOP")
+                  sys.exit(2)
+              print("M13_G17_G1_"+label+"=PASS")
+          def denied(label,statement):
+              p=sql("meshalot",statement)
+              if p.returncode==0 or not re.search(r"\b42501\b",p.stderr):
+                  print("M13_G17_G1_"+label+"=FAILED_UNEXPECTED_RESULT")
+                  sys.exit(3)
+              print("M13_G17_G1_"+label+"=PASS")
+          p=sql("postgres","SELECT rolcanlogin AND NOT rolsuper AND NOT rolcreatedb AND "
+                "NOT rolcreaterole AND NOT rolreplication AND NOT rolbypassrls AND "
+                "NOT rolinherit FROM pg_roles WHERE rolname='meshalot'")
+          if p.returncode or p.stdout.strip()!="t":
+              print("M13_G17_G1_NONADMIN_ROLE=FAILED_SAFE_STOP");sys.exit(4)
+          print("M13_G17_G1_NONADMIN_ROLE=PASS")
+          p=sql("postgres","SELECT count(*)=10 AND min(version)=1 AND max(version)=10 "
+                "FROM meshalot_meta.schema_migrations")
+          if p.returncode or p.stdout.strip()!="t":
+              print("M13_G17_G1_ACL_SCHEMA_VERSION=FAILED_SAFE_STOP");sys.exit(5)
+          print("M13_G17_G1_ACL_SCHEMA_VERSION=PASS")
+          allowed("AUTHENTICATED_RUNTIME_USER","SELECT current_user","meshalot")
+          allowed("AUTHORIZED_USER_COLUMNS","SELECT id,email,password_hash FROM users LIMIT 0","")
+          allowed("AUTHORIZED_NODE_TELEMETRY","SELECT node_id,m13_telemetry FROM node_status LIMIT 0","")
+          allowed("AUTHORIZED_RATINGS_READ","SELECT node_id,compute_score,tier FROM node_ratings LIMIT 0","")
+          allowed("AUTHORIZED_SESSION_FIELDS","SELECT user_id,token_hash,expires_at FROM user_sessions LIMIT 0","")
+          allowed("AUTHORIZED_NODE_RATING_FUNCTION",
+                  "SELECT public.insert_node_rating('synthetic-unregistered-node',"
+                  "NULL,NULL,NULL,NULL,NULL,false,false,false,false,false,"
+                  "'unrated',now())","0")
+          # Positive write: synthetic database only; empty UPDATE safely
+          # tests column-level authorization without changing fixture state.
+          allowed("AUTHORIZED_TELEMETRY_UPDATE",
+                  "UPDATE node_status SET m13_telemetry='{}'::jsonb WHERE false","")
+          # SQLSTATE 42501 permission_denied required, not arbitrary error.
+          denied("DENY_SENSITIVE_USER_FIELD","SELECT created_at FROM users LIMIT 0")
+          denied("DENY_USERS_UPDATE","UPDATE users SET email='denied@example.invalid' WHERE false")
+          denied("DENY_DIRECT_RATINGS_INSERT","INSERT INTO node_ratings DEFAULT VALUES")
+          denied("DENY_WALLET_DELETE","DELETE FROM wallet_transactions WHERE false")
+          denied("DENY_SCHEMA_CREATE","CREATE TABLE public.g17_unauthorized (x int)")
+          denied("DENY_MIGRATION_LEDGER","SELECT version FROM meshalot_meta.schema_migrations LIMIT 0")
+          denied("DENY_TABLE_ALTER","ALTER TABLE public.nodes ADD COLUMN unauthorized text")
+          denied("DENY_CREATE_ROLE","CREATE ROLE g17_unauthorized")
+          p=sql("postgres","SELECT to_regclass('public.g17_unauthorized') IS NULL AND "
+                "NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='g17_unauthorized')")
+          if p.returncode or p.stdout.strip()!="t":
+              print("M13_G17_G1_NO_UNAUTHORIZED_SIDE_EFFECTS=FAILED_SAFE_STOP");sys.exit(6)
+          print("M13_G17_G1_NO_UNAUTHORIZED_SIDE_EFFECTS=PASS")
+          print("M13_G17_G1_NEW_RUNTIME_PERMISSION_ACCEPTANCE=PASS")
+          PY
+          if python3 "$WORK/acl_checks.py" "$CID"; then
+            echo "M13_G17_G1_PG16_ROLE_AND_GRANT_VALIDATION=PASS"
+          else
+            echo "M13_G17_G1_PG16_ROLE_AND_GRANT_VALIDATION=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          test -z "$(git status --porcelain)"
+          echo "M13_G17_G1_SOURCE_WORKTREE_UNCHANGED=PASS"
+          echo "M13_G17_G1_PRODUCTION_AND_REAL_IDENTITIES=NOT_ACCESSED"
+          echo "M13_G17_G1_ORIGINAL_BACKUPS_AND_V100=NOT_ACCESSED"
