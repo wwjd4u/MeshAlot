@@ -692,3 +692,44 @@ dependencies and isolated staging rehearsal prerequisites.
 Full production restoration, separate vault-sourced recovery practice,
 and the end-to-end Milestone 13 real outage/reboot acceptance remain
 unproven. Gate 17 **OPEN**.
+
+## 2026-10-13 — Supplemental off-machine encrypted copy operator verification
+
+**RESULT: PASS — operator-provided Mac Terminal evidence.** The existing
+encrypted supplemental systemd environment archive and its matching
+SHA-256 sidecar were transferred via password-authenticated SSH with
+strict ED25519 host-key checking from the previously verified MS-02
+`192.168.5.98` to the previously established, UUID-verified Toshiba
+APFS encrypted volume `/Volumes/MeshAlot-Backup`, inside the owner-only
+`M13-G17-20261011-Encrypted-Archives` destination.
+
+The operator confirmed these exact terminal markers:
+
+- `M13_G17_ENVSUPP_EXTERNAL_COPY=PASS`
+- `M13_G17_ENVSUPP_EXTERNAL_SHA256=PASS`
+
+The transfer script rejected an existing archive/sidecar destination,
+retained original MS-02 source files and checked the copied encrypted
+archive against the copied original checksum file using local SHA-256.
+The previous two GPG archives and their sidecars had already been
+independently verified on the same encrypted volume. No keys, private
+manifest, or plaintext configuration values were transferred.
+
+**Classification:** all **three existing encrypted backup archives**
+have an independently SHA-256-verified external Toshiba copy, with
+the two original recovery passphrases stored separately in operator-
+verified RoboForm Safenotes. The supplemental archive **reuses** the
+API rollback recovery passphrase; no new passphrase was made.
+Toshiba and Time Machine volumes are separate encrypted APFS volumes
+on the *same* physical Toshiba disk and thus are not two physically
+independent media.
+
+**Limits:** The latest external-copy hash was verified by the operator's
+Mac Terminal, not by the GitHub runner. The supplemental encrypted
+archive was validated on the source MS-02, but the externally stored
+RoboForm key has not been independently used in a disaster recovery
+drill. Do not claim full production recoverability, all PostgreSQL
+global roles/grants, Caddy/TLS dependencies, or staging rollback
+rehearsal PASS. G17/1 broader prerequisite checklist remains
+**IN PROGRESS**; Gate 17 and M13 remain **OPEN**. Continue with the
+fixed [seven-part completion checklist](m13-gate17-fixed-completion-sequence-2026-10-13.md).
