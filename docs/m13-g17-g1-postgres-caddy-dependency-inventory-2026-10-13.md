@@ -110,3 +110,27 @@ recovery acceptance; G17/2 is NOT STARTED; M13 Gate 17 remains OPEN.
 network-isolated PG16/synthetic stage on existing MS-02, with no
 production-derived secrets, no re-enrollment and no persistent agent.
 Until that approval, do not create any container or staging data.
+
+## Addendum — 2026-10-13 approved isolated PG16 bootstrap
+
+With the operator's explicit approval, an ephemeral PG16-only staging
+container was exercised on the existing MS-02. [Successful bootstrap run](https://github.com/wwjd4u/MeshAlot/actions/runs/38419118910)
+established a restricted 2-CPU/4-GiB, network-none, cap-dropped,
+read-only-root container with temporary in-memory PostgreSQL16
+data and only synthetic test records. Restricted synthetic
+owner and runtime roles were checked for nonadministrative flags.
+The failed first inspector run [38418971253](https://github.com/wwjd4u/MeshAlot/actions/runs/38418971253)
+also cleaned successfully; the final run's explicit cleanup passed.
+No production source credentials, backup archives, V100 evidence,
+node identities or plaintext secrets were used. [Rerun skipped](https://github.com/wwjd4u/MeshAlot/actions/runs/38419245216)
+after disabling the one-time workflow.
+
+**What this resolves:** operator staging-target choice,
+container-level isolation/resources, local PG16 availability,
+synthetic fixture and elementary restricted-role policy test.
+**Still not proved:** actual tracked M13 schema-grant behavior;
+PostgreSQL roles/owner/ACL reconstruction from a backup;
+application/Caddy/TLS restoration; any use of the encrypted
+production-derived archives; and real network/reboot acceptance.
+Stage resources were deleted after the approved test and are
+not still running. G17/1 remains IN PROGRESS; Gate 17 OPEN.
