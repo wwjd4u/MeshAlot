@@ -1,0 +1,77 @@
+name: MS-02 M13 Gate17 Stage Capability Preflight — Read Only
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-g17-stage-capability-readonly-20261013.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-stage-readiness-preflight
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: >-
+      github.repository == 'wwjd4u/MeshAlot' &&
+      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
+      github.run_attempt == 1 &&
+      github.event.head_commit.message == 'audit(m13): one-time read-only remote staging capability preflight'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 4
+    steps:
+      - name: Identify runner and read local staging capabilities without touching secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import shutil
+          import subprocess
+
+          assert os.uname().nodename.split(".")[0] == "wwjd4u-MS-02-Ultra"
+          ram_path = Path("/proc/meminfo")
+          mem_lines = ram_path.read_text().splitlines()
+          available_kib = next(int(line.split()[1]) for line in mem_lines
+                               if line.startswith("MemAvailable:"))
+          free_ram_gib = available_kib // (1024 * 1024)
+          disk = os.statvfs(Path.home())
+          free_disk_gib = disk.f_bavail * disk.f_frsize // (1024**3)
+          cpu_count = os.cpu_count() or 0
+          runtime = "NOT_AVAILABLE"
+          docker = shutil.which("docker")
+          if docker:
+              try:
+                  process = subprocess.run(
+                      [docker, "info", "--format", "{{.ServerVersion}}"],
+                      capture_output=True, text=True, timeout=12, check=False)
+                  if process.returncode == 0 and process.stdout.strip():
+                      runtime = "DOCKER_DAEMON_ACCESSIBLE"
+                  else:
+                      runtime = "DOCKER_PRESENT_DAEMON_UNAVAILABLE"
+              except (OSError, subprocess.TimeoutExpired):
+                  runtime = "DOCKER_PRESENT_DAEMON_UNAVAILABLE"
+          elif shutil.which("podman"):
+              runtime = "PODMAN_PRESENT_UNVERIFIED"
+
+          print("M13_G17_STAGE_RUNNER_IDENTITY=PASS")
+          print(f"M13_G17_STAGE_CPU_LOGICAL={cpu_count}")
+          print(f"M13_G17_STAGE_MEM_AVAILABLE_GIB_FLOOR={free_ram_gib}")
+          print(f"M13_G17_STAGE_DISK_AVAILABLE_GIB_FLOOR={free_disk_gib}")
+          print(f"M13_G17_STAGE_RUNTIME_CAPABILITY={runtime}")
+          ready = (cpu_count >= 4 and free_ram_gib >= 8
+                   and free_disk_gib >= 15
+                   and runtime == "DOCKER_DAEMON_ACCESSIBLE")
+          print("M13_G17_STAGE_CAPACITY_PRELIMINARY="+(
+                "SUFFICIENT_FOR_PLANNING" if ready else "REVIEW_REQUIRED"))
+          print("M13_G17_STAGE_NETWORK_ISOLATION=NOT_TESTED")
+          print("M13_G17_STAGE_CONTAINERS_CREATED=NONE")
+          print("M13_G17_STAGE_PRODUCTION_CONNECTION=NONE")
+          print("M13_G17_STAGE_SECRET_PATHS_ACCESSED=NONE")
+          print("M13_G17_STAGE_BACKUPS_OR_BENCHMARKS_TOUCHED=NONE")
+          print("M13_G17_STAGE_PRODUCTION_CHANGES=NONE")
+          PY
