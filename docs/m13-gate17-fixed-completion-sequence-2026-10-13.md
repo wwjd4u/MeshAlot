@@ -80,6 +80,16 @@ of skipping ahead to unrelated work.
   Candidate certificate data root remains UNVERIFIED, not absent.
   [Read-only evidence](https://github.com/wwjd4u/MeshAlot/actions/runs/38442058347); workflow disabled with
   [follow-up SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38442168184). No secrets or production changes.
+- [x] Run the approved digest-pinned Caddy **v2.11.4** disposable synthetic
+  HTTPS, authenticated WebSocket, negative-authorization and intentional
+  fault/recovery checks. [Successful MS-02 workflow run](https://github.com/wwjd4u/MeshAlot/actions/runs/38449591265);
+  [sanitized Caddy recovery evidence](m13-g17-g1-caddy-synthetic-tls-wss-recovery-2026-10-13.md).
+  Full trusted-cert and WebSocket probes passed **before and after** isolated
+  Caddy config fault/restore, with container/file cleanup PASS. File-capability
+  launch blocker fixed only inside a disposable derived image; all stage
+  isolation safeguards preserved. One-time workflow disabled and
+  [follow-up run SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38449988211).
+  **Not a test of real production TLS key/storage or service rollback.**
 - [ ] Verify remaining **full recovery dependencies**, including real
   PostgreSQL global roles/ownership, Caddy/TLS runtime materials,
   and stage-only service rollback; synthetic ACL PASS is not equivalent
