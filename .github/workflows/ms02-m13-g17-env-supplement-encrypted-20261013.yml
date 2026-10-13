@@ -1,0 +1,278 @@
+name: MS-02 M13 Gate17 One-Time Encrypted Environment Supplement
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-g17-env-supplement-encrypted-20261013.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-private-rollback-capture
+  cancel-in-progress: false
+jobs:
+  capture:
+    if: >-
+      github.repository == 'wwjd4u/MeshAlot' &&
+      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
+      github.event_name == 'push' &&
+      github.run_attempt == 1 &&
+      github.event.head_commit.message == 'backup(m13): operator-approved one-time encrypted environment supplement'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 9
+    env:
+      CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+      CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+      CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+      CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+    steps:
+      - name: Capture exactly two pinned systemd environment files into private AES256 stream
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          IAP="$HOME/.local/share/meshalot-m13-iap-ssh"
+          AUDITS="$HOME/.local/share/meshalot-m13-private-audits"
+          ROLLBACK="$HOME/.local/share/meshalot-m13-private-rollbacks"
+          KEYS="$HOME/.local/share/meshalot-m13-backup-keys"
+          KEYFILE="$KEYS/m13-g17-rollback-38168945744.passphrase"
+          command -v gpg >/dev/null
+          command -v sha256sum >/dev/null
+          test -x "$GCLOUD"
+          for d in "$IAP" "$AUDITS" "$ROLLBACK" "$KEYS"; do
+            test -d "$d" && test ! -L "$d"
+            test "$(stat -c %a "$d")" = 700
+            test "$(stat -c %u "$d")" = "$(id -u)"
+          done
+          for f in "$IAP/id_ed25519" "$IAP/known_hosts" "$IAP/registration.json" "$KEYFILE"; do
+            test -f "$f" && test ! -L "$f" && test -s "$f"
+            test "$(stat -c %a "$f")" = 600
+            test "$(stat -c %u "$f")" = "$(id -u)"
+          done
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-g17-envsupp.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          python3 - "$IAP/registration.json" "$AUDITS" "$WORK" "$GITHUB_RUN_ID" <<'PREFLIGHT'
+          import datetime,hashlib,json,os,re,stat,sys
+          from pathlib import Path
+          reg,audits,work,run=Path(sys.argv[1]),Path(sys.argv[2]),Path(sys.argv[3]),sys.argv[4]
+          auth=json.loads(reg.read_text())
+          assert (auth.get("target"),auth.get("project"),auth.get("zone")) == ("meshalot-control-01","meshalot-poc","us-south1-a")
+          assert re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}", auth.get("username",""))
+          expiry=datetime.datetime.strptime(auth["expires"],"%Y-%m-%dT%H:%M:%S%z")
+          assert expiry>datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(minutes=30),"IAP authorization expired/insufficient"
+          (work/"remote-user").write_text(auth["username"])
+          reports=list(audits.glob("m13-g17-step3e5-env-metadata-*-run-38309656972.json"))
+          assert len(reports)==1,"Private metadata evidence not unique"
+          p=reports[0]
+          h=Path(str(p)+".sha256")
+          for x in (p,h):
+              s=x.lstat()
+              assert stat.S_ISREG(s.st_mode) and s.st_uid==os.getuid() and stat.S_IMODE(s.st_mode)==0o600
+          assert h.read_text()==hashlib.sha256(p.read_bytes()).hexdigest()+"  "+str(p)+"\n","Pinned metadata checksum"
+          r=json.loads(p.read_text())
+          assert (r.get("schema"),r.get("remote_hostname"),r.get("service_count"))==("m13-g17-3e5-v1","meshalot-control-01",1)
+          assert r.get("secret_contents_read") is False and r.get("production_changes") is False
+          items=r["declarations"]
+          assert len(items)==2
+          for it in items:
+              assert it["state"]=="METADATA_AVAILABLE" and it["kind"]=="REGULAR"
+              assert isinstance(it["path"],str) and it["path"].startswith("/") and "\n" not in it["path"]
+              assert 0<int(it["size_bytes"])<=1024*1024
+              assert all(str(it[z]).isdigit() for z in ("uid","gid","mode"))
+          (work/"pinned.json").write_text(json.dumps(items,separators=(",",":"),sort_keys=True))
+          print("M13_G17_ENVSUPP_PRIVATE_PINNED_METADATA=PASS")
+          print("M13_G17_ENVSUPP_EXISTING_KEY_AND_IAP=PASS")
+          PREFLIGHT
+          DEST="$ROLLBACK/m13-g17-env-supplement-$GITHUB_RUN_ID"
+          test ! -e "$DEST" && test ! -L "$DEST"
+          mkdir -m 700 "$DEST"
+          PARTIAL="$DEST/.meshalot-systemd-env-supplement.tar.gpg.partial"
+          FINAL="$DEST/meshalot-systemd-env-supplement.tar.gpg"
+          test ! -e "$PARTIAL" && test ! -e "$FINAL" && test ! -e "$FINAL.sha256"
+          trap 'rm -f -- "$PARTIAL"; rm -rf -- "$WORK"' EXIT
+          cat > "$WORK/remote-template.py" <<'REMOTE'
+          import datetime,hashlib,io,json,os,re,socket,stat,subprocess,sys,tarfile
+          from pathlib import Path
+          EXPECTED=__PRIVATE_PINNED_METADATA__
+          def need(ok):
+              if not ok: raise RuntimeError("safe stop")
+          def show(*args):
+              return subprocess.check_output(["systemctl"]+list(args),stderr=subprocess.DEVNULL,timeout=12).decode().strip()
+          try:
+              need(socket.gethostname().split(".")[0]=="meshalot-control-01")
+              need(os.geteuid()==0)
+              lines=show("list-unit-files","meshalot*.service","--no-legend","--no-pager").splitlines()
+              units=[x.split()[0] for x in lines if x.split() and re.fullmatch(r"meshalot[a-zA-Z0-9_-]*\.service",x.split()[0])]
+              need(len(units)==1 and show("show",units[0],"--property=ActiveState","--value")=="active")
+              val=show("show",units[0],"--property=EnvironmentFiles","--value")
+              pat=r"(\S+)\s+\(ignore_errors=(yes|no)\)"
+              found=list(re.finditer(pat,val))
+              need(len(found)==2 and re.sub(pat,"",val).strip()=="")
+              source=[]
+              for i,m in enumerate(found):
+                  path_text=m.group(1)
+                  expected=EXPECTED[i]
+                  need(path_text==expected["path"] and (m.group(2)=="no")==expected["required"])
+                  need(path_text.startswith("/") and "\n" not in path_text and "\r" not in path_text)
+                  need(not any(x in path_text for x in "*?[]{}"))
+                  path=Path(path_text)
+                  need(path.is_absolute())
+                  st=os.lstat(path)
+                  need(stat.S_ISREG(st.st_mode) and not stat.S_ISLNK(st.st_mode))
+                  need(st.st_uid==int(expected["uid"]) and st.st_gid==int(expected["gid"]))
+                  need(format(stat.S_IMODE(st.st_mode),"o")==str(expected["mode"]))
+                  need(0<st.st_size<=1024*1024 and st.st_size==int(expected["size_bytes"]))
+                  fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC)
+                  try:
+                      st2=os.fstat(fd)
+                      need(st2.st_ino==st.st_ino and st2.st_dev==st.st_dev and st2.st_size==st.st_size)
+                      with os.fdopen(fd,"rb",closefd=False) as inp:
+                          data=inp.read(1024*1024+1)
+                      need(len(data)==st.st_size)
+                  finally:
+                      os.close(fd)
+                  need(os.lstat(path).st_mtime_ns==st.st_mtime_ns)
+                  source.append((i,path_text,data,st))
+              manifest={"schema":"m13-g17-environment-supplement-v1",
+                 "host":"meshalot-control-01","created_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                 "source":"systemd EnvironmentFiles only","recovery_key":"EXISTING_API_ROLLBACK_KEY",
+                 "contents_stored_only_in_encrypted_archive":True,"entries":[]}
+              for i,path_text,data,st in source:
+                  manifest["entries"].append({"name":f"env/declared-{i+1:02d}",
+                      "original_path":path_text,"sha256":hashlib.sha256(data).hexdigest(),
+                      "size":len(data),"uid":st.st_uid,"gid":st.st_gid,
+                      "mode":format(stat.S_IMODE(st.st_mode),"o"),"mtime":int(st.st_mtime)})
+              def add(tar,name,data,mode=0o600):
+                  ent=tarfile.TarInfo(name)
+                  ent.size=len(data)
+                  ent.mode=mode
+                  ent.mtime=0
+                  tar.addfile(ent,io.BytesIO(data))
+              with tarfile.open(fileobj=sys.stdout.buffer,mode="w|") as out:
+                  add(out,"recovery/manifest.json",(json.dumps(manifest,sort_keys=True)+"\n").encode())
+                  for i,_,data,st in source:
+                      add(out,f"env/declared-{i+1:02d}",data,stat.S_IMODE(st.st_mode))
+          except Exception:
+              print("M13_G17_ENV_SOURCE_SAFE_STOP",file=sys.stderr)
+              sys.exit(51)
+          REMOTE
+          python3 - "$WORK/remote-template.py" "$WORK/pinned.json" "$WORK/remote.py" <<'PIN'
+          import json,os,stat,sys
+          from pathlib import Path
+          template,pinned,out=map(Path,sys.argv[1:])
+          s=template.read_text()
+          assert s.count("__PRIVATE_PINNED_METADATA__")==1
+          vals=json.loads(pinned.read_text())
+          s=s.replace("__PRIVATE_PINNED_METADATA__",repr(vals))
+          fd=os.open(out,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+          with os.fdopen(fd,"w") as f:f.write(s)
+          PIN
+          cat > "$WORK/verify.py" <<'VERIFY'
+          import hashlib,json,sys,tarfile
+          from pathlib import Path
+          try:
+              expected=json.loads(Path(sys.argv[1]).read_text())
+              need={"recovery/manifest.json","env/declared-01","env/declared-02"}
+              got=set()
+              manifest=None
+              with tarfile.open(fileobj=sys.stdin.buffer,mode="r|") as tar:
+                  for item in tar:
+                      assert item.isfile() and item.name in need and item.name not in got
+                      assert 0<=item.size<=1024*1024
+                      value=tar.extractfile(item)
+                      assert value is not None
+                      data=value.read(1024*1024+1)
+                      assert len(data)==item.size
+                      if item.name=="recovery/manifest.json":
+                          assert len(data)<65536
+                          manifest=json.loads(data)
+                      else:
+                          i=int(item.name[-2:])-1
+                          ex=expected[i]
+                          assert hashlib.sha256(data).hexdigest() == manifest["entries"][i]["sha256"]
+                          assert manifest["entries"][i]["original_path"]==ex["path"]
+                          assert len(data)==int(ex["size_bytes"])
+                          assert (manifest["entries"][i]["uid"],manifest["entries"][i]["gid"],
+                              manifest["entries"][i]["mode"])==(ex["uid"],ex["gid"],ex["mode"])
+                      got.add(item.name)
+              assert got==need
+              assert manifest["schema"]=="m13-g17-environment-supplement-v1"
+              assert manifest["host"]=="meshalot-control-01"
+              assert manifest["recovery_key"]=="EXISTING_API_ROLLBACK_KEY"
+              assert len(manifest["entries"])==2
+              print("M13_G17_ENVSUPP_TWO_PINNED_CONTENTS=PASS")
+          except Exception:
+              print("M13_G17_ENVSUPP_DECRYPTED_VALIDATION=FAILED_SAFE_STOP",file=sys.stderr)
+              sys.exit(52)
+          VERIFY
+          python3 -m py_compile "$WORK/remote.py" "$WORK/verify.py"
+
+          USER="$(cat "$WORK/remote-user")"
+          PROXY="$GCLOUD compute start-iap-tunnel %h %p --project=meshalot-poc --zone=us-south1-a --listen-on-stdin --quiet --verbosity=error"
+          echo "M13_G17_ENVSUPP_ENCRYPTION=START"
+          if timeout --signal=TERM --kill-after=5s 180 ssh \
+            -F /dev/null -T -o "ProxyCommand=$PROXY" \
+            -o BatchMode=yes -o ConnectTimeout=30 -o ConnectionAttempts=1 \
+            -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$IAP/known_hosts" \
+            -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no \
+            -o LogLevel=ERROR -i "$IAP/id_ed25519" \
+            "$USER@meshalot-control-01" 'sudo -n /usr/bin/python3 -' \
+            <"$WORK/remote.py" 2>"$WORK/ssh-stderr" |
+            gpg --quiet --batch --no-tty --pinentry-mode loopback \
+              --passphrase-file "$KEYFILE" --cipher-algo AES256 \
+              --s2k-mode 3 --s2k-digest-algo SHA512 \
+              --compress-algo none --symmetric --output "$PARTIAL" \
+              2>"$WORK/gpg-stderr"
+          then
+            test -s "$PARTIAL" && test "$(stat -c %a "$PARTIAL")" = 600
+            echo "M13_G17_ENVSUPP_STREAM_ENCRYPTED=PASS"
+          else
+            echo "M13_G17_ENVSUPP_STREAM_ENCRYPTED=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          if gpg --quiet --batch --no-tty --pinentry-mode loopback \
+            --passphrase-file "$KEYFILE" --decrypt "$PARTIAL" 2>"$WORK/decrypt-stderr" |
+            python3 "$WORK/verify.py" "$WORK/pinned.json" 2>"$WORK/verify-stderr"
+          then
+            echo "M13_G17_ENVSUPP_NEW_ARCHIVE_VALIDATION=PASS"
+          else
+            echo "M13_G17_ENVSUPP_NEW_ARCHIVE_VALIDATION=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          ln -- "$PARTIAL" "$FINAL"
+          rm -- "$PARTIAL"
+          sha256sum -- "$FINAL" > "$FINAL.sha256"
+          chmod 0600 "$FINAL" "$FINAL.sha256"
+          (cd "$DEST" && sha256sum --check --status "$(basename "$FINAL").sha256")
+          python3 - "$DEST" "$FINAL" <<'RECORD'
+          import datetime,hashlib,json,os,stat,sys
+          from pathlib import Path
+          d,archive=map(Path,sys.argv[1:])
+          rec={"scope":"M13 Gate17 only two systemd declared environment file contents",
+            "recorded_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "archive_sha256":hashlib.sha256(archive.read_bytes()).hexdigest(),
+            "archive_size_bytes":archive.stat().st_size,
+            "cipher":"AES256 GPG symmetric",
+            "recovery_key":"reuse existing API rollback recovery passphrase; not copied",
+            "members_verified":2,
+            "production_changes":"NONE",
+            "production_source_reads":"EXACTLY_TWO_ENVFILES",
+            "plaintext_written_to_MS02_disk":False,
+            "offmachine_copy":"PENDING",
+            "staging_rehearsal":"PENDING"}
+          p=d/"env-supplement-evidence.json"
+          fd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+          with os.fdopen(fd,"w") as f:json.dump(rec,f,indent=2);f.write("\n")
+          assert stat.S_IMODE(p.stat().st_mode)==0o600
+          print("M13_G17_ENVSUPP_PRIVATE_EVIDENCE=PASS")
+          RECORD
+          echo "M13_G17_ENVSUPP_OLD_ARCHIVES_AND_KEYS_PRESERVED=PASS"
+          echo "M13_G17_ENVSUPP_SECRET_CONTENTS_IN_LOGS=NONE"
+          echo "M13_G17_ENVSUPP_CLOUD_UPLOAD=NONE"
+          echo "M13_G17_ENVSUPP_PRODUCTION_MUTATIONS=NONE"
+          echo "M13_G17_ENVSUPP_LOCAL_ENCRYPTED_ARCHIVE=PASS"
