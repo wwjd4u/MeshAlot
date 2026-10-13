@@ -162,3 +162,42 @@ rollback remain **unverified** and require their own approved recovery plan.
 The earlier source-inventory and bootstrap sections reflect their historical
 evidence dates; this addendum supersedes their pre-test synthetic gap status.
 G17/1 remains IN PROGRESS, G17/2 NOT STARTED, no production write.
+
+## Addendum — approved production Caddy/TLS metadata-only inventory (2026-10-13)
+
+The operator authorized a strictly **read-only** Caddy/TLS dependency inspection
+using the existing time-limited, host-key-verified IAP SSH route. [Successful
+one-time MS-02 runner inspection](https://github.com/wwjd4u/MeshAlot/actions/runs/38442058347) reused valid access, and its
+[post-disable execution was SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38442168184). The full sanitized JSON audit
+and SHA-256 sidecar remain restricted locally on MS-02. No Caddyfile contents,
+certificates, TLS private keys, vault materials, environment values, user
+credentials or production changes entered CI logs or GitHub.
+
+**Observed metadata:**
+- Caddy service **active**; installed **Caddy CLI v2.11.4**. The CLI's
+  `list-modules --skip-standard` reported **0 nonstandard modules**.
+  This does not independently prove the active service executable has
+  the same digest or full module set as the inspected CLI.
+- The systemd Caddy service references the primary
+  `/etc/caddy/Caddyfile`, readable under existing access.
+- Bounded line-level parsing found **1 reverse_proxy** directive and **0**
+  `import`, explicit `tls`, explicit `storage` or obvious manually
+  referenced key-file directives. This is *not* a semantic Caddy adaptation
+  test and cannot establish active automated certificate issuers or storage.
+- `/var/lib/caddy` is a directory. The *candidate* data root
+  `/var/lib/caddy/.local/share/caddy` was **UNVERIFIED** under existing
+  read-only privileges; do not equate inaccessible with missing. The
+  resolved active storage location, certificate renewal strategy and
+  backup-versus-regeneration decision remain **UNVERIFIED**.
+- No private TLS key/certificate bytes or production configurations were
+  exported; no service restart, access renewal, IAM/SSH/DNS change,
+  backup modification or provider-node operation.
+
+**Recovery decision:** the metadata inspection is PASS, but **Caddy/TLS
+recovery readiness is NOT PROVEN**. Next prepare stage-only actual Caddy
+v2.11.4 HTTPS/WebSocket/negative-auth and safe recovery checks with
+synthetic certificates/identities, preserving the earlier successful
+Go proxy simulation without repeating it as new evidence. A separate
+approved/private method will be necessary for verifying real production
+certificate storage/recovery, if still required; never export TLS keys to
+GitHub, GitHub Actions or chat. G17/1 remains open; G17/2 has not begun.
