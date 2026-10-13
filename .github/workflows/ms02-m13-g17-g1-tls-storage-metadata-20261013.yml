@@ -11,7 +11,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   tls_metadata:
+    # One-time scope authorized for run 38453025828; permanently disabled for future pushes.
     if: >-
+      false &&
       github.repository == 'wwjd4u/MeshAlot' &&
       github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
       github.event_name == 'push' &&
