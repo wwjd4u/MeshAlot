@@ -16,7 +16,7 @@ jobs:
       github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
       github.event_name == 'push' &&
       github.run_attempt == 1 &&
-      github.event.head_commit.message == 'test(m13): one-time approved digest-pinned Caddy TLS WSS stage recovery'
+      github.event.head_commit.message == 'test(m13): fix Caddy version build metadata strict check'
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 12
     steps:
@@ -70,9 +70,10 @@ jobs:
           assert any("sha256:040e9f7480b80b6d4a7e5013a21159b950a63dcbdb956e38abe2387fb28d9ec0" in x for x in digests), "PINNED_DIGEST_NOT_IN_REPO_DIGESTS"
           print("M13_G17_CADDY_IMAGE_PLATFORM_AND_DIGEST=PASS")
           PY
-          if test "$(docker run --rm --pull=never --network=none --user=10001:10001 \
+          VERSION="$(docker run --rm --pull=never --network=none --user=10001:10001 \
             --cap-drop=ALL --security-opt=no-new-privileges --read-only \
-            "$BASE" version 2>"$WORK/version-stderr")" = "v2.11.4"; then
+            "$BASE" version 2>"$WORK/version-stderr")" || { echo "M13_G17_CADDY_RUNTIME_VERSION_2_11_4=FAILED_SAFE_STOP"; exit 1; }
+          if [[ "$VERSION" =~ ^v2\.11\.4([[:space:]]|$) ]]; then
             echo "M13_G17_CADDY_RUNTIME_VERSION_2_11_4=PASS"
           else
             echo "M13_G17_CADDY_RUNTIME_VERSION_2_11_4=FAILED_SAFE_STOP"
