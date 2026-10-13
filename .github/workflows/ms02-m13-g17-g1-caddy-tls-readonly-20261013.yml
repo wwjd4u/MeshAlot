@@ -11,12 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   inventory:
-    if: >-
-      github.repository == 'wwjd4u/MeshAlot' &&
-      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
-      github.event_name == 'push' &&
-      github.run_attempt == 1 &&
-      github.event.head_commit.message == 'audit(m13): one-time approved read-only Caddy TLS metadata'
+    if: false # approved one-time Caddy/TLS metadata inspection complete; disabled
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 7
     env:
