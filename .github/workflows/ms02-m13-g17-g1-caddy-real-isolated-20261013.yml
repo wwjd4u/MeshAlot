@@ -1,0 +1,488 @@
+name: MS-02 M13 G17-1 Pinned Caddy Synthetic TLS WSS Recovery
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-g17-g1-caddy-real-isolated-20261013.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-isolated-staging
+  cancel-in-progress: false
+jobs:
+  caddy:
+    if: >-
+      github.repository == 'wwjd4u/MeshAlot' &&
+      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
+      github.event_name == 'push' &&
+      github.run_attempt == 1 &&
+      github.event.head_commit.message == 'test(m13): one-time approved digest-pinned Caddy TLS WSS stage recovery'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 12
+    steps:
+      - name: Execute approved one-time synthetic real-Caddy TLS WSS recovery and disposal
+        shell: bash
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+          DOCKER_CONTENT_TRUST: '0'
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          test "$GITHUB_REF" = "refs/heads/infra/ms02-runner-gateway"
+          BASE="docker.io/library/caddy@sha256:040e9f7480b80b6d4a7e5013a21159b950a63dcbdb956e38abe2387fb28d9ec0"
+          DERIVED="meshalot-m13-g17-caddy-stage:$GITHUB_RUN_ID"
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-g17-caddy-real.XXXXXXXX")"
+          CID=""
+          NEW_BASE=0
+          trap 'rc=$?; trap - EXIT; ok=1;
+            if test -n "$CID"; then docker rm -f -v "$CID" >/dev/null 2>&1 || true; docker container inspect "$CID" >/dev/null 2>&1 && ok=0; fi;
+            docker image rm "$DERIVED" >/dev/null 2>&1 || true;
+            docker image inspect "$DERIVED" >/dev/null 2>&1 && ok=0;
+            if test "$NEW_BASE" = 1; then docker image rm "$BASE" >/dev/null 2>&1 || true; docker image inspect "$BASE" >/dev/null 2>&1 && ok=0; fi;
+            if test -d "$WORK"; then rm -rf -- "$WORK" || ok=0; fi;
+            if test "$ok" = 1; then echo "M13_G17_CADDY_STAGE_DISPOSABLE_CLEANUP=PASS"; else echo "M13_G17_CADDY_STAGE_DISPOSABLE_CLEANUP=REVIEW_REQUIRED"; rc=1; fi;
+            exit "$rc"' EXIT
+          for cmd in docker openssl go python3 sha256sum; do command -v "$cmd" >/dev/null; done
+          docker info >/dev/null
+          mkdir -m 700 "$WORK/context"
+          if docker image inspect "$BASE" >/dev/null 2>&1; then
+            echo "M13_G17_CADDY_PINNED_IMAGE_ALREADY_PRESENT=YES"
+          else
+            NEW_BASE=1
+            echo "M13_G17_CADDY_PINNED_IMAGE_DOWNLOAD=APPROVED"
+          fi
+          if docker pull --platform linux/amd64 "$BASE" >"$WORK/pull-stdout" 2>"$WORK/pull-stderr"; then
+            echo "M13_G17_CADDY_PINNED_DIGEST_PULL=PASS"
+          else
+            echo "M13_G17_CADDY_PINNED_DIGEST_PULL=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          docker image inspect "$BASE" >"$WORK/image-inspect.json"
+          python3 - "$WORK/image-inspect.json" <<'PY'
+          import json,sys
+          d=json.load(open(sys.argv[1]))[0]
+          assert d["Os"]=="linux" and d["Architecture"]=="amd64"
+          digests=d.get("RepoDigests") or []
+          assert any("sha256:040e9f7480b80b6d4a7e5013a21159b950a63dcbdb956e38abe2387fb28d9ec0" in x for x in digests), "PINNED_DIGEST_NOT_IN_REPO_DIGESTS"
+          print("M13_G17_CADDY_IMAGE_PLATFORM_AND_DIGEST=PASS")
+          PY
+          if test "$(docker run --rm --pull=never --network=none --user=10001:10001 \
+            --cap-drop=ALL --security-opt=no-new-privileges --read-only \
+            "$BASE" version 2>"$WORK/version-stderr")" = "v2.11.4"; then
+            echo "M13_G17_CADDY_RUNTIME_VERSION_2_11_4=PASS"
+          else
+            echo "M13_G17_CADDY_RUNTIME_VERSION_2_11_4=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          if docker run --rm --pull=never --network=none --user=10001:10001 \
+             --cap-drop=ALL --security-opt=no-new-privileges --read-only \
+             "$BASE" list-modules --skip-standard \
+             >"$WORK/module-out" 2>"$WORK/module-err"; then
+            if test -z "$(grep -E '^[[:alnum:]_]+([./-][[:alnum:]_]+)*$' "$WORK/module-out" || true)"; then
+              echo "M13_G17_CADDY_STAGE_NONSTANDARD_MODULES=ZERO"
+            else
+              echo "M13_G17_CADDY_STAGE_NONSTANDARD_MODULES=UNEXPECTED_STOP"
+              exit 1
+            fi
+          else
+            echo "M13_G17_CADDY_STAGE_NONSTANDARD_MODULES=UNVERIFIED_STOP"
+            exit 1
+          fi
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -sha256 \
+            -subj '/CN=stage.invalid' -addext 'subjectAltName=DNS:stage.invalid' \
+            -keyout "$WORK/context/tls.key" -out "$WORK/context/tls.crt" \
+            >"$WORK/cert-out" 2>"$WORK/cert-error"
+          chmod 600 "$WORK/context/tls.key"
+          chmod 600 "$WORK/context/tls.crt"
+          cat >"$WORK/context/Caddyfile" <<'CADDY'
+          {
+            admin 127.0.0.1:2019
+            auto_https disable_redirects
+          }
+          stage.invalid:18443 {
+            bind 127.0.0.1
+            tls /stage/tls.crt /stage/tls.key
+            reverse_proxy 127.0.0.1:18081
+          }
+          CADDY
+          cat >"$WORK/context/Caddyfile-broken" <<'CADDY'
+          {
+            admin 127.0.0.1:2019
+            auto_https disable_redirects
+          }
+          stage.invalid:18443 {
+            bind 127.0.0.1
+            tls /stage/tls.crt /stage/tls.key
+            reverse_proxy 127.0.0.1:18999
+          }
+          CADDY
+          cat >"$WORK/context/Caddyfile-invalid" <<'CADDY'
+          stage.invalid:18443 {
+            deliberately_not_a_valid_caddy_directive
+          }
+          CADDY
+          cat >"$WORK/context/stage-tool.go" <<'GO'
+          package main
+          import (
+            "bufio"
+            "bytes"
+            "context"
+            "crypto/rand"
+            "crypto/sha1"
+            "crypto/tls"
+            "crypto/x509"
+            "encoding/base64"
+            "errors"
+            "fmt"
+            "io"
+            "net"
+            "net/http"
+            "os"
+            "strings"
+            "time"
+          )
+          const address = "127.0.0.1:18443"
+          const hostname = "stage.invalid"
+          const syntheticToken = "synthetic-stage-only-m13"
+          func wsAccept(k string) string {
+            h := sha1.Sum([]byte(k+"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+            return base64.StdEncoding.EncodeToString(h[:])
+          }
+          func serve() error {
+            mux := http.NewServeMux()
+            mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+              if r.Header.Get("X-Forwarded-Proto")!="https" {
+                http.Error(w,"untrusted transport",http.StatusForbidden)
+                return
+              }
+              w.Header().Set("X-Stage-Forwarded-Proto","https")
+              _,_ = io.WriteString(w,"synthetic-ok")
+            })
+            mux.HandleFunc("/private", func(w http.ResponseWriter,r *http.Request) {
+              if r.Header.Get("Authorization") != "Bearer "+syntheticToken {
+                http.Error(w,"unauthorized",http.StatusUnauthorized)
+                return
+              }
+              _,_ = io.WriteString(w,"authorized-stage")
+            })
+            mux.HandleFunc("/ws", func(w http.ResponseWriter,r *http.Request) {
+              if r.Header.Get("Origin")!="" {
+                http.Error(w,"browser origin blocked",http.StatusForbidden)
+                return
+              }
+              if r.Header.Get("Authorization")!="Bearer "+syntheticToken {
+                http.Error(w,"unauthorized",http.StatusUnauthorized)
+                return
+              }
+              if r.Header.Get("X-Forwarded-Proto")!="https" {
+                http.Error(w,"untrusted transport",http.StatusForbidden)
+                return
+              }
+              if !strings.EqualFold(r.Header.Get("Upgrade"),"websocket") ||
+                 !strings.Contains(strings.ToLower(r.Header.Get("Connection")),"upgrade") ||
+                 r.Header.Get("Sec-WebSocket-Version")!="13" {
+                http.Error(w,"upgrade required",http.StatusUpgradeRequired)
+                return
+              }
+              k:=r.Header.Get("Sec-WebSocket-Key")
+              b,err:=base64.StdEncoding.DecodeString(k)
+              if err!=nil || len(b)!=16 {
+                http.Error(w,"bad websocket key",http.StatusBadRequest)
+                return
+              }
+              hj,ok:=w.(http.Hijacker)
+              if !ok {http.Error(w,"unsupported",http.StatusInternalServerError);return}
+              conn,buf,err:=hj.Hijack()
+              if err!=nil{return}
+              defer conn.Close()
+              _=conn.SetDeadline(time.Now().Add(20*time.Second))
+              _,err=fmt.Fprintf(buf,"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n",wsAccept(k))
+              if err!=nil{return}
+              if buf.Flush()!=nil{return}
+              for i:=0;i<2;i++ {
+                msg,err:=readMaskedText(buf.Reader)
+                if err!=nil{return}
+                if len(msg)>125{return}
+                if _,err=buf.Write(append([]byte{0x81,byte(len(msg))},[]byte(msg)...));err!=nil{return}
+                if buf.Flush()!=nil{return}
+              }
+            })
+            s:=&http.Server{Addr:"127.0.0.1:18081",Handler:mux,ReadHeaderTimeout:3*time.Second}
+            return s.ListenAndServe()
+          }
+          func readMaskedText(r *bufio.Reader) (string,error) {
+            head:=make([]byte,2)
+            if _,err:=io.ReadFull(r,head);err!=nil{return "",err}
+            if head[0]!=0x81 || head[1]&0x80==0 || head[1]&0x7f>125 {
+              return "",errors.New("invalid masked client text frame")
+            }
+            n:=int(head[1]&0x7f)
+            block:=make([]byte,4+n)
+            if _,err:=io.ReadFull(r,block);err!=nil{return "",err}
+            for i:=0;i<n;i++{block[4+i]^=block[i%4]}
+            return string(block[4:]),nil
+          }
+          func textFrame(w io.Writer,s string) error {
+            if len(s)>125{return errors.New("frame too long")}
+            mask:=make([]byte,4)
+            if _,err:=rand.Read(mask);err!=nil{return err}
+            buf:=[]byte{0x81,0x80|byte(len(s))}
+            buf=append(buf,mask...)
+            for i:=0;i<len(s);i++{buf=append(buf,s[i]^mask[i%4])}
+            _,err:=w.Write(buf)
+            return err
+          }
+          func readReply(r *bufio.Reader,s string) error {
+            head:=make([]byte,2)
+            if _,err:=io.ReadFull(r,head);err!=nil{return err}
+            if head[0]!=0x81 || head[1]!=byte(len(s)){return errors.New("echo frame mismatch")}
+            p:=make([]byte,len(s))
+            if _,err:=io.ReadFull(r,p);err!=nil{return err}
+            if !bytes.Equal(p,[]byte(s)){return errors.New("echo payload mismatch")}
+            return nil
+          }
+          func tlsCfg() (*tls.Config,error) {
+            cert,err:=os.ReadFile("/stage/tls.crt")
+            if err!=nil{return nil,err}
+            pool:=x509.NewCertPool()
+            if !pool.AppendCertsFromPEM(cert){return nil,errors.New("bad synthetic trust root")}
+            return &tls.Config{ServerName:hostname,RootCAs:pool,MinVersion:tls.VersionTLS12},nil
+          }
+          func client() (*http.Client,error) {
+            cfg,err:=tlsCfg()
+            if err!=nil{return nil,err}
+            t:=&http.Transport{TLSClientConfig:cfg,ForceAttemptHTTP2:false,
+              DialContext:func(_ context.Context,_,_ string)(net.Conn,error) {
+                return net.DialTimeout("tcp",address,3*time.Second)
+              }}
+            return &http.Client{Transport:t,Timeout:5*time.Second},nil
+          }
+          func get(c *http.Client,path string,auth bool,origin string,spoof bool)(int,string,http.Header,error){
+            req,err:=http.NewRequest(http.MethodGet,"https://"+hostname+":18443"+path,nil)
+            if err!=nil{return 0,"",nil,err}
+            if auth{req.Header.Set("Authorization","Bearer "+syntheticToken)}
+            if origin!=""{req.Header.Set("Origin",origin)}
+            if spoof{req.Header.Set("X-Forwarded-Proto","http")}
+            resp,err:=c.Do(req)
+            if err!=nil{return 0,"",nil,err}
+            defer resp.Body.Close()
+            b,err:=io.ReadAll(io.LimitReader(resp.Body,4096))
+            return resp.StatusCode,string(b),resp.Header,err
+          }
+          func health() error {
+            c,err:=client()
+            if err!=nil{return err}
+            code,body,h,err:=get(c,"/healthz",false,"",false)
+            if err!=nil{return err}
+            if code!=200||body!="synthetic-ok"||h.Get("X-Stage-Forwarded-Proto")!="https"{
+              return fmt.Errorf("health incorrect: %d",code)
+            }
+            return nil
+          }
+          func upgrade() error {
+            cfg,err:=tlsCfg()
+            if err!=nil{return err}
+            conn,err:=tls.DialWithDialer(&net.Dialer{Timeout:3*time.Second},"tcp",address,cfg)
+            if err!=nil{return err}
+            defer conn.Close()
+            _=conn.SetDeadline(time.Now().Add(12*time.Second))
+            raw:=make([]byte,16)
+            if _,err=rand.Read(raw);err!=nil{return err}
+            key:=base64.StdEncoding.EncodeToString(raw)
+            _,err=fmt.Fprintf(conn,"GET /ws HTTP/1.1\r\nHost: stage.invalid:18443\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: %s\r\nAuthorization: Bearer %s\r\n\r\n",key,syntheticToken)
+            if err!=nil{return err}
+            reader:=bufio.NewReader(conn)
+            resp,err:=http.ReadResponse(reader,&http.Request{Method:"GET"})
+            if err!=nil{return err}
+            if resp.StatusCode!=101||resp.Header.Get("Sec-WebSocket-Accept")!=wsAccept(key) {
+              return fmt.Errorf("websocket handshake rejected: %d",resp.StatusCode)
+            }
+            if err=textFrame(conn,"stage-first");err!=nil{return err}
+            if err=readReply(reader,"stage-first");err!=nil{return err}
+            time.Sleep(1200*time.Millisecond)
+            if err=textFrame(conn,"stage-after-idle");err!=nil{return err}
+            if err=readReply(reader,"stage-after-idle");err!=nil{return err}
+            return nil
+          }
+          func fullProbe() error {
+            if err:=health();err!=nil{return err}
+            fmt.Println("M13_G17_CADDY_TLS_TRUSTED_HEALTH=PASS")
+            c,err:=client();if err!=nil{return err}
+            code,body,_,err:=get(c,"/healthz",false,"",true)
+            if err!=nil||code!=200||body!="synthetic-ok"{return errors.New("forwarded proto spoof/normalization check failed")}
+            fmt.Println("M13_G17_CADDY_HTTPS_FORWARD_PROTO=PASS")
+            code,_,_,err=get(c,"/private",false,"",false)
+            if err!=nil||code!=401{return fmt.Errorf("unauthorized private endpoint was not blocked: %d",code)}
+            fmt.Println("M13_G17_CADDY_PRIVATE_UNAUTHORIZED=BLOCKED")
+            code,body,_,err=get(c,"/private",true,"",false)
+            if err!=nil||code!=200||body!="authorized-stage"{return errors.New("authorized synthetic private endpoint failed")}
+            fmt.Println("M13_G17_CADDY_PRIVATE_AUTHORIZED=PASS")
+            code,_,_,err=get(c,"/ws",false,"",false)
+            if err!=nil||code!=401{return fmt.Errorf("unauthorized WS not blocked: %d",code)}
+            fmt.Println("M13_G17_CADDY_WSS_UNAUTHORIZED=BLOCKED")
+            code,_,_,err=get(c,"/ws",true,"https://browser.invalid",false)
+            if err!=nil||code!=403{return fmt.Errorf("browser-origin WS not blocked: %d",code)}
+            fmt.Println("M13_G17_CADDY_BROWSER_ORIGIN=BLOCKED")
+            untrusted:=&tls.Config{ServerName:hostname,MinVersion:tls.VersionTLS12}
+            wrong,err:=tls.DialWithDialer(&net.Dialer{Timeout:2*time.Second},"tcp",address,untrusted)
+            if err==nil {wrong.Close();return errors.New("untrusted TLS unexpectedly accepted")}
+            fmt.Println("M13_G17_CADDY_UNTRUSTED_CERT=BLOCKED")
+            if err=upgrade();err!=nil{return err}
+            fmt.Println("M13_G17_CADDY_ACTUAL_LONG_LIVED_WSS=PASS")
+            return nil
+          }
+          func brokenProbe() error {
+            c,err:=client();if err!=nil{return err}
+            code,_,_,err:=get(c,"/healthz",false,"",false)
+            if err!=nil{return err}
+            if code!=502{return fmt.Errorf("expected isolated upstream failure, got %d",code)}
+            fmt.Println("M13_G17_CADDY_STAGE_FAULT_INJECTED=PASS")
+            return nil
+          }
+          func main() {
+            var err error
+            switch os.Args[1] {
+              case "backend":err=serve()
+              case "health":err=health()
+              case "probe":err=fullProbe()
+              case "broken":err=brokenProbe()
+              default:err=errors.New("unknown synthetic stage mode")
+            }
+            if err!=nil{fmt.Fprintln(os.Stderr,"M13_STAGE_SYNTHETIC_CHECK_FAILED:",err);os.Exit(1)}
+          }
+          GO
+          if GOTOOLCHAIN=local GOPROXY=off GO111MODULE=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -trimpath -ldflags='-s -w' -o "$WORK/context/stage-tool" \
+              "$WORK/context/stage-tool.go" >"$WORK/build-go-out" 2>"$WORK/build-go-errors"; then
+            echo "M13_G17_CADDY_SYNTHETIC_TOOL_OFFLINE_BUILD=PASS"
+          else
+            echo "M13_G17_CADDY_SYNTHETIC_TOOL_OFFLINE_BUILD=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          rm -f "$WORK/context/stage-tool.go"
+          cat >"$WORK/context/Dockerfile" <<'DOCKER'
+          FROM docker.io/library/caddy@sha256:040e9f7480b80b6d4a7e5013a21159b950a63dcbdb956e38abe2387fb28d9ec0
+          COPY --chown=10001:10001 --chmod=0500 stage-tool /stage/stage-tool
+          COPY --chown=10001:10001 --chmod=0400 tls.key /stage/tls.key
+          COPY --chown=10001:10001 --chmod=0444 tls.crt /stage/tls.crt
+          COPY --chown=10001:10001 --chmod=0444 Caddyfile /stage/Caddyfile
+          COPY --chown=10001:10001 --chmod=0444 Caddyfile-broken /stage/Caddyfile-broken
+          COPY --chown=10001:10001 --chmod=0444 Caddyfile-invalid /stage/Caddyfile-invalid
+          USER 10001:10001
+          WORKDIR /stage
+          ENTRYPOINT ["/bin/sh", "-c"]
+          CMD ["/stage/stage-tool backend & exec caddy run --config /stage/Caddyfile --adapter caddyfile"]
+          DOCKER
+          if docker build --pull=false --network=none --no-cache \
+            --tag "$DERIVED" "$WORK/context" \
+            >"$WORK/image-build-out" 2>"$WORK/image-build-errors"; then
+            echo "M13_G17_CADDY_PRIVATE_DISPOSABLE_IMAGE_BUILD=PASS"
+          else
+            echo "M13_G17_CADDY_PRIVATE_DISPOSABLE_IMAGE_BUILD=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          if docker run --rm --pull=never --network=none --read-only \
+             --user=10001:10001 --cap-drop=ALL --security-opt=no-new-privileges \
+             --tmpfs /config:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
+             --tmpfs /data:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
+             --tmpfs /tmp:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
+             --entrypoint /usr/bin/caddy "$DERIVED" validate \
+             --config /stage/Caddyfile --adapter caddyfile \
+             >"$WORK/validate-good-out" 2>"$WORK/validate-good-error"; then
+            echo "M13_G17_CADDY_KNOWN_GOOD_CONFIG_VALIDATION=PASS"
+          else
+            echo "M13_G17_CADDY_KNOWN_GOOD_CONFIG_VALIDATION=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          if docker run --rm --pull=never --network=none --read-only \
+             --user=10001:10001 --cap-drop=ALL --security-opt=no-new-privileges \
+             --tmpfs /config:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
+             --tmpfs /data:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
+             --tmpfs /tmp:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
+             --entrypoint /usr/bin/caddy "$DERIVED" validate \
+             --config /stage/Caddyfile-invalid --adapter caddyfile \
+             >"$WORK/validate-bad-out" 2>"$WORK/validate-bad-error"; then
+            echo "M13_G17_CADDY_INVALID_CONFIG_REJECTION=FAILED_UNSAFE"
+            exit 1
+          else
+            echo "M13_G17_CADDY_INVALID_CONFIG_REJECTION=PASS"
+          fi
+          CID="$(docker run -d --rm --pull=never --platform=linux/amd64 --network=none \
+            --read-only --user=10001:10001 --cap-drop=ALL \
+            --security-opt=no-new-privileges --pids-limit=96 \
+            --memory=4g --memory-swap=4g --cpus=2 \
+            --tmpfs /config:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
+            --tmpfs /data:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=16m,uid=10001,gid=10001,mode=0700 \
+            "$DERIVED")"
+          test -n "$CID"
+          docker inspect "$CID" >"$WORK/container-inspect.json"
+          python3 - "$WORK/container-inspect.json" <<'PY'
+          import json,sys
+          o=json.load(open(sys.argv[1]))[0]
+          h=o["HostConfig"]
+          assert h["NetworkMode"]=="none"
+          assert h["Memory"]==4294967296 and h["NanoCpus"]==2000000000
+          assert h["MemorySwap"]==4294967296 and h["PidsLimit"]==96
+          assert h["ReadonlyRootfs"] and not h["Privileged"]
+          assert h.get("Binds") in (None,[])
+          assert h.get("PortBindings") in (None,{})
+          assert h.get("CapDrop") and "ALL" in h["CapDrop"]
+          assert "no-new-privileges" in h.get("SecurityOpt",[])
+          assert o["Config"]["User"]=="10001:10001"
+          assert not (o.get("NetworkSettings") or {}).get("Ports") or all(
+            value is None for value in o["NetworkSettings"]["Ports"].values())
+          print("M13_G17_CADDY_STAGE_NO_NETWORK_NO_PORTS_NO_BINDS_RESOURCE_CAP=PASS")
+          PY
+          READY=0
+          for i in $(seq 1 25); do
+            if docker exec "$CID" /stage/stage-tool health \
+              >"$WORK/health-check-out" 2>"$WORK/health-check-error"; then
+              READY=1
+              break
+            fi
+            sleep 1
+          done
+          test "$READY" = 1 || { echo "M13_G17_CADDY_STAGE_BACKEND_READY=FAILED_SAFE_STOP"; exit 1; }
+          echo "M13_G17_CADDY_STAGE_BACKEND_READY=PASS"
+          if docker exec "$CID" /stage/stage-tool probe; then
+            echo "M13_G17_CADDY_REAL_TLS_WSS_AUTH_ACCEPTANCE=PASS"
+          else
+            echo "M13_G17_CADDY_REAL_TLS_WSS_AUTH_ACCEPTANCE=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          if docker exec "$CID" /usr/bin/caddy reload \
+               --config /stage/Caddyfile-broken --adapter caddyfile \
+               >"$WORK/broken-reload-out" 2>"$WORK/broken-reload-err"; then
+            echo "M13_G17_CADDY_STAGE_ONLY_FAULT_RELOAD=PASS"
+          else
+            echo "M13_G17_CADDY_STAGE_ONLY_FAULT_RELOAD=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          if docker exec "$CID" /stage/stage-tool broken; then
+            echo "M13_G17_CADDY_EXPECTED_STAGE_PROXY_OUTAGE=PASS"
+          else
+            echo "M13_G17_CADDY_EXPECTED_STAGE_PROXY_OUTAGE=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          if docker exec "$CID" /usr/bin/caddy reload \
+              --config /stage/Caddyfile --adapter caddyfile \
+              >"$WORK/recovery-reload-out" 2>"$WORK/recovery-reload-err"; then
+            echo "M13_G17_CADDY_KNOWN_GOOD_CONFIG_RESTORED=PASS"
+          else
+            echo "M13_G17_CADDY_KNOWN_GOOD_CONFIG_RESTORED=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          if docker exec "$CID" /stage/stage-tool probe; then
+            echo "M13_G17_CADDY_STAGE_HTTPS_WSS_RECOVERY=PASS"
+          else
+            echo "M13_G17_CADDY_STAGE_HTTPS_WSS_RECOVERY=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          echo "M13_G17_CADDY_PRODUCTION_AND_RECOVERY_KEYS=NOT_ACCESSED"
+          echo "M13_G17_CADDY_REAL_CERTIFICATE_STORAGE=NOT_TESTED"
+          echo "M13_G17_CADDY_ONE_TIME_SYNTHETIC_ACCEPTANCE=PASS"
