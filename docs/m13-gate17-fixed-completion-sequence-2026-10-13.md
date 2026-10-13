@@ -55,9 +55,12 @@ of skipping ahead to unrelated work.
   `M13_G17_ENVSUPP_EXTERNAL_COPY=PASS` and
   `M13_G17_ENVSUPP_EXTERNAL_SHA256=PASS`. No recovery passphrase
   transferred and original MS-02 files preserved.
-- [ ] Inventory dependency requirements for global PG roles/grants,
-  TLS/Caddy modules/storage, deployment ownership and service user,
-  without exporting secret values.
+- [x] Identify code-level PG16 global role/grant, Caddy/TLS and
+  systemd runtime recovery dependencies **without accessing secrets or
+  production**. See [G17/1 static dependency inventory](m13-g17-g1-postgres-caddy-dependency-inventory-2026-10-13.md).
+- [ ] Verify these dependencies in a separately authorized isolated
+  stage. This remains a release blocker: static source inspection is
+  not live role/grant restoration or Caddy/TLS validation.
 - [ ] Confirm a safe disposable staging **target** with approved scope,
   budget, isolation and no production identity or network reachability.
 - [x] One-time MS-02 runner staging resource preflight PASS on 2026-10-13;
@@ -158,12 +161,26 @@ are now COMPLETE.** This does not establish full recovery readiness,
 because global PostgreSQL roles/grants, Caddy/TLS runtime dependencies,
 and isolated rollback staging are not yet proven.
 
+## 2026-10-13 recovery dependency source inventory
+
+The operator confirmed the Toshiba safely ejected. Read-only GitHub
+source inventory identified the required PostgreSQL 16 runtime role
+properties, separate migration owner, post-migration runtime grants,
+Caddy/TLS runtime components, and the currently unsupported use
+of generic Docker Compose `postgres:17` as a PG16 recovery fixture.
+See [G17/1 dependency inventory](m13-g17-g1-postgres-caddy-dependency-inventory-2026-10-13.md).
+**Source-level planning PASS**, but no live PG role/ACL recovery,
+Caddy/TLS runtime validation or isolated staging execution yet.
+
 ## Next *single* action
-Safely eject **both** Toshiba volumes using macOS Finder/Disk Utility,
-confirm the external physical disk is unmounted, then proceed with
-**G17/1 outstanding dependencies** (PostgreSQL global roles/grants,
-Caddy/TLS runtime dependencies and staging-approval prerequisites).
-Do not rerun the three verified archive transfers.
+The operator confirmed that the Toshiba has been safely ejected.
+Archive transport is closed. Obtain operator approval for a
+**disposable, resource-capped, network-isolated PostgreSQL 16 stage**
+on the existing MS-02 using **synthetic data only**, with no production
+secrets, no existing node identities and no new cost.
+After approval, create the minimal stage and run only **new, gap-filling**
+role/grant and runtime-dependency tests. Do not repeat the three
+verified archive transfers or the prior production-data restore.
 
 ## 2026-10-13 staged-resource readiness snapshot (read-only)
 The trusted MS-02 runner independently returned 14 logical CPUs,
