@@ -71,6 +71,8 @@ Milestone 12 is closed. Milestone 13 (Persistent Agent Connection and Heartbeat)
 
 Gate 17 is a **controlled live rollout with explicit operator approval**. See `docs/m13-gate17-controlled-live-rollout-plan-2026-10-07.md` and individual `docs/m13-gate*-closeout-2026-10-07.md` evidence. Do not migrate or restart production, re-enroll Node002, or rerun V100 benchmark evidence until the approved plan requires it.
 
+**October 13 fixed execution sequence:** `docs/m13-gate17-fixed-completion-sequence-2026-10-13.md` is the single operational checklist for G17/1–G17/7. Read-only remote MS-02 staging capacity preflight PASS (14 logical CPUs, 117 GiB available RAM, 625 GiB available disk, Docker daemon accessible); no staging container yet. Full private environment-file recovery, isolated rollback rehearsal, production deployment, real Node001 network/reboot and Node002 sleep/wake acceptance remain incomplete. Production `main` and stored backups unchanged. Complete Gate 17 in order, without repeating verified tests or bypassing operator approvals.
+
 Milestone 10 remains closed with workload-aware eligibility preserving separate Compute, Network, Reliability, Availability, and Trust dimensions.
 
 A parallel MeshAlot Brand/UI track is approved using the supplied network artwork as the visual direction. Brand work should remain separately auditable from technical milestone work.
