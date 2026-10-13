@@ -11,12 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   recovery:
-    if: >-
-      github.repository == 'wwjd4u/MeshAlot' &&
-      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
-      github.event_name == 'push' &&
-      github.run_attempt == 1 &&
-      github.event.head_commit.message == 'test(m13): one-time synthetic PG16 global ownership restore'
+    if: false # one-time synthetic ownership recovery complete; disabled
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 12
     steps:
