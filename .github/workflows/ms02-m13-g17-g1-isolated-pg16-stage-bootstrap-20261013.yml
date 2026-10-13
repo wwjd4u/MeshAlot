@@ -1,0 +1,168 @@
+name: MS-02 M13 Gate 17 G17-1 Isolated PostgreSQL16 Stage Bootstrap
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-g17-g1-isolated-pg16-stage-bootstrap-20261013.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-isolated-staging
+  cancel-in-progress: false
+jobs:
+  bootstrap:
+    if: >-
+      github.repository == 'wwjd4u/MeshAlot' &&
+      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
+      github.event_name == 'push' &&
+      github.run_attempt == 1 &&
+      github.event.head_commit.message == 'test(m13): approved one-time isolated PG16 staging bootstrap'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 6
+    steps:
+      - name: Start, verify, and clean disposable synthetic PostgreSQL16 container
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          command -v docker >/dev/null
+          command -v python3 >/dev/null
+          docker info >/dev/null
+          docker image inspect postgres:16-alpine >/dev/null
+          AUDITS="$HOME/.local/share/meshalot-m13-private-audits"
+          test -d "$AUDITS" && test ! -L "$AUDITS"
+          test "$(stat -c %a "$AUDITS")" = 700
+          test "$(stat -c %u "$AUDITS")" = "$(id -u)"
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-g17-stage-bootstrap.XXXXXXXX")"
+          CID=""
+          cleanup() {
+            rc="$?"
+            trap - EXIT
+            cleanok=1
+            if test -n "$CID"; then
+              docker rm -f -v "$CID" >/dev/null 2>&1 || cleanok=0
+              if docker container inspect "$CID" >/dev/null 2>&1; then cleanok=0; fi
+            fi
+            if test -d "$WORK"; then
+              rm -rf -- "$WORK" || cleanok=0
+            fi
+            if test "$cleanok" = 1; then
+              echo "M13_G17_STAGE_CONTAINER_AND_TEMP_CLEANUP=PASS"
+            else
+              echo "M13_G17_STAGE_CONTAINER_AND_TEMP_CLEANUP=REVIEW_REQUIRED"
+              rc=1
+            fi
+            exit "$rc"
+          }
+          trap cleanup EXIT
+
+          # Reuse the exact previously validated local PG16 image;
+          # no network route, pulled image, privileged host mount, Docker socket,
+          # remote database, existing MeshAlot node identity, or private backup.
+          IMAGE_ID="$(docker image inspect -f '{{.Id}}' postgres:16-alpine)"
+          test -n "$IMAGE_ID"
+          echo "M13_G17_STAGE_LOCAL_POSTGRES16_IMAGE=PASS"
+
+          CID="$(docker run -d --rm --pull=never --network=none \
+            --read-only --user=70:70 --cap-drop=ALL \
+            --security-opt=no-new-privileges --pids-limit=128 \
+            --memory=4g --memory-swap=4g --cpus=2 \
+            --tmpfs /var/lib/postgresql/data:rw,nosuid,nodev,noexec,size=1g,uid=70,gid=70,mode=0700 \
+            --tmpfs /var/run/postgresql:rw,nosuid,nodev,noexec,size=16m,uid=70,gid=70,mode=0700 \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=64m,uid=70,gid=70,mode=1777 \
+            -e POSTGRES_HOST_AUTH_METHOD=trust \
+            postgres:16-alpine -c listen_addresses=)"
+          test -n "$CID"
+          echo "M13_G17_STAGE_CONTAINER_CREATED=PASS"
+
+          docker inspect "$CID" >"$WORK/inspection.json"
+          python3 - "$WORK/inspection.json" <<'PY'
+          import json,sys
+          d=json.load(open(sys.argv[1]))
+          assert len(d)==1
+          obj=d[0]; host=obj["HostConfig"]
+          assert host["NetworkMode"]=="none"
+          assert host["Memory"]==4*1024**3
+          assert host["MemorySwap"]==4*1024**3
+          assert host["NanoCpus"]==2_000_000_000
+          assert host["PidsLimit"]==128
+          assert host["ReadonlyRootfs"] is True
+          assert host["Privileged"] is False
+          assert "ALL" in host["CapDrop"]
+          assert "no-new-privileges" in host["SecurityOpt"]
+          assert not host.get("Binds")
+          assert not host.get("Devices")
+          assert not host.get("PortBindings")
+          assert obj["Config"]["User"]=="70:70"
+          assert obj["State"]["Running"] is True
+          assert obj["Config"]["Image"]=="postgres:16-alpine"
+          tmpfs=host["Tmpfs"]
+          assert set(tmpfs)=={"/var/lib/postgresql/data","/var/run/postgresql","/tmp"}
+          assert obj["NetworkSettings"]["Networks"] == {}
+          print("M13_G17_STAGE_NETWORK_NONE=PASS")
+          print("M13_G17_STAGE_NO_HOST_PORTS_OR_BIND_MOUNTS=PASS")
+          print("M13_G17_STAGE_CPU_2_AND_MEMORY_4G=PASS")
+          print("M13_G17_STAGE_READONLY_CAPDROP_NOPRIVILEGE=PASS")
+          print("M13_G17_STAGE_DISPOSABLE_TMPFS_ONLY=PASS")
+          PY
+
+          ready=0
+          for i in $(seq 1 25); do
+            if docker exec "$CID" pg_isready -h /var/run/postgresql -U postgres >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" = 1 || { echo "M13_G17_STAGE_PG16_START=FAILED_SAFE_STOP"; exit 1; }
+          echo "M13_G17_STAGE_POSTGRES_READY=PASS"
+          major="$(docker exec "$CID" psql -X -qAt -h /var/run/postgresql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "SELECT current_setting('server_version_num')::int / 10000")"
+          test "$major" = 16
+          echo "M13_G17_STAGE_POSTGRES_MAJOR_16=PASS"
+
+          # New G17 gap-filling smoke checks: synthetic fixture + separation
+          # of stage-only owner and restricted runtime roles.
+          docker exec "$CID" psql -X -q -h /var/run/postgresql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE stage_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS" \
+            -c "CREATE ROLE stage_runtime LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS" >/dev/null
+          docker exec "$CID" createdb -h /var/run/postgresql -U postgres -O postgres meshalot_stage_synthetic
+          docker exec "$CID" psql -X -q -h /var/run/postgresql -U postgres -d meshalot_stage_synthetic -v ON_ERROR_STOP=1 \
+            -c "CREATE TABLE synthetic_probe (value text NOT NULL)" \
+            -c "INSERT INTO synthetic_probe (value) VALUES ('synthetic-only')" >/dev/null
+          synthetic="$(docker exec "$CID" psql -X -qAt -h /var/run/postgresql -U postgres -d meshalot_stage_synthetic -v ON_ERROR_STOP=1 \
+            -c "SELECT count(*)=1 AND min(value)='synthetic-only' FROM synthetic_probe")"
+          test "$synthetic" = t
+          roles="$(docker exec "$CID" psql -X -qAt -h /var/run/postgresql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "SELECT count(*)=2 AND bool_and(NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication AND NOT rolbypassrls) FROM pg_roles WHERE rolname IN ('stage_owner','stage_runtime')")"
+          test "$roles" = t
+          echo "M13_G17_STAGE_SYNTHETIC_DATA_ONLY=PASS"
+          echo "M13_G17_STAGE_ROLE_PRIVILEGE_SEPARATION_PREFLIGHT=PASS"
+
+          # Sanitized checkpoint only, never a raw database/config report.
+          REPORT="$AUDITS/m13-g17-stage-bootstrap-$(date -u +%Y%m%dT%H%M%SZ)-run-$GITHUB_RUN_ID.txt"
+          test ! -e "$REPORT" && test ! -L "$REPORT"
+          {
+            echo "M13_G17_STAGE_TYPE=DISPOSABLE_PG16_SYNTHETIC"
+            echo "M13_G17_STAGE_NETWORK=NONE"
+            echo "M13_G17_STAGE_CPUS=2"
+            echo "M13_G17_STAGE_MEMORY_GIB=4"
+            echo "M13_G17_STAGE_DATABASE=STAGE_SYNTHETIC_ONLY"
+            echo "M13_G17_STAGE_TWO_RESTRICTED_ROLES=PASS"
+            echo "M13_G17_STAGE_PRODUCTION_ACCESS=NONE"
+            echo "M13_G17_STAGE_EXISTING_NODE_IDENTITIES=NOT_ACCESSED"
+            echo "M13_G17_STAGE_BACKUP_OR_RECOVERY_KEYS=NOT_ACCESSED"
+            echo "M13_G17_STAGE_V100_BENCHMARKS=NOT_RERUN"
+            echo "M13_G17_STAGE_CADDY_SYSTEMD_ROLLBACK=NOT_TESTED"
+            echo "M13_G17_STAGE_PRODUCTION_CHANGES=NONE"
+          } >"$REPORT"
+          chmod 600 "$REPORT"
+          sha256sum -- "$REPORT" >"$REPORT.sha256"
+          chmod 600 "$REPORT.sha256"
+          (cd "$AUDITS" && sha256sum --check --status "$(basename "$REPORT").sha256")
+          echo "M13_G17_STAGE_PRIVATE_EVIDENCE_SHA256=PASS"
+          echo "M13_G17_STAGE_G17_1_ISOLATED_BOOTSTRAP=PASS"
