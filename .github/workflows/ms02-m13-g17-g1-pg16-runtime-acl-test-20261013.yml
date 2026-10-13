@@ -11,12 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   acl:
-    if: >-
-      github.repository == 'wwjd4u/MeshAlot' &&
-      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
-      github.event_name == 'push' &&
-      github.run_attempt == 1 &&
-      github.event.head_commit.message == 'test(m13): one-time isolated PG16 runtime ACL acceptance'
+    if: false # approved one-time PG16 ACL acceptance passed and cleaned; prevent reruns
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 10
     steps:
