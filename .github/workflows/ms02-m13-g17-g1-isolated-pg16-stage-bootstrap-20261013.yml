@@ -16,7 +16,7 @@ jobs:
       github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
       github.event_name == 'push' &&
       github.run_attempt == 1 &&
-      github.event.head_commit.message == 'test(m13): approved one-time isolated PG16 staging bootstrap'
+      github.event.head_commit.message == 'test(m13): approved isolated PG16 staging bootstrap fix network none inspector'
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 6
     steps:
@@ -102,7 +102,7 @@ jobs:
           assert obj["Config"]["Image"]=="postgres:16-alpine"
           tmpfs=host["Tmpfs"]
           assert set(tmpfs)=={"/var/lib/postgresql/data","/var/run/postgresql","/tmp"}
-          assert obj["NetworkSettings"]["Networks"] == {}
+          assert set(obj["NetworkSettings"]["Networks"]).issubset({"none"})
           print("M13_G17_STAGE_NETWORK_NONE=PASS")
           print("M13_G17_STAGE_NO_HOST_PORTS_OR_BIND_MOUNTS=PASS")
           print("M13_G17_STAGE_CPU_2_AND_MEMORY_4G=PASS")
