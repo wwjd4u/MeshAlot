@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   pg_metadata:
-    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
+    if: false # one-time inspection completed; unprivileged DB access blocked, no further attempts
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 8
     env:
