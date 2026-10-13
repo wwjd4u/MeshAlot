@@ -11,13 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   pg_metadata:
-    if: >-
-      github.repository == 'wwjd4u/MeshAlot' &&
-      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
-      github.event_name == 'push' &&
-      github.run_attempt == 1 &&
-      github.actor == 'wwjd4u' &&
-      github.event.head_commit.message == 'test(m13): approved one-time postgres16 read-only role metadata inspection'
+    if: false # one-time job stopped safely: existing IAP authorization not valid with margin
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 8
     env:
