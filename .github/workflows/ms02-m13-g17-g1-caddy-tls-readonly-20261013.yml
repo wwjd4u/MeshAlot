@@ -1,0 +1,226 @@
+name: MS-02 M13 G17-1 Caddy TLS Read-Only Recovery Metadata
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-g17-g1-caddy-tls-readonly-20261013.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-control-readonly-audit
+  cancel-in-progress: false
+jobs:
+  inventory:
+    if: >-
+      github.repository == 'wwjd4u/MeshAlot' &&
+      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
+      github.event_name == 'push' &&
+      github.run_attempt == 1 &&
+      github.event.head_commit.message == 'audit(m13): one-time approved read-only Caddy TLS metadata'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 7
+    env:
+      CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+      CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+      CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+      CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+    steps:
+      - name: Verify existing unexpired access; inspect only Caddy/TLS non-secret metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          DIR="$HOME/.local/share/meshalot-m13-iap-ssh"
+          ROOT="$HOME/.local/share/meshalot-m13-private-audits"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          test -x "$GCLOUD"
+          for d in "$DIR" "$ROOT"; do
+            test -d "$d" && test ! -L "$d"
+            test "$(stat -c %a "$d")" = 700
+            test "$(stat -c %u "$d")" = "$(id -u)"
+          done
+          for f in "$DIR/id_ed25519" "$DIR/known_hosts" "$DIR/registration.json"; do
+            test -f "$f" && test ! -L "$f"
+            test "$(stat -c %a "$f")" = 600
+            test "$(stat -c %u "$f")" = "$(id -u)"
+          done
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-g17-caddy-metadata.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          if python3 - "$DIR/registration.json" "$WORK/user" <<'PY'
+          import datetime,json,re,sys
+          from pathlib import Path
+          r=json.loads(Path(sys.argv[1]).read_text())
+          assert r.get("target")=="meshalot-control-01"
+          assert r.get("project")=="meshalot-poc" and r.get("zone")=="us-south1-a"
+          u=r.get("username","")
+          assert re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}",u)
+          e=datetime.datetime.strptime(r["expires"],"%Y-%m-%dT%H:%M:%S%z")
+          assert e>datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(minutes=10), "EXPIRED_OR_INSUFFICIENT"
+          Path(sys.argv[2]).write_text(u)
+          PY
+          then
+            echo "M13_G17_CADDY_EXISTING_IAP_AUTH=VALID_WITH_MARGIN"
+          else
+            echo "M13_G17_CADDY_EXISTING_IAP_AUTH=BLOCKED_SAFE_STOP"
+            echo "M13_G17_CADDY_PRODUCTION_CONNECTION=NOT_ATTEMPTED"
+            exit 1
+          fi
+          cat >"$WORK/remote.sh" <<'REMOTE'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if test "$(hostname -s)" != "meshalot-control-01"; then
+            echo "M13_G17_CADDY_WRONG_HOST_STOP"
+            exit 41
+          fi
+          python3 - <<'PY'
+          import json,os,re,stat,subprocess
+          from pathlib import Path
+          def read(argv,secs=9,limit=512*1024):
+              try:
+                  p=subprocess.run(argv,capture_output=True,timeout=secs,check=False)
+                  return p.stdout[:limit].decode("utf-8","replace") if p.returncode==0 and len(p.stdout)<=limit else None
+              except (OSError,subprocess.TimeoutExpired):
+                  return None
+          def prop(name):
+              s=read(["systemctl","show","caddy.service","--property="+name,"--value"],secs=5,limit=30000)
+              return s.strip() if s is not None else None
+          def kind(path):
+              try:
+                  s=Path(path).lstat()
+                  return "DIRECTORY" if stat.S_ISDIR(s.st_mode) else "FILE" if stat.S_ISREG(s.st_mode) else "SYMLINK" if stat.S_ISLNK(s.st_mode) else "OTHER"
+              except FileNotFoundError:return "MISSING"
+              except OSError:return "UNVERIFIED"
+          version_raw=read(["caddy","version"],secs=7,limit=4000)
+          mt=re.search(r"\bv[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9_.-]+)?",version_raw or "")
+          ver=mt.group(0) if mt else "UNVERIFIED"
+          modules_raw=read(["caddy","list-modules","--skip-standard"],secs=9,limit=200000)
+          modules_count=None if modules_raw is None else sum(bool(re.fullmatch(r"[A-Za-z][\w./-]*",s.strip())) for s in modules_raw.splitlines())
+          config=Path("/etc/caddy/Caddyfile")
+          cfg_type=kind(config)
+          cfg_read="UNVERIFIED"
+          cfg={}
+          if cfg_type=="FILE":
+              try:
+                  s=config.stat()
+                  if 0<s.st_size<=512*1024:
+                      data=config.read_bytes().decode("utf-8","replace")
+                      cfg_read="READ"
+                      directives=data.splitlines()
+                      cfg={
+                          "import_directives":sum(bool(re.match(r"^\s*import(?:\s|$)",line)) for line in directives),
+                          "reverse_proxy_directives":sum(bool(re.match(r"^\s*reverse_proxy(?:\s|$)",line)) for line in directives),
+                          "tls_directives":sum(bool(re.match(r"^\s*tls(?:\s|$)",line)) for line in directives),
+                          "storage_directives":sum(bool(re.match(r"^\s*storage(?:\s|$)",line)) for line in directives),
+                          "acme_dns_challenge_hint":sum(bool(re.search(r"(?i)\bdns\s+[A-Za-z0-9_.-]+",line)) for line in directives),
+                          "cert_key_reference_hint":sum(bool(re.match(r"^\s*tls\s+[/~.]",line)) for line in directives)
+                      }
+                  else:cfg_read="OUT_OF_BOUNDS"
+              except OSError:cfg_read="UNREADABLE"
+          execstart=prop("ExecStart")
+          hint=("PRIMARY_CADDYFILE" if execstart and "/etc/caddy/Caddyfile" in execstart else "OTHER_OR_UNVERIFIED")
+          user=prop("User")
+          result={
+              "schema":"meshalot-m13-g17-caddy-tls-readonly-v1",
+              "hostname":"meshalot-control-01",
+              "service":{
+                  "load_state":prop("LoadState"),
+                  "active_state":prop("ActiveState"),
+                  "configured_user":bool(user),
+                  "fragment_declared":bool(prop("FragmentPath")),
+                  "dropins_declared":bool(prop("DropInPaths")),
+                  "configured_state_directory":bool(prop("StateDirectory")),
+                  "configured_cache_directory":bool(prop("CacheDirectory")),
+                  "working_directory_declared":bool(prop("WorkingDirectory")),
+                  "execstart_config_hint":hint
+              },
+              "caddy":{
+                  "cli_version":ver,
+                  "nonstandard_module_count":modules_count,
+                  "primary_file_type":cfg_type,
+                  "primary_file_read":cfg_read,
+                  "directives":cfg
+              },
+              "tls_storage":{
+                  "var_lib_caddy":kind("/var/lib/caddy"),
+                  "var_lib_caddy_data_root":kind("/var/lib/caddy/.local/share/caddy"),
+                  "certificate_contents_examined":False,
+                  "private_key_contents_examined":False,
+                  "active_storage_root_verified":False,
+                  "tls_restore_ready":False
+              },
+              "production_changes":"NONE",
+              "credentials_or_private_keys_exported":False,
+              "scope":"METADATA_ONLY"
+          }
+          print(json.dumps(result,sort_keys=True,separators=(",",":")))
+          PY
+          REMOTE
+          bash -n "$WORK/remote.sh"
+          set +e
+          WRONG="$(bash "$WORK/remote.sh" 2>/dev/null)"
+          WRONG_RC="$?"
+          set -e
+          test "$WRONG_RC" = 41 && test "$WRONG" = "M13_G17_CADDY_WRONG_HOST_STOP"
+          echo "M13_G17_CADDY_WRONG_HOST_GUARD=PASS"
+          REPORT="$ROOT/m13-g17-caddy-tls-metadata-$(date -u +%Y%m%dT%H%M%SZ)-run-$GITHUB_RUN_ID.json"
+          test ! -e "$REPORT" && test ! -L "$REPORT"
+          PROXY="$GCLOUD compute start-iap-tunnel %h %p --project=meshalot-poc --zone=us-south1-a --listen-on-stdin --quiet --verbosity=error"
+          SSH_USER="$(cat "$WORK/user")"
+          set +e
+          timeout --signal=TERM --kill-after=5s 110 ssh -F /dev/null -T \
+            -o "ProxyCommand=$PROXY" -o BatchMode=yes -o ConnectTimeout=30 \
+            -o ConnectionAttempts=1 -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$DIR/known_hosts" \
+            -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no \
+            -o LogLevel=ERROR -i "$DIR/id_ed25519" \
+            "$SSH_USER@meshalot-control-01" 'bash -s' \
+            <"$WORK/remote.sh" >"$REPORT" 2>"$WORK/ssh-error"
+          RC="$?"
+          set -e
+          chmod 600 "$REPORT" 2>/dev/null || true
+          if test "$RC" -ne 0; then
+            echo "M13_G17_CADDY_REMOTE_INSPECTION=FAILED_SAFE_STOP"
+            echo "M13_G17_CADDY_NO_ACCESS_MODIFICATION=PASS"
+            exit 1
+          fi
+          python3 - "$REPORT" <<'PY'
+          import json,os,stat,sys
+          from pathlib import Path
+          p=Path(sys.argv[1])
+          s=p.lstat()
+          assert stat.S_ISREG(s.st_mode) and s.st_uid==os.getuid() and stat.S_IMODE(s.st_mode)==0o600
+          x=json.loads(p.read_text())
+          assert x["schema"]=="meshalot-m13-g17-caddy-tls-readonly-v1"
+          assert x["hostname"]=="meshalot-control-01"
+          assert x["production_changes"]=="NONE"
+          assert x["credentials_or_private_keys_exported"] is False
+          assert x["scope"]=="METADATA_ONLY"
+          assert x["tls_storage"]["certificate_contents_examined"] is False
+          assert x["tls_storage"]["private_key_contents_examined"] is False
+          def token(v,allowed):
+              return v if v in allowed else "UNVERIFIED"
+          print("M13_G17_CADDY_REMOTE_METADATA=PASS")
+          print("M13_G17_CADDY_SERVICE_ACTIVE="+token(x["service"]["active_state"],{"active","inactive","failed","activating","deactivating"}))
+          print("M13_G17_CADDY_INSTALLED_CLI_VERSION="+token(x["caddy"]["cli_version"],{"UNVERIFIED"}|{"v"+str(a)+"."+str(b)+"."+str(c) for a in range(1,5) for b in range(0,100) for c in range(0,100)}))
+          print("M13_G17_CADDY_NONSTANDARD_MODULES="+(str(x["caddy"]["nonstandard_module_count"]) if isinstance(x["caddy"]["nonstandard_module_count"],int) and 0<=x["caddy"]["nonstandard_module_count"]<300 else "UNVERIFIED"))
+          print("M13_G17_CADDY_PRIMARY_CONFIG="+token(x["caddy"]["primary_file_read"],{"READ","UNREADABLE","UNVERIFIED","OUT_OF_BOUNDS"}))
+          print("M13_G17_CADDY_SERVICE_PRIMARY_CONFIG_REFERENCE="+token(x["service"]["execstart_config_hint"],{"PRIMARY_CADDYFILE","OTHER_OR_UNVERIFIED"}))
+          for label,key in [("IMPORTS","import_directives"),("REVERSE_PROXY","reverse_proxy_directives"),("TLS_DIRECTIVES","tls_directives"),("STORAGE_OVERRIDES","storage_directives"),("POSSIBLE_MANUAL_KEY_REFERENCES","cert_key_reference_hint")]:
+              n=x["caddy"]["directives"].get(key)
+              print("M13_G17_CADDY_"+label+"="+(str(n) if isinstance(n,int) and 0<=n<1000 else "UNVERIFIED"))
+          for label,key in [("STATE_BASE","var_lib_caddy"),("DATA_BASE","var_lib_caddy_data_root")]:
+              print("M13_G17_CADDY_"+label+"="+token(x["tls_storage"][key],{"DIRECTORY","FILE","SYMLINK","OTHER","MISSING","UNVERIFIED"}))
+          print("M13_G17_CADDY_TLS_STORAGE_RECOVERY=NOT_YET_PROVEN")
+          print("M13_G17_CADDY_PRIVATE_TLS_KEY_BYTES=NOT_ACCESSED")
+          print("M13_G17_CADDY_PRODUCTION_CHANGES=NONE")
+          PY
+          sha256sum "$REPORT" >"$REPORT.sha256"
+          chmod 600 "$REPORT.sha256"
+          (cd "$ROOT" && sha256sum --check --status "$(basename "$REPORT").sha256")
+          echo "M13_G17_CADDY_PRIVATE_EVIDENCE_SHA256=PASS"
+          echo "M13_G17_CADDY_NO_ACCESS_MODIFICATION=PASS"
