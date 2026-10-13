@@ -73,6 +73,13 @@ of skipping ahead to unrelated work.
   fixture and two expected-denied SQLSTATE 42501 actions all PASS. [Run](https://github.com/wwjd4u/MeshAlot/actions/runs/38440768518).
   Stage cleanup PASS; the one-time test was disabled and [follow-up SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38440900971).
   This is **NOT** recovery of the actual production roles or PostgreSQL globals.
+- [x] **Operator-approved, metadata-only production Caddy/TLS inspection**
+  using the existing unexpired pinned IAP SSH route: Caddy active,
+  CLI v2.11.4, 0 nonstandard modules, 1 primary-file reverse_proxy
+  directive, 0 bounded-parser imports/explicit TLS/storage directives.
+  Candidate certificate data root remains UNVERIFIED, not absent.
+  [Read-only evidence](https://github.com/wwjd4u/MeshAlot/actions/runs/38442058347); workflow disabled with
+  [follow-up SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38442168184). No secrets or production changes.
 - [ ] Verify remaining **full recovery dependencies**, including real
   PostgreSQL global roles/ownership, Caddy/TLS runtime materials,
   and stage-only service rollback; synthetic ACL PASS is not equivalent
@@ -306,3 +313,24 @@ certificate and storage recovery, systemd service runtime dependencies, and
 full API/systemd/Caddy stage-only rollback. No production archive, recovery
 key, production DB, SSH session, real node ID, V100 benchmark or live
 service was accessed. **G17/1 stays OPEN; G17/2 has NOT started.**
+
+## 2026-10-13 approved Caddy TLS metadata inventory
+
+[One-time approved production read-only run](https://github.com/wwjd4u/MeshAlot/actions/runs/38442058347) **PASS**.
+Existing authorized IAP SSH was still valid; no access renewal, new key,
+production configuration change or service restart. Caddy service active,
+installed CLI version **v2.11.4**, **0 nonstandard modules** reported.
+The service references its readable primary Caddyfile, whose bounded
+line-level scan found **1 reverse_proxy** and **0** imports, explicit
+TLS/storage directives and obvious manual key references. Actual active
+binary digest, semantically adapted configuration, certificate automation
+and real TLS storage location were **not** verified. `/var/lib/caddy`
+exists; deeper candidate data root **UNVERIFIED** rather than missing.
+Full private audit/sidecar kept restricted on MS-02; no certificate or
+private-key content accessed. One-time workflow disabled and
+[subsequent run SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38442168184).
+
+**Remaining G17/1 gap:** real Caddy version-matched isolated HTTPS/WSS and
+failure/recovery test, plus production certificate-storage/renewal strategy
+and API/systemd/Caddy rollback dependencies. G17/2 NOT STARTED.
+No production cutover authorization has been given.
