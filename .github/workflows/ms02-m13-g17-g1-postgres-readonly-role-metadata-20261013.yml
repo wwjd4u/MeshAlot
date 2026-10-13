@@ -1,0 +1,215 @@
+name: MS-02 M13 G17-1 PG16 Read-only Role Metadata
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-g17-g1-postgres-readonly-role-metadata-20261013.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-control-readonly-audit
+  cancel-in-progress: false
+jobs:
+  pg_metadata:
+    if: >-
+      github.repository == 'wwjd4u/MeshAlot' &&
+      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
+      github.event_name == 'push' &&
+      github.run_attempt == 1 &&
+      github.actor == 'wwjd4u' &&
+      github.event.head_commit.message == 'test(m13): approved one-time postgres16 read-only role metadata inspection'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 8
+    env:
+      CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+      CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+      CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+      CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+    steps:
+      - name: Existing time-limited IAP identity, PG16 catalog metadata only, no sudo
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = meshalot-ms02
+          test "$(hostname -s)" = wwjd4u-MS-02-Ultra
+          test "$(id -un)" = jason_guynes
+          test "$HOME" = /home/jason_guynes
+          DIR="$HOME/.local/share/meshalot-m13-iap-ssh"
+          ROOT="$HOME/.local/share/meshalot-m13-private-audits"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          test -x "$GCLOUD"
+          for d in "$DIR" "$ROOT"; do
+            test -d "$d" && test ! -L "$d"
+            test "$(stat -c %a "$d")" = 700
+            test "$(stat -c %u "$d")" = "$(id -u)"
+          done
+          for f in "$DIR/id_ed25519" "$DIR/known_hosts" "$DIR/registration.json"; do
+            test -f "$f" && test ! -L "$f"
+            test "$(stat -c %a "$f")" = 600
+            test "$(stat -c %u "$f")" = "$(id -u)"
+          done
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-g17-pg-metadata.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          if python3 - "$DIR/registration.json" "$WORK/username" <<'PY'
+          import datetime, json, re, sys
+          from pathlib import Path
+          p=Path(sys.argv[1]); d=json.loads(p.read_text())
+          assert d.get("target")=="meshalot-control-01"
+          assert (d.get("project"),d.get("zone"))==("meshalot-poc","us-south1-a")
+          assert re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}",d.get("username",""))
+          expires=datetime.datetime.strptime(d["expires"],"%Y-%m-%dT%H:%M:%S%z")
+          assert expires > datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(minutes=12),"NO_VALID_EXISTING_AUTH_MARGIN"
+          Path(sys.argv[2]).write_text(d["username"])
+          PY
+          then
+            echo M13_G17_PG_EXISTING_IAP_AUTH=VALID_WITH_MARGIN
+          else
+            echo M13_G17_PG_EXISTING_IAP_AUTH=BLOCKED_SAFE_STOP
+            echo M13_G17_PG_REMOTE_CONNECTION=NOT_ATTEMPTED
+            exit 0
+          fi
+          cat > "$WORK/remote.sh" <<'REMOTE'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if test "$(hostname -s)" != "meshalot-control-01"; then
+            echo "M13_G17_PG_WRONG_HOST_STOP"
+            exit 41
+          fi
+          if test "$(id -u)" = 0; then
+            echo '{"schema":"m13-g17-pg-role-metadata-v1","result":"BLOCKED_ROOT_SHELL","scope":"READ_ONLY_NO_SUDO","remote_host":"meshalot-control-01"}'
+            exit 0
+          fi
+          python3 - <<'PY'
+          import json,os,pwd,subprocess
+          def blocked(reason):
+              print(json.dumps({"schema":"m13-g17-pg-role-metadata-v1","remote_host":"meshalot-control-01",
+                 "scope":"READ_ONLY_NO_SUDO","result":reason,"catalog_rows_exported":False,
+                 "production_changes":False},sort_keys=True,separators=(",",":")))
+          if not os.path.isfile("/usr/bin/psql"):
+              blocked("BLOCKED_NO_PSQL_BINARY")
+              raise SystemExit(0)
+          principal=pwd.getpwuid(os.getuid()).pw_name
+          # Deliberately NO sudo, password file, DSN, service file, TCP listener,
+          # administrative login, role switch or cached environment credential.
+          sql="""BEGIN READ ONLY;
+          SET LOCAL statement_timeout = '5000ms';
+          SELECT json_build_object(
+            'server_major',current_setting('server_version_num')::integer/10000,
+            'role_count',(SELECT count(*) FROM pg_catalog.pg_roles),
+            'runtime_role_count',(SELECT count(*) FROM pg_catalog.pg_roles WHERE rolname='meshalot'),
+            'runtime_login',(SELECT rolcanlogin FROM pg_catalog.pg_roles WHERE rolname='meshalot'),
+            'runtime_no_admin_flags',(SELECT NOT (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls) FROM pg_catalog.pg_roles WHERE rolname='meshalot'),
+            'runtime_membership_count',(SELECT count(*) FROM pg_catalog.pg_auth_members WHERE member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='meshalot')),
+            'database_runtime_owned',(SELECT datdba=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='meshalot') FROM pg_catalog.pg_database WHERE datname=current_database()),
+            'user_schema_count',(SELECT count(*) FROM pg_catalog.pg_namespace WHERE nspname !~ '^pg_' AND nspname<>'information_schema'),
+            'schema_owner_count',(SELECT count(DISTINCT nspowner) FROM pg_catalog.pg_namespace WHERE nspname !~ '^pg_' AND nspname<>'information_schema'),
+            'object_count',(SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace=n.oid WHERE n.nspname !~ '^pg_' AND n.nspname<>'information_schema' AND c.relkind IN ('r','p','v','m','S','f')),
+            'object_owner_count',(SELECT count(DISTINCT c.relowner) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace=n.oid WHERE n.nspname !~ '^pg_' AND n.nspname<>'information_schema' AND c.relkind IN ('r','p','v','m','S','f')),
+            'runtime_owned_object_count',(SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace=n.oid WHERE n.nspname !~ '^pg_' AND n.nspname<>'information_schema' AND c.relkind IN ('r','p','v','m','S','f') AND c.relowner=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='meshalot')),
+            'security_definer_count',(SELECT count(*) FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON p.pronamespace=n.oid WHERE n.nspname !~ '^pg_' AND n.nspname<>'information_schema' AND p.prosecdef),
+            'nondefault_tablespace_count',(SELECT count(*) FROM pg_catalog.pg_tablespace WHERE spcname NOT IN ('pg_default','pg_global')),
+            'nondefault_extension_count',(SELECT count(*) FROM pg_catalog.pg_extension WHERE extname<>'plpgsql')
+          )::text;
+          ROLLBACK;"""
+          env={"PATH":"/usr/bin:/bin","HOME":"/nonexistent","PGPASSFILE":"/dev/null",
+               "PGSERVICEFILE":"/dev/null","PGCONNECT_TIMEOUT":"5"}
+          try:
+              proc=subprocess.run(["/usr/bin/psql","-X","-w","-qAt","-v","ON_ERROR_STOP=1",
+                   "-h","/var/run/postgresql","-U",principal,"-d","meshalot","-c",sql],
+                   stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,
+                   env=env,timeout=27,check=False)
+          except (OSError,subprocess.TimeoutExpired):
+              blocked("BLOCKED_EXISTING_DB_ACCESS_UNAVAILABLE")
+              raise SystemExit(0)
+          if proc.returncode!=0 or len(proc.stdout)>16384:
+              blocked("BLOCKED_EXISTING_DB_ACCESS_UNAVAILABLE")
+              raise SystemExit(0)
+          lines=proc.stdout.decode("utf8","replace").strip().splitlines()
+          if len(lines)!=1:
+              blocked("BLOCKED_UNEXPECTED_CATALOG_OUTPUT")
+              raise SystemExit(0)
+          try:
+              data=json.loads(lines[0])
+              allowed={"server_major","role_count","runtime_role_count","runtime_login",
+                "runtime_no_admin_flags","runtime_membership_count","database_runtime_owned",
+                "user_schema_count","schema_owner_count","object_count","object_owner_count",
+                "runtime_owned_object_count","security_definer_count",
+                "nondefault_tablespace_count","nondefault_extension_count"}
+              assert set(data)==allowed
+              for name in allowed-{"runtime_login","runtime_no_admin_flags","database_runtime_owned"}:
+                  assert isinstance(data[name],int) and 0<=data[name]<=1000000000
+              for name in ("runtime_login","runtime_no_admin_flags","database_runtime_owned"):
+                  assert data[name] is None or isinstance(data[name],bool)
+          except (ValueError,TypeError,AssertionError):
+              blocked("BLOCKED_UNEXPECTED_CATALOG_FORMAT")
+              raise SystemExit(0)
+          print(json.dumps({"schema":"m13-g17-pg-role-metadata-v1","remote_host":"meshalot-control-01",
+             "scope":"READ_ONLY_NO_SUDO","result":"CATALOG_METADATA_READ",
+             "catalog_summary":data,"catalog_rows_exported":False,
+             "production_changes":False},sort_keys=True,separators=(",",":")))
+          PY
+          REMOTE
+          bash -n "$WORK/remote.sh"
+          set +e
+          WRONG="$(bash "$WORK/remote.sh" 2>/dev/null)"
+          WRONG_RC="$?"
+          set -e
+          test "$WRONG_RC" -eq 41 && test "$WRONG" = M13_G17_PG_WRONG_HOST_STOP
+          echo M13_G17_PG_WRONG_HOST_GUARD=PASS
+          REPORT="$ROOT/m13-g17-pg-role-metadata-$(date -u +%Y%m%dT%H%M%SZ)-run-$GITHUB_RUN_ID.json"
+          test ! -e "$REPORT" && test ! -L "$REPORT"
+          PROXY="$GCLOUD compute start-iap-tunnel %h %p --project=meshalot-poc --zone=us-south1-a --listen-on-stdin --quiet --verbosity=error"
+          set +e
+          timeout --signal=TERM --kill-after=5s 115 ssh -F /dev/null -T \
+            -o "ProxyCommand=$PROXY" -o BatchMode=yes -o ConnectTimeout=30 \
+            -o ConnectionAttempts=1 -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$DIR/known_hosts" \
+            -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no \
+            -o LogLevel=ERROR -i "$DIR/id_ed25519" \
+            "$(cat "$WORK/username")@meshalot-control-01" 'bash -s' \
+            <"$WORK/remote.sh" >"$REPORT" 2>"$WORK/ssh-error"
+          RC="$?"
+          set -e
+          if test "$RC" -ne 0; then
+            if test -e "$REPORT"; then chmod 600 "$REPORT"; fi
+            echo M13_G17_PG_REMOTE_METADATA=BLOCKED_SSH_OR_HOST_SAFE_STOP
+            echo M13_G17_PG_NO_ACCESS_CHANGES=PASS
+            exit 0
+          fi
+          chmod 600 "$REPORT"
+          python3 - "$REPORT" <<'PY'
+          import json,os,stat,sys
+          from pathlib import Path
+          p=Path(sys.argv[1]);s=p.lstat()
+          assert stat.S_ISREG(s.st_mode) and s.st_uid==os.getuid() and stat.S_IMODE(s.st_mode)==0o600
+          assert 70<s.st_size<16384
+          obj=json.loads(p.read_text())
+          assert obj["schema"]=="m13-g17-pg-role-metadata-v1"
+          assert obj["remote_host"]=="meshalot-control-01"
+          assert obj["scope"]=="READ_ONLY_NO_SUDO"
+          assert obj.get("production_changes")==False
+          assert obj.get("catalog_rows_exported")==False
+          status=obj["result"]
+          allowed={"CATALOG_METADATA_READ","BLOCKED_ROOT_SHELL","BLOCKED_NO_PSQL_BINARY",
+            "BLOCKED_EXISTING_DB_ACCESS_UNAVAILABLE","BLOCKED_UNEXPECTED_CATALOG_OUTPUT",
+            "BLOCKED_UNEXPECTED_CATALOG_FORMAT"}
+          assert status in allowed
+          print("M13_G17_PG_REMOTE_METADATA="+("PASS_READONLY" if status=="CATALOG_METADATA_READ" else status))
+          if status=="CATALOG_METADATA_READ":
+              d=obj["catalog_summary"]
+              print("M13_G17_PG_SERVER_MAJOR="+str(d["server_major"]))
+              print("M13_G17_PG_RUNTIME_ROLE_EXISTS="+str(d["runtime_role_count"]==1))
+              print("M13_G17_PG_RUNTIME_POLICY_NONADMIN="+str(d["runtime_no_admin_flags"] is True))
+              print("M13_G17_PG_RUNTIME_ROLE_LOGIN="+str(d["runtime_login"] is True))
+              print("M13_G17_PG_PRIVATE_OWNERSHIP_COUNTS=STORED_LOCALLY")
+              print("M13_G17_PG_REAL_GLOBAL_RECOVERY=UNVERIFIED")
+          print("M13_G17_PG_SUDO_OR_PRIVILEGE_ESCALATION=NONE")
+          print("M13_G17_PG_PASSWORDS_OR_DATABASE_ROWS=NOT_READ")
+          print("M13_G17_PG_PRODUCTION_CHANGES=NONE")
+          PY
+          sha256sum -- "$REPORT" >"$REPORT.sha256"
+          chmod 600 "$REPORT.sha256"
+          (cd "$ROOT" && sha256sum --check --status "$(basename "$REPORT").sha256")
+          echo M13_G17_PG_PRIVATE_EVIDENCE_SHA256=PASS
+          echo M13_G17_PG_WORKFLOW_DONE=YES
