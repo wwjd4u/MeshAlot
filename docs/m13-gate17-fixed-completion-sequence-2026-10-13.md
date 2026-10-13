@@ -44,10 +44,15 @@ of skipping ahead to unrelated work.
 - [x] Encrypted partial API/systemd/Caddy rollback archive and off-MS-02
   checksum copy, original rollback key custody evidence.
 - [x] Metadata-only classification of both systemd environment-file entries.
-- [ ] Decide, with explicit user approval, whether/how to export
-  and separately encrypt the required environment secret *contents* for
-  disaster recovery. No plaintext values in ChatGPT, GitHub, Drive,
-  runner logs or backups stored with keys. Keep backups immutable.
+- [x] With express operator approval, capture the two systemd
+  EnvironmentFiles declarations into **new encrypted local** GPG AES256
+  supplemental archive using the existing API-rollback passphrase.
+  [Successful job](https://github.com/wwjd4u/MeshAlot/actions/runs/38404900223).
+  **Original source and other archives preserved.**
+- [ ] Transfer the **existing new encrypted supplement and checksum**
+  from MS-02 to the separate Toshiba encrypted APFS volume and verify the
+  checksum. Do not store the existing recovery passphrase on Toshiba.
+  This off-machine step is still PENDING.
 - [ ] Inventory dependency requirements for global PG roles/grants,
   TLS/Caddy modules/storage, deployment ownership and service user,
   without exporting secret values.
@@ -134,10 +139,25 @@ encrypted archive key material separately protected in RoboForm. Production
 data, passwords, plaintext configs and encryption keys must not enter
 GitHub Actions logs, GitHub repo, Google Drive or chat.
 
+## 2026-10-13 environmental supplement update
+
+Two pinned production systemd environment-file entries were captured
+in a single, privately stored, separately AES256-encrypted archive on
+MS-02. The existing API rollback GPG passphrase was reused without
+a new key; its value remained private. The new ciphertext was verified
+in-memory and the old backup files remain intact. One-time workflow
+was disabled; the later job was [SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38405043699).
+
+The **next single operator action** is reconnecting the Toshiba encrypted
+APFS volume to Mac and transferring exactly the new archive and checksum,
+then independently SHA256-verifying them. Do not claim G17/1 complete
+until this off-machine copy passes. The rest of the seven-checkpoint
+sequence is unchanged.
+
 ## Next *single* action
-Perform **read-only MS-02 staging resource capability preflight** and
-freeze a user-approved staging environment decision before starting
-any actual service/decryption test.
+Complete the supplemental encrypted environment archive off-machine
+copy to the **already configured** Toshiba APFS volume, verify its
+checksum, then return to the remaining G17/1 dependency checklist.
 
 ## 2026-10-13 staged-resource readiness snapshot (read-only)
 The trusted MS-02 runner independently returned 14 logical CPUs,
