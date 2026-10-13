@@ -15,11 +15,7 @@ concurrency:
 
 jobs:
   renew:
-    if: >-
-      github.repository == 'wwjd4u/MeshAlot' &&
-      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
-      github.event_name == 'push' &&
-      github.event.head_commit.message == 'chore(m13): fix YAML for approved one-shot 30m SSH renewal'
+    if: false # approved one-time 30m renewal completed; permanently disable
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 10
     env:
