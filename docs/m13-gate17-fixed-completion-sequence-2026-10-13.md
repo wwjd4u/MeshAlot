@@ -61,8 +61,7 @@ of skipping ahead to unrelated work.
 - [ ] Verify these dependencies in a separately authorized isolated
   stage. This remains a release blocker: static source inspection is
   not live role/grant restoration or Caddy/TLS validation.
-- [ ] Confirm a safe disposable staging **target** with approved scope,
-  budget, isolation and no production identity or network reachability.
+- [x] Operator approved existing MS-02 as a disposable **PG16 synthetic-only** staging target, bounded to 2 logical CPUs, 4 GiB RAM, Docker `--network=none`, no host bind mounts or ports. [Successful one-time bootstrap and isolation proof](https://github.com/wwjd4u/MeshAlot/actions/runs/38419118910); container and tmpfs cleaned. This is **not** a complete rollback rehearsal.
 - [x] One-time MS-02 runner staging resource preflight PASS on 2026-10-13;
   **no staging environment has been created**. [Evidence](https://github.com/wwjd4u/MeshAlot/actions/runs/38399945655).
 
@@ -173,14 +172,13 @@ See [G17/1 dependency inventory](m13-g17-g1-postgres-caddy-dependency-inventory-
 Caddy/TLS runtime validation or isolated staging execution yet.
 
 ## Next *single* action
-The operator confirmed that the Toshiba has been safely ejected.
-Archive transport is closed. Obtain operator approval for a
-**disposable, resource-capped, network-isolated PostgreSQL 16 stage**
-on the existing MS-02 using **synthetic data only**, with no production
-secrets, no existing node identities and no new cost.
-After approval, create the minimal stage and run only **new, gap-filling**
-role/grant and runtime-dependency tests. Do not repeat the three
-verified archive transfers or the prior production-data restore.
+Use the already approved disposable, isolated PG16/synthetic-only
+stage to verify **new** runtime database roles, grants and denied
+operations against tracked M13 schema expectations. Do **not** use
+production-derived archive bytes, passwords, real node identities
+or existing passphrases without fresh, separate approval.
+Previously verified migration and restore tests are not to be repeated
+unless the specific new test requires a fixture to establish its setup.
 
 ## 2026-10-13 staged-resource readiness snapshot (read-only)
 The trusted MS-02 runner independently returned 14 logical CPUs,
@@ -199,3 +197,33 @@ resources to propose disposable, synthetic-first, isolated staging without
 new cloud costs. This does **not** authorize a Docker container, run a
 production-derived archive, or confirm network isolation. Choose staging
 target and scope with the operator before running stage tests.
+## 2026-10-13 approved temporary stage execution
+
+Operator authorized a disposable local stage on MS-02 (no new cloud
+cost or production access). First bootstrap [run 38418971253](https://github.com/wwjd4u/MeshAlot/actions/runs/38418971253)
+started its container but stopped at an overly strict Docker
+`NetworkSettings.Networks` structure assertion; cleanup PASS, no
+data or backups touched. The corrected one-time
+[run 38419118910](https://github.com/wwjd4u/MeshAlot/actions/runs/38419118910)
+completed successfully:
+
+- Local cached `postgres:16-alpine`, **no image pull**.
+- `--network=none`, no host-port publication/bind mounts, 2-CPU and
+  4-GiB memory limits, read-only root, no capabilities, no new privileges,
+  user `70:70`, temporary in-memory PostgreSQL data/socket/tmpfs.
+- PostgreSQL 16 socket healthy; synthetic-only fixture inserted/read.
+  Synthetic owner/runtime roles had restricted non-admin attributes.
+  This is a role-policy bootstrap, **not** full tracked application
+  role/ACL recovery or a real production restore.
+- Private sanitized evidence and SHA-256 PASS; no SSH/IAP, production
+  secrets, original archive bytes, historical V100 benchmark or
+  enrolled node identity accessed.
+- All disposable containers and files deleted; explicit cleanup PASS.
+  The one-time workflow was disabled; its
+  [next run skipped](https://github.com/wwjd4u/MeshAlot/actions/runs/38419245216).
+
+**G17/1 remains IN PROGRESS** until staged role/grant dependencies,
+Caddy/TLS dependencies and recovery strategy meet acceptance.
+**G17/2 remains NOT STARTED**; no known-good API/config archive has been
+used in staging. M13 remains OPEN.
+
