@@ -383,3 +383,23 @@ read-only production PG role/ownership metadata inspection; do not run
 database commands, retrieve private recovery material, create a new
 privileged access route or touch services under this documentation-only
 update. G17/1 IN PROGRESS; G17/2–G17/7 NOT STARTED; M13 OPEN.
+
+## 2026-10-13 PG16 read-only production role metadata: blocked before connection
+
+The operator approved a narrowly bounded read-only role/ownership metadata
+inspection using **existing** time-limited verified access, without `sudo`,
+credential reads or production changes. [One-time run 38467844313](https://github.com/wwjd4u/MeshAlot/actions/runs/38467844313)
+returned a **safe-stop**: existing SSH registration failed the mandatory
+12-minute expiry margin. `M13_G17_PG_EXISTING_IAP_AUTH=BLOCKED_SAFE_STOP`;
+`M13_G17_PG_REMOTE_CONNECTION=NOT_ATTEMPTED`. No SSH session or PostgreSQL
+query took place. The workflow was disabled and [follow-up run 38467942039](https://github.com/wwjd4u/MeshAlot/actions/runs/38467942039)
+was **SKIPPED**. Detailed sanitized record:
+[PG16 metadata access blocker](m13-g17-g1-pg16-readonly-metadata-access-blocker-2026-10-13.md).
+
+**Disposition: BLOCKED — NOT PASS.** G17/1 remains IN PROGRESS;
+G17/2–G17/7 NOT STARTED; M13 OPEN. Do not repeat without **separate**
+operator approval for renewal of the *existing instance-scoped public SSH
+registration* (a GCP access-control write), and stop again if unprivileged
+PostgreSQL catalog access is insufficient. Do not infer approval for
+privilege escalation, production credentials, actual globals capture,
+backup decryption, migrations, or cutover.
