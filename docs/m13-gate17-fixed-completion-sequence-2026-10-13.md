@@ -53,8 +53,8 @@ of skipping ahead to unrelated work.
   without exporting secret values.
 - [ ] Confirm a safe disposable staging **target** with approved scope,
   budget, isolation and no production identity or network reachability.
-- [ ] A read-only runner capability/resource preflight may be executed
-  here; that is not a rollback or V100 benchmark.
+- [x] One-time MS-02 runner staging resource preflight PASS on 2026-10-13;
+  **no staging environment has been created**. [Evidence](https://github.com/wwjd4u/MeshAlot/actions/runs/38399945655).
 
 ### G17/2 of 7 — Isolated rollback rehearsal
 **Status: NOT STARTED.** Requires explicit scope approval for use of
@@ -138,3 +138,21 @@ GitHub Actions logs, GitHub repo, Google Drive or chat.
 Perform **read-only MS-02 staging resource capability preflight** and
 freeze a user-approved staging environment decision before starting
 any actual service/decryption test.
+
+## 2026-10-13 staged-resource readiness snapshot (read-only)
+The trusted MS-02 runner independently returned 14 logical CPUs,
+117 GiB `MemAvailable` (integer floor), 625 GiB filesystem available
+(integer floor), and an accessible Docker daemon.
+`M13_G17_STAGE_CAPACITY_PRELIMINARY=SUFFICIENT_FOR_PLANNING`.
+The workflow did **not** create any container, test container network
+isolation, read recovery credentials, connect to production,
+run any V100 benchmark, modify a provider node or allocate new cloud
+resources. [Preflight run](https://github.com/wwjd4u/MeshAlot/actions/runs/38399945655).
+The one-time job was disabled and its
+[next execution skipped](https://github.com/wwjd4u/MeshAlot/actions/runs/38400025350).
+
+**Planning conclusion:** The *existing* MS-02 runner has sufficient local
+resources to propose disposable, synthetic-first, isolated staging without
+new cloud costs. This does **not** authorize a Docker container, run a
+production-derived archive, or confirm network isolation. Choose staging
+target and scope with the operator before running stage tests.
