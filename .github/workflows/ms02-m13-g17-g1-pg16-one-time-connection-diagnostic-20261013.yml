@@ -11,11 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   pg_metadata:
-    if: >-
-      github.repository == 'wwjd4u/MeshAlot' &&
-      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
-      github.event_name == 'push' &&
-      github.event.head_commit.message == 'chore(m13): run approved single PG16 connection diagnostic'
+    if: false # approved single diagnostic consumed by safe-stop; do not rerun
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 8
     env:
@@ -140,7 +136,7 @@ jobs:
               emit("BLOCKED_UNEXPECTED_SELECT1_RESPONSE",p.stderr)
               raise SystemExit(0)
           emit("CONNECTED_SELECT1",ok=True)
-          PY         PY
+          PY
           REMOTE
           bash -n "$WORK/remote.sh"
           set +e
