@@ -16,7 +16,7 @@ jobs:
       github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
       github.event_name == 'push' &&
       github.run_attempt == 1 &&
-      github.event.head_commit.message == 'test(m13): normalize pinned Caddy version stdout stderr check'
+      github.event.head_commit.message == 'test(m13): diagnose pinned Caddy nonzero version exit'
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 12
     steps:
@@ -72,9 +72,23 @@ jobs:
           PY
           if docker run --rm --pull=never --network=none --user=10001:10001 \
              --cap-drop=ALL --security-opt=no-new-privileges --read-only \
+             --entrypoint /usr/bin/caddy \
              "$BASE" version >"$WORK/version-stdout" 2>"$WORK/version-stderr"; then
             echo "M13_G17_CADDY_VERSION_COMMAND=PASS"
           else
+            rc=$?
+            echo "M13_G17_CADDY_VERSION_PROCESS_EXIT=$rc"
+            python3 - "$WORK/version-stdout" "$WORK/version-stderr" <<'PY'
+          import pathlib,re,sys
+          for tag,p in zip(("stdout","stderr"),sys.argv[1:]):
+            raw=pathlib.Path(p).read_bytes()[:600]
+            val=raw.decode("utf-8",errors="replace")
+            val=re.sub(r'(?i)bearer\s+[^\s]+','Bearer [REDACTED]',val)
+            val=re.sub(r'(?i)(password|token|secret|credential|private.?key)\s*[:=]\s*[^\s]+',r'\1=[REDACTED]',val)
+            val=re.sub(r'/home/[^/\s]+',"/home/[REDACTED]",val)
+            val=''.join(ch if ch.isprintable() else ' ' for ch in val)
+            print("M13_G17_CADDY_VERSION_ERROR_"+tag+"="+val[:500])
+          PY
             echo "M13_G17_CADDY_RUNTIME_VERSION_2_11_4=FAILED_SAFE_STOP"
             exit 1
           fi
