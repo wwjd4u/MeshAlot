@@ -16,7 +16,7 @@ jobs:
       github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
       github.event_name == 'push' &&
       github.run_attempt == 1 &&
-      github.event.head_commit.message == 'test(m13): correct capability-bound Caddy synthetic stage execution'
+      github.event.head_commit.message == 'test(m13): set explicit Caddy module inspection entrypoint'
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 12
     steps:
@@ -404,6 +404,7 @@ jobs:
           fi
           if docker run --rm --pull=never --network=none --user=10001:10001 \
              --cap-drop=ALL --security-opt=no-new-privileges --read-only \
+             --entrypoint /usr/bin/caddy \
              "$DERIVED" list-modules --skip-standard \
              >"$WORK/module-out" 2>"$WORK/module-err"; then
             if test -z "$(grep -E '^[[:alnum:]_]+([./-][[:alnum:]_]+)*$' "$WORK/module-out" || true)"; then
