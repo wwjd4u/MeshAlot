@@ -64,6 +64,15 @@ of skipping ahead to unrelated work.
   Allowed operations and 8 expected-denied operations PASS.
   [Evidence](https://github.com/wwjd4u/MeshAlot/actions/runs/38426678379).
   **No real production global role/membership restoration has been tested.**
+- [x] Exercise a **new synthetic-only PostgreSQL16 cluster-global role and
+  database ownership reconstruction** on the approved isolated MS-02 stage.
+  Separate nonadmin migration owner and restricted runtime role were exported
+  through password-free globals, then restored with a synthetic logical
+  database archive into a **fresh disposable PostgreSQL16 cluster**. Database,
+  table, function and migration-ledger ownership, tracked grants, preserved
+  fixture and two expected-denied SQLSTATE 42501 actions all PASS. [Run](https://github.com/wwjd4u/MeshAlot/actions/runs/38440768518).
+  Stage cleanup PASS; the one-time test was disabled and [follow-up SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38440900971).
+  This is **NOT** recovery of the actual production roles or PostgreSQL globals.
 - [ ] Verify remaining **full recovery dependencies**, including real
   PostgreSQL global roles/ownership, Caddy/TLS runtime materials,
   and stage-only service rollback; synthetic ACL PASS is not equivalent
@@ -266,3 +275,34 @@ isolated API/systemd/Caddy rollback have not been proven. This ACL test
 does not authorize production migration or cutover. G17/2 has not
 started and M13 Gate 17 remains OPEN.
 
+
+## 2026-10-13 synthetic PostgreSQL16 global ownership reconstruction
+
+The operator-approved isolated recovery test [run 38440768518](https://github.com/wwjd4u/MeshAlot/actions/runs/38440768518)
+completed successfully on the trusted MS-02 runner. The source was pinned to
+`4f67ee54e5ebca084e38e306e723ae0acd08e77d`; no live services were used.
+A synthetic PostgreSQL16 source cluster created separate, nonadmin
+`meshalot_stage_owner` and restricted `meshalot` roles. The migrations were
+used solely to establish the fixture schema and owner (not to repeat the
+previously accepted migration acceptance). The tracked runtime grants were
+applied. The synthetic globals were exported without role passwords, and a
+custom-format logical database archive was created. The entire source
+cluster was then disposed of before a **new clean PostgreSQL16 cluster**
+restored those synthetic roles, owners, grants and schema/data.
+
+Acceptance PASS: PG16 with Docker network none, no ports/bind mounts,
+read-only container, 2 logical CPUs and 4 GiB memory per sequential stage;
+synthetic global roles reconstructed; migration/runtime role separation and
+nonadministrative flags retained; database, tracked tables, migration ledger
+and security-definer function ownership restored; migrations 1–10 and the
+synthetic record intact; restricted runtime SELECT remained allowed; restricted
+UPDATE and migration-ledger read rejected with SQLSTATE 42501. Temporary
+containers and synthetic dump files removed, explicit cleanup PASS.
+The workflow was disabled and [next execution SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38440900971).
+
+**Remaining unverified:** actual production cluster global roles, memberships,
+password/authentication material, schema owner inventory, Caddy module/TLS
+certificate and storage recovery, systemd service runtime dependencies, and
+full API/systemd/Caddy stage-only rollback. No production archive, recovery
+key, production DB, SSH session, real node ID, V100 benchmark or live
+service was accessed. **G17/1 stays OPEN; G17/2 has NOT started.**
