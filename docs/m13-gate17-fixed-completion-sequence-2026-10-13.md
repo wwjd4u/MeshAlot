@@ -403,3 +403,11 @@ registration* (a GCP access-control write), and stop again if unprivileged
 PostgreSQL catalog access is insufficient. Do not infer approval for
 privilege escalation, production credentials, actual globals capture,
 backup decryption, migrations, or cutover.
+
+
+## 2026-10-13 approved 60-minute SSH renewal and PostgreSQL database-access blocker
+
+- One-time *existing-key* VM-scoped SSH registration extension **PASS**, strictly 60 minutes, all unrelated metadata preserved: [run 38468871500](https://github.com/wwjd4u/MeshAlot/actions/runs/38468871500). Renewal workflow disabled; [subsequent run SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38469100778).
+- The already-approved unprivileged PG16 metadata retry **did not obtain catalog results**: [run 38469143375](https://github.com/wwjd4u/MeshAlot/actions/runs/38469143375) confirmed existing IAP/SSH authorization valid and executed a safe stop with `BLOCKED_EXISTING_DB_ACCESS_UNAVAILABLE`. No sudo, credentials, customer rows, or production changes. The precise connection/permission failure is **not yet classified**, because detailed errors were suppressed. Audit job disabled and [subsequent run SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38469419094).
+- Exact evidence and next least-privilege diagnostic decision: [PG16 metadata access blocker follow-up](m13-g17-g1-pg16-metadata-retry-db-access-blocker-2026-10-13.md). No further authorization renewal or database retry without operator approval; do **not** widen PostgreSQL access, create credentials, or change `pg_hba.conf` to make an audit succeed.
+- **G17/1: IN PROGRESS / BLOCKED on actual PostgreSQL role and ownership inventory. G17/2–G17/7 NOT STARTED. M13 OPEN.**
