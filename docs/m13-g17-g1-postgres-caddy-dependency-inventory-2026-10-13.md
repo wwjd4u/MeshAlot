@@ -134,3 +134,31 @@ application/Caddy/TLS restoration; any use of the encrypted
 production-derived archives; and real network/reboot acceptance.
 Stage resources were deleted after the approved test and are
 not still running. G17/1 remains IN PROGRESS; Gate 17 OPEN.
+
+## Addendum — synthetic PostgreSQL16 owner and globals recovery (2026-10-13)
+
+[Isolated MS-02 recovery run](https://github.com/wwjd4u/MeshAlot/actions/runs/38440768518) PASS; staged PostgreSQL16 source and
+fresh independent destination ran **sequentially**, each with 2-CPU/4-GiB cap,
+Docker network none, no ports/binds, dropped capabilities and disposable
+in-memory data. The pinned migration source set up fixtures owned by a
+separate, nonadmin synthetic `meshalot_stage_owner` role. Runtime grants
+were applied to restricted `meshalot`. Password-free `pg_dumpall` global
+role definitions plus a synthetic custom-format database dump were restored
+to the fresh cluster **after deleting the source cluster**.
+
+Actual test PASS: nonadmin global role attributes; distinct migration versus
+runtime role without administrative memberships; database and public table
+ownership; security-definer function and migration ledger ownership; all 10
+migration records; synthetic record preservation; authorized runtime read;
+forbidden runtime UPDATE and ledger read both SQLSTATE 42501. Temporary
+clusters and files cleanup PASS. The one-time workflow is disabled with
+[follow-up SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38440900971).
+
+**Scope distinction:** This proves a synthetic procedure and role/owner
+reconstruction, not recovery of real production cluster-global metadata.
+The real database archive does not include `pg_dumpall` globals. Production
+roles, memberships/authentication, Caddy/TLS runtime storage and service
+rollback remain **unverified** and require their own approved recovery plan.
+The earlier source-inventory and bootstrap sections reflect their historical
+evidence dates; this addendum supersedes their pre-test synthetic gap status.
+G17/1 remains IN PROGRESS, G17/2 NOT STARTED, no production write.
