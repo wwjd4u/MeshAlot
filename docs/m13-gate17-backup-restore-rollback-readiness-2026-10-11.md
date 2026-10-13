@@ -733,3 +733,32 @@ global roles/grants, Caddy/TLS dependencies, or staging rollback
 rehearsal PASS. G17/1 broader prerequisite checklist remains
 **IN PROGRESS**; Gate 17 and M13 remain **OPEN**. Continue with the
 fixed [seven-part completion checklist](m13-gate17-fixed-completion-sequence-2026-10-13.md).
+
+
+## 2026-10-13 — Caddy 2.11.4 isolated synthetic HTTPS/WebSocket recovery
+
+The previously approved, digest-pinned Caddy recovery exercise on the MS-02
+trusted runner has **PASSED**. The [one-time successful run](https://github.com/wwjd4u/MeshAlot/actions/runs/38449591265)
+verified official image digest/platform, Caddy runtime version 2.11.4, zero
+nonstandard modules, valid/invalid config handling, HTTPS with synthetic
+certificates, forwarded-protocol normalization, rejection of unauthorized
+private HTTP/WebSocket requests, untrusted certificate rejection, and a real
+authenticated WebSocket exchange. After an intentionally broken stage-only
+reverse proxy produced the expected 502, restoring the known-good Caddy
+config passed the **full HTTPS/WebSocket and security-negative tests again**.
+Stage image, container and files cleanup PASS.
+
+Initial failed attempts were preserved in GitHub Actions history. A Linux
+file-capability incompatibility with the purposely dropped runtime privileges
+was fixed **only** in the disposable test-image build; production and hardening
+controls remained unchanged. The one-time action was disabled after PASS;
+[the subsequent run was SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38449988211).
+See the [sanitized acceptance record](m13-g17-g1-caddy-synthetic-tls-wss-recovery-2026-10-13.md).
+
+**Scope limit:** This did not inspect or copy live production TLS keys, prove
+the active certificate/ACME storage/renewal path, recover real PostgreSQL
+cluster-global roles or passwords, decrypt previously saved production
+rollback packages, or execute an end-to-end production-derived
+API/systemd/Caddy restoration. **G17/1 remains IN PROGRESS; G17/2 is
+NOT STARTED; Gate 17 and M13 remain OPEN**. No production writes or
+disruption authorized or performed in this Caddy test.
