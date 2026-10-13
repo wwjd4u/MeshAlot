@@ -1,0 +1,272 @@
+name: MS-02 M13 G17/1 Operator-Approved One-Time Existing SSH Renewal 30m
+
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-g17-g1-existing-iap-renew-30m-20261013.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meshalot-m13-instance-ssh-registration
+  cancel-in-progress: false
+
+jobs:
+  renew:
+    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway' && github.event_name == 'push' && github.event.head_commit.message == 'chore(m13): operator-approved one-shot VM SSH 30m renewal'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 10
+    env:
+      CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+      CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+      CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+      CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+    steps:
+      - name: Replace exactly one expired VM-only public key entry; preserve all others
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = "meshalot-ms02"
+          test "$(hostname -s)" = "wwjd4u-MS-02-Ultra"
+          test "$(id -un)" = "jason_guynes"
+          test "$HOME" = "/home/jason_guynes"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          DIR="$HOME/.local/share/meshalot-m13-iap-ssh"
+          test -x "$GCLOUD"
+          # One operator-approved attempt, even after a workflow rerun or a restart.
+          # Private local sentinel has no key material; do not delete to retry.
+          python3 - "$DIR" <<'PY'
+          import os,stat,sys
+          from pathlib import Path
+          d=Path(sys.argv[1]); h=d/"registration-history"
+          for p in (d,h):
+              s=p.lstat()
+              assert stat.S_ISDIR(s.st_mode) and s.st_uid==os.getuid()
+              assert stat.S_IMODE(s.st_mode)==0o700
+          p=h/"m13-g17-existing-ssh-30m-one-attempt-20261013.marker"
+          try:
+              fd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+          except FileExistsError:
+              print("M13_G17_30M_ATTEMPT=ALREADY_CONSUMED_SAFE_STOP")
+              raise SystemExit(3)
+          with os.fdopen(fd,"w") as f:
+              f.write("One operator-approved existing-key 30-minute renewal attempt.\n")
+          print("M13_G17_30M_ATTEMPT=CLAIMED")
+          PY
+          command -v ssh-keygen >/dev/null
+          # Block a second run of this exact workflow event using its private
+          # archived prior-registration marker; never silently renew twice.
+          test ! -e "$DIR/registration-history/registration-pre-renewal-run-$GITHUB_RUN_ID.json"
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-scoped-renewal.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          
+          # No SSH connection, production command, identity creation, or project metadata write.
+          "$GCLOUD" compute instances describe meshalot-control-01 \
+            --project=meshalot-poc --zone=us-south1-a --format=json \
+            >"$WORK/vm-before.json" 2>"$WORK/vm-read-error"
+          "$GCLOUD" compute project-info describe --project=meshalot-poc \
+            --format=json >"$WORK/project-before.json" 2>"$WORK/project-read-error"
+          "$GCLOUD" auth list --filter=status:ACTIVE --format=json \
+            >"$WORK/accounts.json" 2>"$WORK/auth-read-error"
+          
+          python3 - "$DIR" "$WORK" <<'PY'
+          import datetime
+          import json
+          import os
+          import re
+          import stat
+          import subprocess
+          import sys
+          from pathlib import Path
+          
+          dirpath, workpath = (Path(v) for v in sys.argv[1:])
+          def require(condition, message):
+              if not condition:
+                  raise RuntimeError(message)
+          def check(path, kind, mode):
+              s=path.lstat()
+              require(s.st_uid == os.getuid(), "LOCAL_OWNER_MISMATCH")
+              require(stat.S_IMODE(s.st_mode) == mode, "LOCAL_PERMISSIONS_MISMATCH")
+              require((stat.S_ISDIR(s.st_mode) if kind=="dir" else stat.S_ISREG(s.st_mode)), "LOCAL_PATH_TYPE_MISMATCH")
+          check(dirpath, "dir", 0o700)
+          reg=dirpath/"registration.json"
+          private=dirpath/"id_ed25519"
+          public=dirpath/"id_ed25519.pub"
+          known=dirpath/"known_hosts"
+          for p in (reg, private, public, known):
+              check(p, "file", 0o600)
+          record=json.loads(reg.read_text(encoding="utf-8"))
+          require(record.get("target")=="meshalot-control-01", "TARGET_MISMATCH")
+          require(record.get("project")=="meshalot-poc" and record.get("zone")=="us-south1-a", "SCOPE_MISMATCH")
+          username=record.get("username", "")
+          require(re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}", username), "INVALID_EXISTING_USERNAME")
+          existing_exp=datetime.datetime.strptime(record["expires"], "%Y-%m-%dT%H:%M:%S%z")
+          now=datetime.datetime.now(datetime.timezone.utc)
+          require(existing_exp <= now+datetime.timedelta(minutes=12), "EXISTING_AUTH_VALID_LONGER_THAN_12_MINUTES")
+          
+          parts=public.read_text(encoding="utf-8").split()
+          require(len(parts)>=2 and parts[0]=="ssh-ed25519", "BAD_EXISTING_PUBLIC_KEY")
+          require(re.fullmatch(r"[A-Za-z0-9+/=]+", parts[1]), "BAD_EXISTING_PUBLIC_KEY")
+          derived=subprocess.run(["ssh-keygen","-y","-f",str(private)],capture_output=True,text=True,check=True,timeout=12)
+          require(derived.stdout.split()[:2] == parts[:2], "EXISTING_KEYPAIR_MISMATCH")
+          pubbody=parts[1]
+          
+          vm=json.loads((workpath/"vm-before.json").read_text())
+          project=json.loads((workpath/"project-before.json").read_text())
+          accounts=json.loads((workpath/"accounts.json").read_text())
+          require(vm.get("name")=="meshalot-control-01" and
+                  str(vm.get("zone","")).endswith("/us-south1-a") and
+                  vm.get("status")=="RUNNING", "VM_TARGET_OR_STATE_MISMATCH")
+          require(len(accounts)==1 and accounts[0].get("status")=="ACTIVE", "GCP_ACCOUNT_UNEXPECTED")
+          account=accounts[0].get("account","").lower().strip()
+          require("@" in account and account.split("@",1)[0]==username, "GCP_EXISTING_ACCOUNT_MISMATCH")
+          def items(data):
+              return {x["key"]:x.get("value","") for x in ((data or {}).get("items") or [])}
+          im=items(vm.get("metadata"))
+          pm=items(project.get("commonInstanceMetadata"))
+          require(im.get("enable-oslogin",pm.get("enable-oslogin","false")).lower()!="true", "OS_LOGIN_POLICY_CHANGED")
+          require(im.get("block-project-ssh-keys",pm.get("block-project-ssh-keys","false")).lower()!="true", "SSH_POLICY_CHANGED")
+          require(username in {s.partition(":")[0] for s in pm.get("ssh-keys","").splitlines()}, "EXISTING_PROJECT_USER_MISSING")
+          sshfield=im.get("ssh-keys")
+          require(isinstance(sshfield,str) and sshfield, "OLD_INSTANCE_PUBLIC_KEY_ENTRY_MISSING")
+          
+          lines=sshfield.splitlines(keepends=True)
+          indices=[]
+          for i, line in enumerate(lines):
+              val=line.rstrip("\r\n")
+              m=re.fullmatch(r"([a-z_][a-z0-9_-]{0,30}):ssh-ed25519 ([A-Za-z0-9+/=]+) google-ssh (\{.*\})",val)
+              if m and m.group(1)==username and m.group(2)==pubbody:
+                  info=json.loads(m.group(3))
+                  require(info.get("userName")==username, "OLD_KEY_USER_MISMATCH")
+                  exp=datetime.datetime.strptime(info["expireOn"], "%Y-%m-%dT%H:%M:%S%z")
+                  require(exp==existing_exp, "OLD_KEY_EXPIRATION_MISMATCH")
+                  indices.append(i)
+          require(len(indices)==1, "EXACT_OLD_KEY_ENTRY_NOT_UNIQUE")
+          
+          expiry=(now+datetime.timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%S%z")
+          marker=json.dumps({"userName":username,"expireOn":expiry},separators=(",",":"))
+          new_line=f"{username}:ssh-ed25519 {pubbody} google-ssh {marker}"
+          i=indices[0]
+          ending="\r\n" if lines[i].endswith("\r\n") else "\n" if lines[i].endswith("\n") else ""
+          lines[i]=new_line+ending
+          new_ssh="".join(lines)
+          require(new_ssh!=sshfield, "NO_METADATA_CHANGE")
+          require(len(lines)==len(sshfield.splitlines(keepends=True)), "SSH_METADATA_LINES_CHANGED")
+          (workpath/"new-ssh-keys").write_text(new_ssh,encoding="utf-8")
+          updated=dict(record)
+          updated["expires"]=expiry
+          (workpath/"new-registration.json").write_text(json.dumps(updated,indent=2)+"\n",encoding="utf-8")
+          print("M13_G17_EXISTING_PUBLIC_IDENTITY_MATCH=PASS")
+          print("M13_G17_INSTANCE_KEY_SINGLE_ENTRY_RENEWAL_PLAN=PASS")
+          print("M13_G17_OTHER_SSH_ENTRIES_PRESERVED_IN_PLAN=PASS")
+          print("M13_G17_RENEWAL_30_MINUTE_WINDOW=PASS")
+          PY
+          
+          # Refuse to write if concurrent changes occurred since the inspected metadata.
+          "$GCLOUD" compute instances describe meshalot-control-01 \
+            --project=meshalot-poc --zone=us-south1-a --format=json \
+            >"$WORK/vm-fresh.json" 2>"$WORK/vm-fresh-error"
+          "$GCLOUD" compute project-info describe --project=meshalot-poc \
+            --format=json >"$WORK/project-fresh.json" 2>"$WORK/project-fresh-error"
+          python3 - "$WORK" <<'PY'
+          import json,sys
+          from pathlib import Path
+          w=Path(sys.argv[1])
+          a=json.loads((w/"vm-before.json").read_text())
+          b=json.loads((w/"vm-fresh.json").read_text())
+          x=json.loads((w/"project-before.json").read_text())
+          y=json.loads((w/"project-fresh.json").read_text())
+          assert a.get("metadata")==b.get("metadata"), "VM_METADATA_CHANGED_SINCE_PREFLIGHT"
+          assert x.get("commonInstanceMetadata")==y.get("commonInstanceMetadata"), "PROJECT_METADATA_CHANGED_SINCE_PREFLIGHT"
+          assert b.get("name")=="meshalot-control-01" and b.get("status")=="RUNNING"
+          print("M13_G17_METADATA_PREWRITE_UNCHANGED=PASS")
+          PY
+          
+          # Authorized write: only the existing VM ssh-keys field, from a guarded
+          # replacement of one existing (expired) key entry. No other metadata operations.
+          if "$GCLOUD" compute instances add-metadata meshalot-control-01 \
+              --project=meshalot-poc --zone=us-south1-a \
+              --metadata-from-file="ssh-keys=$WORK/new-ssh-keys" \
+              --quiet --format=json >"$WORK/write-response.json" 2>"$WORK/write-error"; then
+            echo "M13_G17_INSTANCE_ONLY_PUBLIC_KEY_RENEWAL=APPLIED"
+          else
+            echo "M13_G17_INSTANCE_ONLY_PUBLIC_KEY_RENEWAL=FAILED_SAFE_STOP"
+            exit 1
+          fi
+          
+          "$GCLOUD" compute instances describe meshalot-control-01 \
+            --project=meshalot-poc --zone=us-south1-a --format=json \
+            >"$WORK/vm-after.json" 2>"$WORK/vm-after-error"
+          "$GCLOUD" compute project-info describe --project=meshalot-poc \
+            --format=json >"$WORK/project-after.json" 2>"$WORK/project-after-error"
+          python3 - "$WORK" <<'PY'
+          import json,sys
+          from pathlib import Path
+          w=Path(sys.argv[1])
+          before=json.loads((w/"vm-before.json").read_text())
+          after=json.loads((w/"vm-after.json").read_text())
+          project_before=json.loads((w/"project-before.json").read_text())
+          project_after=json.loads((w/"project-after.json").read_text())
+          def items(obj,key):
+              return {x["key"]:x.get("value","") for x in ((obj.get(key) or {}).get("items") or [])}
+          a=items(before,"metadata")
+          b=items(after,"metadata")
+          old=a.pop("ssh-keys",None)
+          new=b.pop("ssh-keys",None)
+          expected=(w/"new-ssh-keys").read_text()
+          assert old is not None and new is not None
+          assert new.rstrip("\r\n")==expected.rstrip("\r\n"), "NEW_ENTRY_MISMATCH"
+          assert a==b, "OTHER_INSTANCE_METADATA_CHANGED"
+          assert items(project_before,"commonInstanceMetadata")==items(project_after,"commonInstanceMetadata"), "PROJECT_METADATA_CHANGED"
+          assert after.get("name")=="meshalot-control-01" and after.get("status")=="RUNNING"
+          assert after.get("tags")==before.get("tags"), "VM_TAGS_CHANGED"
+          print("M13_G17_NEW_VM_KEY_ENTRY_VERIFIED=PASS")
+          print("M13_G17_OTHER_VM_METADATA_UNCHANGED=PASS")
+          print("M13_G17_PROJECT_METADATA_UNCHANGED=PASS")
+          PY
+          
+          # Only after remote verification, atomically update the local expiry record.
+          # Preserve the old record as a private versioned history file.
+          python3 - "$DIR" "$WORK" "$GITHUB_RUN_ID" <<'PY'
+          import json,os,stat,sys
+          from pathlib import Path
+          d=Path(sys.argv[1])
+          w=Path(sys.argv[2])
+          run=sys.argv[3]
+          reg=d/"registration.json"
+          old=reg.read_bytes()
+          new=(w/"new-registration.json").read_bytes()
+          s=reg.lstat()
+          assert stat.S_ISREG(s.st_mode) and s.st_uid==os.getuid() and stat.S_IMODE(s.st_mode)==0o600
+          a=json.loads(old)
+          b=json.loads(new)
+          assert {k:v for k,v in a.items() if k!="expires"} == {k:v for k,v in b.items() if k!="expires"}
+          assert a["expires"]!=b["expires"]
+          history=d/"registration-history"
+          if not history.exists() and not history.is_symlink():
+              history.mkdir(mode=0o700)
+          hs=history.lstat()
+          assert stat.S_ISDIR(hs.st_mode) and hs.st_uid==os.getuid() and stat.S_IMODE(hs.st_mode)==0o700
+          old_record=history/("registration-pre-renewal-run-"+run+".json")
+          flags=os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW
+          fd=os.open(old_record,flags,0o600)
+          with os.fdopen(fd,"wb") as f:
+              f.write(old)
+          tmp=d/(".registration-renewal-"+run+".tmp")
+          fd=os.open(tmp,flags,0o600)
+          with os.fdopen(fd,"wb") as f:
+              f.write(new)
+          assert reg.read_bytes()==old, "LOCAL_REGISTRATION_CHANGED_DURING_RENEWAL"
+          os.replace(tmp,reg)
+          assert reg.read_bytes()==new
+          assert stat.S_IMODE(reg.stat().st_mode)==0o600
+          print("M13_G17_PREVIOUS_REGISTRATION_PRESERVED_PRIVATE=PASS")
+          print("M13_G17_RENEWED_LOCAL_REGISTRATION=PASS")
+          PY
+          echo "M13_G17_NO_NEW_SSH_IDENTITY=PASS"
+          echo "M13_G17_NO_PRODUCTION_SERVICE_OR_DB_CHANGES=PASS"
+          echo "M13_G17_30M_VM_ONLY_SSH_RENEWAL=PASS"
+          echo "M13_G17_G1_EXISTING_VM_ONLY_SSH_RENEWAL=PASS"
