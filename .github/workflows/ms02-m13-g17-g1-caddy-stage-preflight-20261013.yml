@@ -1,0 +1,82 @@
+name: MS-02 M13 G17-1 Caddy Stage Prerequisites
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-g17-g1-caddy-stage-preflight-20261013.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-isolated-staging
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: >-
+      github.repository == 'wwjd4u/MeshAlot' &&
+      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
+      github.event_name == 'push' &&
+      github.run_attempt == 1 &&
+      github.event.head_commit.message == 'audit(m13): one-time isolated Caddy 2.11.4 stage preflight'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 4
+    steps:
+      - name: Read-only local Caddy 2.11.4 and isolated test tooling inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = meshalot-ms02
+          test "$(hostname -s)" = wwjd4u-MS-02-Ultra
+          test "$(id -un)" = jason_guynes
+          test "$HOME" = /home/jason_guynes
+          if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+            echo M13_G17_CADDY_STAGE_DOCKER=AVAILABLE
+          else
+            echo M13_G17_CADDY_STAGE_DOCKER=UNAVAILABLE
+          fi
+          for tag in caddy:2.11.4-alpine caddy:2.11.4; do
+            if docker image inspect "$tag" >/dev/null 2>&1; then
+              if test "$tag" = caddy:2.11.4-alpine; then
+                echo M13_G17_CADDY_STAGE_CACHED_OFFICIAL_ALPINE=YES
+              else
+                echo M13_G17_CADDY_STAGE_CACHED_OFFICIAL_DEFAULT=YES
+              fi
+            else
+              if test "$tag" = caddy:2.11.4-alpine; then
+                echo M13_G17_CADDY_STAGE_CACHED_OFFICIAL_ALPINE=NO
+              else
+                echo M13_G17_CADDY_STAGE_CACHED_OFFICIAL_DEFAULT=NO
+              fi
+            fi
+          done
+          if command -v caddy >/dev/null 2>&1; then
+            v="$(caddy version 2>/dev/null || true)"
+            case "$v" in
+              v2.11.4\ *) echo M13_G17_CADDY_STAGE_NATIVE_V2114=YES ;;
+              v2.11.4) echo M13_G17_CADDY_STAGE_NATIVE_V2114=YES ;;
+              *) echo M13_G17_CADDY_STAGE_NATIVE_V2114=NO ;;
+            esac
+          else
+            echo M13_G17_CADDY_STAGE_NATIVE_V2114=NO
+          fi
+          for tool in openssl go python3 sha256sum; do
+            if command -v "$tool" >/dev/null 2>&1; then
+              case "$tool" in
+                openssl) echo M13_G17_CADDY_STAGE_OPENSSL=AVAILABLE ;;
+                go) echo M13_G17_CADDY_STAGE_GO=AVAILABLE ;;
+                python3) echo M13_G17_CADDY_STAGE_PYTHON3=AVAILABLE ;;
+                sha256sum) echo M13_G17_CADDY_STAGE_SHA256SUM=AVAILABLE ;;
+              esac
+            else
+              case "$tool" in
+                openssl) echo M13_G17_CADDY_STAGE_OPENSSL=MISSING ;;
+                go) echo M13_G17_CADDY_STAGE_GO=MISSING ;;
+                python3) echo M13_G17_CADDY_STAGE_PYTHON3=MISSING ;;
+                sha256sum) echo M13_G17_CADDY_STAGE_SHA256SUM=MISSING ;;
+              esac
+            fi
+          done
+          echo M13_G17_CADDY_STAGE_IMAGE_PULL=NOT_ATTEMPTED
+          echo M13_G17_CADDY_STAGE_CONTAINERS=NOT_CREATED
+          echo M13_G17_CADDY_STAGE_PRODUCTION=NOT_ACCESSED
+          echo M13_G17_CADDY_STAGE_READONLY_INVENTORY=PASS
