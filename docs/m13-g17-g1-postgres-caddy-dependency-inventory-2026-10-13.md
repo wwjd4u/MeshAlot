@@ -201,3 +201,35 @@ Go proxy simulation without repeating it as new evidence. A separate
 approved/private method will be necessary for verifying real production
 certificate storage/recovery, if still required; never export TLS keys to
 GitHub, GitHub Actions or chat. G17/1 remains open; G17/2 has not begun.
+
+## 2026-10-13 pinned Caddy isolated-stage image reference — no image pull
+
+The Docker Hub **official `library/caddy`** image detail page for
+`2.11.4-alpine` identifies `linux/amd64` and Caddy `v2.11.4`,
+matching the previously observed production **CLI version** (the
+running service binary digest is not proven identical). Source:
+[Official Docker Hub image details](https://hub.docker.com/layers/library/caddy/2.11.4-alpine/images/sha256-040e9f7480b80b6d4a7e5013a21159b950a63dcbdb956e38abe2387fb28d9ec0).
+
+- Published multi-platform index digest: `sha256:6aeddd44c3078b0f9a35206472a11420648a79c184603ef95957d0a20044cb2b`.
+- Published **linux/amd64 image manifest digest**: `sha256:040e9f7480b80b6d4a7e5013a21159b950a63dcbdb956e38abe2387fb28d9ec0`.
+- Locked future test reference:
+  `docker.io/library/caddy@sha256:040e9f7480b80b6d4a7e5013a21159b950a63dcbdb956e38abe2387fb28d9ec0`, with
+  `--platform=linux/amd64`.
+- Require registry digest match and Caddy runtime version validation **before
+  stage acceptance**. Digest pin identifies immutable image content; it does
+  not prove that the image matches the live Caddy binary, supply chain
+  signature, or production TLS certificate material.
+- [MS-02 one-time read-only preflight](https://github.com/wwjd4u/MeshAlot/actions/runs/38442965161)
+  PASS: Docker, OpenSSL, Go, Python3, sha256sum available; Caddy v2.11.4
+  not installed and neither matching Caddy image tag cached.
+  No pull, container creation or production access in the preflight.
+  The workflow was disabled and
+  [follow-up execution SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38443288594).
+
+**Not authorized by the digest lookup:** pulling the new image onto the
+MS-02 host, starting test containers, accessing real TLS keys or certificates,
+accessing production, or changing any provider resources. Next execution
+requires explicit operator approval for a digest-only image download and
+a resource-bounded, network-none synthetic Caddy staging exercise. The
+production certificate data-root and complete Caddy/TLS recovery remain
+unverified; G17/1 still open, G17/2 not started.
