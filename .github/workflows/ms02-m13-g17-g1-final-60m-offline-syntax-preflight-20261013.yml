@@ -8,11 +8,7 @@ permissions:
   contents: read
 jobs:
   validate:
-    if: >-
-      github.repository == 'wwjd4u/MeshAlot' &&
-      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
-      github.event_name == 'push' &&
-      github.event.head_commit.message == 'test(m13): final syntax-only renewal and SELECT1 preflight'
+    if: false # final source-pinned Bash/Python offline preflight passed, one-time workflow disabled
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 5
     steps:
