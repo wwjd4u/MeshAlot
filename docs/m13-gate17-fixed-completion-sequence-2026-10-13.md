@@ -441,3 +441,14 @@ backup decryption, migrations, or cutover.
 - An older read-only script includes `sudo -n -u postgres` for a specific migration query. This is **not** authority to use sudo or the database administrator in the current G17/1 inspection.
 - Next single production-side step, **subject to fresh operator approval**: bounded read-only, nonsecret metadata determination of the production MeshAlot API OS service account over a currently valid host-verified SSH registration. **No postgres connection, no service environment-file values, no sudo, no trust or permissions change.** Fail closed if existing access lacks its expiry safety margin; renewal is separate.
 - G17/1 remains **IN PROGRESS / BLOCKED**, actual PostgreSQL globals/ownership **UNVERIFIED**, G17/2–7 **NOT STARTED**, M13 **OPEN / NOT RELEASE READY**.
+
+
+## 2026-10-13 production systemd service OS account metadata — approved read-only PASS
+
+- Operator approved exactly one production read-only, nonprivileged metadata review on `meshalot-control-01`, conditioned on previously authorized pinned IAP/SSH access retaining at least 12 minutes. SSH renewal, sudo, PostgreSQL connections, credential/EnvironmentFile or pg_hba reads, service changes and retries were not authorized.
+- [Offline source-pinned Bash/Python syntax preflight 38492822821](https://github.com/wwjd4u/MeshAlot/actions/runs/38492822821) **PASS**, no production connection. Preflight disabled; next run **SKIPPED**.
+- [One-time metadata inspection 38492890931](https://github.com/wwjd4u/MeshAlot/actions/runs/38492890931) **PASS** for exact host, existing SSH validity, a single loaded/active MeshAlot systemd service unit and the allowlisted `User`, `DynamicUser`, `LoadState` and `ActiveState` properties. Declared `User=meshalot`, `DynamicUser=no`. No sudo, PostgreSQL connection, private service environment, credentials or production change. Full details remained private with SHA256 verification; only sanitized classes published.
+- The one-time inspection workflow [disabled](https://github.com/wwjd4u/MeshAlot/commit/54bb072463f257c1e1b75484244dfa82ee894b50) and [follow-up 38492939948 SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38492939948).
+- [Sanitized systemd account inspection evidence](m13-g17-g1-production-systemd-service-identity-readonly-2026-10-13.md). This establishes the **declared application service Linux user**, not the actual production `meshalot` PostgreSQL role, pg_hba/peer auth, memberships, owner or permissions.
+- **Next decision requires separate approval:** tightly scoped, one-shot read-only connection feasibility using the already existing `meshalot` service OS identity only if an approved noninteractive identity transition already exists; no silent `sudo`, no role creation, grants, password use or SSH extension. Stop on insufficient access. Production global role/ownership restore **UNVERIFIED**.
+- **G17/1 IN PROGRESS. G17/2–G17/7 NOT STARTED. M13 OPEN / NOT RELEASE-READY.**
