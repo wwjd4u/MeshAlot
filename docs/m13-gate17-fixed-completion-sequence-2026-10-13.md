@@ -452,3 +452,12 @@ backup decryption, migrations, or cutover.
 - [Sanitized systemd account inspection evidence](m13-g17-g1-production-systemd-service-identity-readonly-2026-10-13.md). This establishes the **declared application service Linux user**, not the actual production `meshalot` PostgreSQL role, pg_hba/peer auth, memberships, owner or permissions.
 - **Next decision requires separate approval:** tightly scoped, one-shot read-only connection feasibility using the already existing `meshalot` service OS identity only if an approved noninteractive identity transition already exists; no silent `sudo`, no role creation, grants, password use or SSH extension. Stop on insufficient access. Production global role/ownership restore **UNVERIFIED**.
 - **G17/1 IN PROGRESS. G17/2–G17/7 NOT STARTED. M13 OPEN / NOT RELEASE-READY.**
+
+
+## 2026-10-13 proposed meshalot OS identity SELECT1 diagnostic — review-only draft
+
+- The operator answered **yes to preparing the next narrowly scoped database connection diagnostic for review, without executing it**. This is **NOT** permission to renew SSH, invoke `sudo`, change Linux identity, connect to PostgreSQL, create/change database users or grants, access credentials, edit `pg_hba.conf`, or make production changes.
+- [Prepared review-only diagnostic plan](m13-g17-g1-proposed-meshalot-os-select1-diagnostic-review-2026-10-13.md). It proposes a *future*, separately approved, one-attempt local socket `SELECT 1` as existing OS user `meshalot` **only if** a pre-existing noninteractive `sudo -n -u meshalot -- /usr/bin/psql` transition is already authorized. `-w` plus explicit `passfile=/dev/null` avoids prompting or stored database-password fallback. No privilege policy change is allowed.
+- The proposal exists **only as a non-executable Markdown review document** on the M13 development branch. No production IAP/SSH, PostgreSQL, sudo, new GitHub Actions workflow, existing workflow rerun, SSH renewal, backup decrypt or service changes were performed. No runtime result is claimed.
+- **NEXT DECISION:** operator reviews the exact one-time proposed service-user identity transition and connection scope; any future execution requires distinct explicit operator approval and an independent, fresh check of existing SSH authorization. SSH renewal is a separate approval if expired. Fail closed on any missing authorization.
+- Gate 17/1 **IN PROGRESS**, real PG global-role and ownership dependencies **UNVERIFIED**; G17/2–17/7 **NOT STARTED**; M13 **OPEN**.
