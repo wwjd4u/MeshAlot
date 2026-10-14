@@ -11,11 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   pg_metadata:
-    if: >-
-      github.repository == 'wwjd4u/MeshAlot' &&
-      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
-      github.event_name == 'push' &&
-      github.event.head_commit.message == 'test(m13): execute approved single readonly systemd service-account metadata inspection'
+    if: false # approved one-time service-account metadata inspection PASS, prevent rerun
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 8
     env:
