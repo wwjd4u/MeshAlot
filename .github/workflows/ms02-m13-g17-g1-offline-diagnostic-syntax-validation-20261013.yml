@@ -1,0 +1,108 @@
+name: MS-02 M13 G17-1 One-Time Offline PG16 Syntax Preflight
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-g17-g1-offline-diagnostic-syntax-validation-20261013.yml
+permissions:
+  contents: read
+jobs:
+  validate:
+    if: >-
+      github.repository == 'wwjd4u/MeshAlot' &&
+      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
+      github.event_name == 'push' &&
+      github.event.head_commit.message == 'test(m13): offline syntax-only PG16 diagnostic preflight'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Syntax-only Bash and Python AST checks; no execution of project scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = 'meshalot-ms02'
+          test "$(hostname -s)" = 'wwjd4u-MS-02-Ultra'
+          test "$(id -un)" = 'jason_guynes'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 - <<'PY'
+          import ast
+          import re
+          import subprocess
+          from pathlib import Path
+          
+          items = [
+           ("PG16_DIAGNOSTIC", Path(".github/workflows/ms02-m13-g17-g1-pg16-one-time-connection-diagnostic-20261013.yml"), "a112eef40d868adf1b0401995ddbb9b5571fab49"),
+           ("SSH_RENEWAL_TEMPLATE", Path(".github/workflows/ms02-m13-g17-g1-existing-iap-renew-30m-20261013.yml"), "043754190061f230b0c22463dee201745153f003")
+          ]
+          def require(condition, category):
+              if not condition:
+                  raise RuntimeError(category)
+          
+          def syntax_bash(script, scope):
+              result=subprocess.run(["bash","-n"],input=script,text=True,capture_output=True,timeout=12)
+              require(result.returncode==0, scope+"_BASH_SYNTAX_BLOCKED")
+          
+          def parse_heredocs(lines, scope):
+              parsed=0
+              remote_count=0
+              i=0
+              while i<len(lines):
+                  match=re.search(r"<<'(PY|REMOTE)'",lines[i])
+                  if match is None:
+                      i+=1
+                      continue
+                  tag=match.group(1)
+                  j=i+1
+                  while j<len(lines) and lines[j]!=tag:
+                      j+=1
+                  require(j<len(lines),scope+"_UNTERMINATED_"+tag)
+                  body=lines[i+1:j]
+                  if tag=="PY":
+                      try:
+                          ast.parse("\n".join(body)+"\n",filename=scope+"_embedded_python")
+                      except (SyntaxError,ValueError):
+                          raise RuntimeError(scope+"_PYTHON_AST_BLOCKED")
+                      parsed+=1
+                  else:
+                      remote_count+=1
+                      syntax_bash("\n".join(body)+"\n",scope+"_REMOTE")
+                      py_nested, remote_nested=parse_heredocs(body,scope+"_REMOTE")
+                      require(remote_nested==0,scope+"_UNEXPECTED_RECURSIVE_REMOTE")
+                      parsed+=py_nested
+                  i=j+1
+              return parsed,remote_count
+          
+          for label,path,expected_blob in items:
+              require(path.is_file(),label+"_SOURCE_MISSING")
+              obj=subprocess.run(["git","hash-object",str(path)],text=True,capture_output=True,check=True)
+              require(obj.stdout.strip()==expected_blob,label+"_SOURCE_BLOB_CHANGED")
+              raw=path.read_text()
+              require("    if: false #" in raw,label+"_EXISTING_WORKFLOW_MUST_REMAIN_DISABLED")
+              anchors=[i for i,line in enumerate(raw.splitlines()) if line=="        run: |"]
+              require(len(anchors)==1,label+"_EXPECTED_SINGLE_RUN_BLOCK")
+              content=raw.splitlines()[anchors[0]+1:]
+              require(all(not v.strip() or v.startswith("          ") for v in content),label+"_INVALID_YAML_BLOCK_INDENT")
+              shell_lines=[v[10:] if v.strip() else "" for v in content]
+              script="\n".join(shell_lines)+"\n"
+              syntax_bash(script,label+"_OUTER")
+              py_count,remote_count=parse_heredocs(shell_lines,label)
+              require(py_count>=3,label+"_EMBEDDED_PYTHON_MISSING")
+              if label=="PG16_DIAGNOSTIC":
+                  require(remote_count==1,label+"_REMOTE_SCRIPT_MISSING")
+                  require('"SELECT 1"' in raw,label+"_SELECT1_MISSING")
+                  require("StrictHostKeyChecking=yes" in raw,label+"_HOST_PINNING_MISSING")
+                  require("now+datetime.timedelta(minutes=12)" in raw,label+"_AUTH_MARGIN_MISSING")
+                  require("PG_CONNECTION_ATTEMPT=CLAIMED" in raw,label+"_ONE_ATTEMPT_GUARD_MISSING")
+                  require("M13_G17_PG_DIAGNOSTIC_CLASS" in raw,label+"_SANITIZED_REPORT_MISSING")
+              print(label+"_BASH_SYNTAX=PASS")
+              print(label+"_EMBEDDED_PYTHON_SYNTAX=PASS")
+              print(label+"_SOURCE_PIN=PASS")
+              print(label+"_EMBEDDED_PYTHON_COUNT="+str(py_count))
+          print("M13_G17_OFFLINE_PREFLIGHT=PASS")
+          print("M13_G17_PRODUCTION_ACCESS=NOT_ATTEMPTED")
+          print("M13_G17_SSH_RENEWAL=NOT_ATTEMPTED")
+          PY
