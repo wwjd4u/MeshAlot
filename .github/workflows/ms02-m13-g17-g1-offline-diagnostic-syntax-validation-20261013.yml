@@ -8,11 +8,7 @@ permissions:
   contents: read
 jobs:
   validate:
-    if: >-
-      github.repository == 'wwjd4u/MeshAlot' &&
-      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
-      github.event_name == 'push' &&
-      github.event.head_commit.message == 'test(m13): offline syntax-only PG16 diagnostic preflight'
+    if: false # one-time offline syntax preflight PASS; prevent repeated runs
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 5
     steps:
