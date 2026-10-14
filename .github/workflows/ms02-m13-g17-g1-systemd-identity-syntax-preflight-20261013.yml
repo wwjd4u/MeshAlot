@@ -8,11 +8,7 @@ permissions:
   contents: read
 jobs:
   validate:
-    if: >-
-      github.repository == 'wwjd4u/MeshAlot' &&
-      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
-      github.event_name == 'push' &&
-      github.event.head_commit.message == 'test(m13): one-time offline systemd identity audit syntax preflight'
+    if: false # approved source-pinned offline Bash/Python syntax preflight PASS, one-time disabled
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 5
     steps:
