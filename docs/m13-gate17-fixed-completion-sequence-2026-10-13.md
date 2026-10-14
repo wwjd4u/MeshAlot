@@ -429,3 +429,15 @@ backup decryption, migrations, or cutover.
 - Diagnostic workflow disabled after the single attempt; [follow-up 38491394672 SKIPPED](https://github.com/wwjd4u/MeshAlot/actions/runs/38491394672). [Full sanitized G17/1 record](m13-g17-g1-pg16-login-role-absent-diagnostic-2026-10-13.md).
 - **Next approval is separate:** identify an existing authorized PostgreSQL metadata inspection identity/auth path. Do not add an audit login role, change `pg_hba.conf`, grant privileges, use privileged OS/DB credentials or `sudo`, or reattempt a connection without explicit operator authorization. Do not repeat synthetic recovery checks already PASS.
 - **G17/1 IN PROGRESS: failure classified, real PG global roles/owners UNVERIFIED. G17/2–G17/7 NOT STARTED; M13 OPEN / NOT RELEASE-READY.**
+
+
+## 2026-10-13 existing PostgreSQL principal/auth path source review
+
+**READ-ONLY SOURCE REVIEW PASS; PRODUCTION DB ACCESS STILL BLOCKED.** No production SSH, credential or service-file reads, sudo, DB connections, data queries, IAM changes or deployments were performed. [Sanitized review](m13-g17-g1-existing-db-principal-source-review-2026-10-13.md).
+
+- `database/runtime-grants.sql` defines a restricted nonadmin `meshalot` LOGIN role distinct from the migration owner. This is a **source contract**, not proof of live production roles/ownership.
+- The isolated `database/setup-runtime-test.sql` creates `meshalot` with OS-user peer authentication **in test only**. Production service account, pg_hba/peer mapping and actual role remain **UNVERIFIED**.
+- The application requires a protected `MESHALOT_DATABASE_DSN` in production DB mode. Never read/copy environment values or credentials for a diagnostic without separately approved scope.
+- An older read-only script includes `sudo -n -u postgres` for a specific migration query. This is **not** authority to use sudo or the database administrator in the current G17/1 inspection.
+- Next single production-side step, **subject to fresh operator approval**: bounded read-only, nonsecret metadata determination of the production MeshAlot API OS service account over a currently valid host-verified SSH registration. **No postgres connection, no service environment-file values, no sudo, no trust or permissions change.** Fail closed if existing access lacks its expiry safety margin; renewal is separate.
+- G17/1 remains **IN PROGRESS / BLOCKED**, actual PostgreSQL globals/ownership **UNVERIFIED**, G17/2–7 **NOT STARTED**, M13 **OPEN / NOT RELEASE READY**.
