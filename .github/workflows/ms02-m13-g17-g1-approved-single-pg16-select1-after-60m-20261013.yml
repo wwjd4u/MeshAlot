@@ -1,0 +1,235 @@
+name: MS-02 M13 G17-1 Approved New Single Readonly PG16 SELECT1
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-g17-g1-approved-single-pg16-select1-after-60m-20261013.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-control-readonly-audit
+  cancel-in-progress: false
+jobs:
+  pg_metadata:
+    if: false # pending final offline syntax validation, SSH renewal verification and separate enable
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 8
+    env:
+      CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+      CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+      CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+      CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+    steps:
+      - name: Single nonprivileged SELECT1 via existing verified IAP/SSH, no sudo
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = meshalot-ms02
+          test "$(hostname -s)" = wwjd4u-MS-02-Ultra
+          test "$(id -un)" = jason_guynes
+          test "$HOME" = /home/jason_guynes
+          DIR="$HOME/.local/share/meshalot-m13-iap-ssh"
+          ROOT="$HOME/.local/share/meshalot-m13-private-audits"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          test -x "$GCLOUD"
+          for d in "$DIR" "$ROOT"; do
+            test -d "$d" && test ! -L "$d"
+            test "$(stat -c %a "$d")" = 700
+            test "$(stat -c %u "$d")" = "$(id -u)"
+          done
+          for f in "$DIR/id_ed25519" "$DIR/known_hosts" "$DIR/registration.json"; do
+            test -f "$f" && test ! -L "$f"
+            test "$(stat -c %a "$f")" = 600
+            test "$(stat -c %u "$f")" = "$(id -u)"
+          done
+          # Claim one and only one approved diagnostic attempt before any SSH use.
+          # Private marker persists even if the job fails; no automatic retry.
+          python3 - "$ROOT" <<'PY'
+          import os,stat,sys
+          from pathlib import Path
+          d=Path(sys.argv[1])
+          st=d.lstat()
+          assert stat.S_ISDIR(st.st_mode) and st.st_uid==os.getuid()
+          assert stat.S_IMODE(st.st_mode)==0o700
+          p=d/"m13-g17-pg16-post-60m-select1-single-attempt-20261013.marker"
+          try:
+              fd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+          except FileExistsError:
+              print("M13_G17_PG_CONNECTION_ATTEMPT=ALREADY_CONSUMED_SAFE_STOP")
+              raise SystemExit(3)
+          with os.fdopen(fd,"w") as f:
+              f.write("Operator-authorized one-time nonprivileged PostgreSQL connection diagnostic.\n")
+          print("M13_G17_PG_CONNECTION_ATTEMPT=CLAIMED")
+          PY
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-g17-pg-connection.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          if python3 - "$DIR/registration.json" "$WORK/username" <<'PY'
+          import datetime, json, re, sys
+          from pathlib import Path
+          p=Path(sys.argv[1]); d=json.loads(p.read_text())
+          assert d.get("target")=="meshalot-control-01"
+          assert (d.get("project"),d.get("zone"))==("meshalot-poc","us-south1-a")
+          assert re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}",d.get("username",""))
+          expires=datetime.datetime.strptime(d["expires"],"%Y-%m-%dT%H:%M:%S%z")
+          now=datetime.datetime.now(datetime.timezone.utc)
+          assert expires > now+datetime.timedelta(minutes=12),"NO_VALID_EXISTING_AUTH_MARGIN"
+          assert expires <= now+datetime.timedelta(minutes=60),"AUTHORIZATION_DURATION_EXCEEDS_APPROVED_60_MINUTES"
+          Path(sys.argv[2]).write_text(d["username"])
+          PY
+          then
+            echo M13_G17_PG_EXISTING_IAP_AUTH=VALID_WITH_MARGIN
+          else
+            echo M13_G17_PG_EXISTING_IAP_AUTH=BLOCKED_SAFE_STOP
+            echo M13_G17_PG_REMOTE_CONNECTION=NOT_ATTEMPTED
+            exit 0
+          fi
+          cat > "$WORK/remote.sh" <<'REMOTE'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if test "$(hostname -s)" != "meshalot-control-01"; then
+            echo "M13_G17_PG_WRONG_HOST_STOP"
+            exit 41
+          fi
+          if test "$(id -u)" = 0; then
+            echo '{"schema":"m13-g17-pg-connection-diagnostic-v1","result":"BLOCKED_ROOT_SHELL","scope":"READ_ONLY_NO_SUDO","remote_host":"meshalot-control-01","database_rows_exported":false,"production_changes":false,"select1_ok":false,"error_b64":"","error_truncated":false}'
+            exit 0
+          fi
+          python3 - <<'PY'
+          import base64,json,os,pwd,subprocess
+          SCHEMA="m13-g17-pg-connection-diagnostic-v1"
+          def emit(result,detail=b"",truncated=False,ok=False):
+              print(json.dumps({
+                  "schema":SCHEMA,"remote_host":"meshalot-control-01",
+                  "scope":"READ_ONLY_NO_SUDO","result":result,
+                  "database_rows_exported":False,"production_changes":False,
+                  "select1_ok":bool(ok),
+                  "error_b64":base64.b64encode(detail[:8192]).decode("ascii"),
+                  "error_truncated":bool(truncated or len(detail)>8192)
+              },separators=(",",":"),sort_keys=True))
+          if not os.path.isfile("/usr/bin/psql"):
+              emit("BLOCKED_NO_PSQL_BINARY")
+              raise SystemExit(0)
+          # Exact existing nonroot OS identity; no password, DSN, service file,
+          # admin account, sudo, TCP port, write query, or extra connection.
+          principal=pwd.getpwuid(os.getuid()).pw_name
+          env={"PATH":"/usr/bin:/bin","HOME":"/nonexistent",
+               "PGPASSFILE":"/dev/null","PGSERVICEFILE":"/dev/null",
+               "PGCONNECT_TIMEOUT":"5"}
+          command=["/usr/bin/psql","-X","-w","-qAt","-v","ON_ERROR_STOP=1",
+                   "-h","/var/run/postgresql","-U",principal,"-d","meshalot",
+                   "-c","SELECT 1"]
+          try:
+              p=subprocess.run(command,stdin=subprocess.DEVNULL,
+                               stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+                               env=env,timeout=20,check=False)
+          except subprocess.TimeoutExpired as ex:
+              emit("BLOCKED_CLIENT_TIMEOUT",str(ex).encode("utf-8","replace"))
+              raise SystemExit(0)
+          except OSError as ex:
+              emit("BLOCKED_CLIENT_OS_ERROR",str(ex).encode("utf-8","replace"))
+              raise SystemExit(0)
+          if p.returncode!=0:
+              emit("BLOCKED_PSQL",p.stderr)
+              raise SystemExit(0)
+          if p.stdout.strip()!=b"1":
+              emit("BLOCKED_UNEXPECTED_SELECT1_RESPONSE",p.stderr)
+              raise SystemExit(0)
+          emit("CONNECTED_SELECT1",ok=True)
+          PY
+          REMOTE
+          bash -n "$WORK/remote.sh"
+          set +e
+          WRONG="$(bash "$WORK/remote.sh" 2>/dev/null)"
+          WRONG_RC="$?"
+          set -e
+          test "$WRONG_RC" -eq 41 && test "$WRONG" = M13_G17_PG_WRONG_HOST_STOP
+          echo M13_G17_PG_WRONG_HOST_GUARD=PASS
+          REPORT="$ROOT/m13-g17-pg-connection-diagnostic-$(date -u +%Y%m%dT%H%M%SZ)-run-$GITHUB_RUN_ID.json"
+          test ! -e "$REPORT" && test ! -L "$REPORT"
+          PROXY="$GCLOUD compute start-iap-tunnel %h %p --project=meshalot-poc --zone=us-south1-a --listen-on-stdin --quiet --verbosity=error"
+          set +e
+          timeout --signal=TERM --kill-after=5s 115 ssh -F /dev/null -T \
+            -o "ProxyCommand=$PROXY" -o BatchMode=yes -o ConnectTimeout=30 \
+            -o ConnectionAttempts=1 -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$DIR/known_hosts" \
+            -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no \
+            -o LogLevel=ERROR -i "$DIR/id_ed25519" \
+            "$(cat "$WORK/username")@meshalot-control-01" 'bash -s' \
+            <"$WORK/remote.sh" >"$REPORT" 2>"$WORK/ssh-error"
+          RC="$?"
+          set -e
+          if test "$RC" -ne 0; then
+            if test -e "$REPORT"; then chmod 600 "$REPORT"; fi
+            SSH_DETAIL="$REPORT.ssh-error"
+            test ! -e "$SSH_DETAIL" && test ! -L "$SSH_DETAIL"
+            install -m 600 "$WORK/ssh-error" "$SSH_DETAIL"
+            echo M13_G17_PG_DIAGNOSTIC_CLASS=BLOCKED_SSH_OR_HOST_SAFE_STOP
+            echo M13_G17_PG_DETAILED_ERRORS=PRIVATE_LOCAL_ONLY
+            echo M13_G17_PG_NO_ACCESS_CHANGES=PASS
+            exit 0
+          fi
+          chmod 600 "$REPORT"
+          python3 - "$REPORT" <<'PY'
+          import base64,json,os,stat,sys
+          from pathlib import Path
+          p=Path(sys.argv[1]);st=p.lstat()
+          assert stat.S_ISREG(st.st_mode) and st.st_uid==os.getuid()
+          assert stat.S_IMODE(st.st_mode)==0o600 and 70<st.st_size<16384
+          o=json.loads(p.read_text())
+          assert o["schema"]=="m13-g17-pg-connection-diagnostic-v1"
+          assert o["remote_host"]=="meshalot-control-01"
+          assert o["scope"]=="READ_ONLY_NO_SUDO"
+          assert o["production_changes"] is False
+          assert o["database_rows_exported"] is False
+          assert isinstance(o["select1_ok"],bool)
+          assert isinstance(o["error_truncated"],bool)
+          raw=base64.b64decode(o["error_b64"],validate=True)
+          assert len(raw)<=8192
+          status=o["result"]
+          allowed={"CONNECTED_SELECT1","BLOCKED_NO_PSQL_BINARY","BLOCKED_ROOT_SHELL",
+                   "BLOCKED_PSQL","BLOCKED_CLIENT_TIMEOUT","BLOCKED_CLIENT_OS_ERROR",
+                   "BLOCKED_UNEXPECTED_SELECT1_RESPONSE"}
+          assert status in allowed
+          msg=raw.decode("utf8","replace").lower()
+          if status=="CONNECTED_SELECT1":
+              assert o["select1_ok"] is True and len(raw)==0
+              cls="CONNECTED_READONLY_SELECT1"
+          elif o["error_truncated"]:
+              cls="BLOCKED_DIAGNOSTIC_ERROR_TRUNCATED"
+          elif status=="BLOCKED_NO_PSQL_BINARY":
+              cls="BLOCKED_CLIENT_BINARY_UNAVAILABLE"
+          elif status=="BLOCKED_ROOT_SHELL":
+              cls="BLOCKED_PRIVILEGED_SHELL"
+          elif status=="BLOCKED_CLIENT_TIMEOUT":
+              cls="BLOCKED_CONNECTION_TIMEOUT"
+          elif "peer authentication failed" in msg:
+              cls="BLOCKED_PEER_AUTHENTICATION"
+          elif "role " in msg and "does not exist" in msg:
+              cls="BLOCKED_DATABASE_ROLE_ABSENT"
+          elif "no pg_hba.conf entry" in msg:
+              cls="BLOCKED_HBA_RESTRICTION"
+          elif "fe_sendauth: no password supplied" in msg or "password authentication failed" in msg:
+              cls="BLOCKED_PASSWORD_AUTH_REQUIRED"
+          elif "permission denied for database" in msg or "permission denied to connect to database" in msg:
+              cls="BLOCKED_DATABASE_CONNECT_PERMISSION"
+          elif "database " in msg and "does not exist" in msg:
+              cls="BLOCKED_DATABASE_NOT_FOUND"
+          elif "no such file or directory" in msg or "connection refused" in msg:
+              cls="BLOCKED_POSTGRES_SOCKET_UNAVAILABLE"
+          elif "permission denied" in msg:
+              cls="BLOCKED_OTHER_LOCAL_PERMISSION"
+          else:
+              cls="BLOCKED_UNKNOWN_CONNECTION_ERROR"
+          print("M13_G17_PG_DIAGNOSTIC_CLASS="+cls)
+          print("M13_G17_PG_DETAILED_ERRORS=PRIVATE_LOCAL_ONLY")
+          print("M13_G17_PG_NO_SUDO_OR_PRIVILEGE_ESCALATION=PASS")
+          print("M13_G17_PG_PASSWORDS_OR_CUSTOMER_ROWS=NOT_READ")
+          print("M13_G17_PG_PRODUCTION_CHANGES=NONE")
+          print("M13_G17_PG_CATALOG_METADATA=NOT_QUERIED")
+          PY
+          sha256sum -- "$REPORT" >"$REPORT.sha256"
+          chmod 600 "$REPORT.sha256"
+          (cd "$ROOT" && sha256sum --check --status "$(basename "$REPORT").sha256")
+          echo M13_G17_PG_PRIVATE_EVIDENCE_SHA256=PASS
+          echo M13_G17_PG_WORKFLOW_DONE=YES
