@@ -11,11 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   pg_metadata:
-    if: >-
-      github.repository == 'wwjd4u/MeshAlot' &&
-      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
-      github.event_name == 'push' &&
-      github.event.head_commit.message == 'test(m13): execute operator-approved one-shot PG16 SELECT1 readonly diagnostic'
+    if: false # approved one-shot SELECT1 connection classification completed; disable permanently
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 8
     env:
