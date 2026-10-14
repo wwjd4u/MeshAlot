@@ -1,0 +1,244 @@
+name: MS-02 M13 G17-1 One-Time Readonly Systemd API Service Identity
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths:
+      - .github/workflows/ms02-m13-g17-g1-one-time-systemd-service-user-readonly-20261013.yml
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-m13-control-readonly-audit
+  cancel-in-progress: false
+jobs:
+  pg_metadata:
+    if: false # source staged disabled; awaiting syntax-only verification and operator-approved single execution
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 8
+    env:
+      CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+      CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: 'true'
+      CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: 'true'
+      CLOUDSDK_CORE_DISABLE_COLOR: 'true'
+    steps:
+      - name: Existing verified IAP SSH, systemd User only; no database or sudo
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$RUNNER_NAME" = meshalot-ms02
+          test "$(hostname -s)" = wwjd4u-MS-02-Ultra
+          test "$(id -un)" = jason_guynes
+          test "$HOME" = /home/jason_guynes
+          DIR="$HOME/.local/share/meshalot-m13-iap-ssh"
+          ROOT="$HOME/.local/share/meshalot-m13-private-audits"
+          GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
+          test -x "$GCLOUD"
+          for d in "$DIR" "$ROOT"; do
+            test -d "$d" && test ! -L "$d"
+            test "$(stat -c %a "$d")" = 700
+            test "$(stat -c %u "$d")" = "$(id -u)"
+          done
+          for f in "$DIR/id_ed25519" "$DIR/known_hosts" "$DIR/registration.json"; do
+            test -f "$f" && test ! -L "$f"
+            test "$(stat -c %a "$f")" = 600
+            test "$(stat -c %u "$f")" = "$(id -u)"
+          done
+          # Claim one and only one approved diagnostic attempt before any SSH use.
+          # Private marker persists even if the job fails; no automatic retry.
+          python3 - "$ROOT" <<'PY'
+          import os,stat,sys
+          from pathlib import Path
+          d=Path(sys.argv[1])
+          st=d.lstat()
+          assert stat.S_ISDIR(st.st_mode) and st.st_uid==os.getuid()
+          assert stat.S_IMODE(st.st_mode)==0o700
+          p=d/"m13-g17-api-systemd-user-single-attempt-20261013.marker"
+          try:
+              fd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+          except FileExistsError:
+              print("M13_G17_UNIT_METADATA_ATTEMPT=ALREADY_CONSUMED_SAFE_STOP")
+              raise SystemExit(3)
+          with os.fdopen(fd,"w") as f:
+              f.write("Operator-authorized one-time read-only systemd service-account metadata inspection.\n")
+          print("M13_G17_UNIT_METADATA_ATTEMPT=CLAIMED")
+          PY
+          WORK="$(mktemp -d "$RUNNER_TEMP/m13-g17-systemd-unit.XXXXXXXX")"
+          trap 'rm -rf -- "$WORK"' EXIT
+          if python3 - "$DIR/registration.json" "$WORK/username" <<'PY'
+          import datetime, json, re, sys
+          from pathlib import Path
+          p=Path(sys.argv[1]); d=json.loads(p.read_text())
+          assert d.get("target")=="meshalot-control-01"
+          assert (d.get("project"),d.get("zone"))==("meshalot-poc","us-south1-a")
+          assert re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}",d.get("username",""))
+          expires=datetime.datetime.strptime(d["expires"],"%Y-%m-%dT%H:%M:%S%z")
+          now=datetime.datetime.now(datetime.timezone.utc)
+          assert expires > now+datetime.timedelta(minutes=12),"NO_VALID_EXISTING_AUTH_MARGIN"
+          assert expires <= now+datetime.timedelta(minutes=60),"AUTHORIZATION_DURATION_EXCEEDS_APPROVED_60_MINUTES"
+          Path(sys.argv[2]).write_text(d["username"])
+          PY
+          then
+            echo M13_G17_UNIT_EXISTING_IAP_AUTH=VALID_WITH_MARGIN
+          else
+            echo M13_G17_UNIT_EXISTING_IAP_AUTH=BLOCKED_SAFE_STOP
+            echo M13_G17_UNIT_REMOTE_CONNECTION=NOT_ATTEMPTED
+            exit 0
+          fi
+          cat > "$WORK/remote.sh" <<'REMOTE'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if test "$(hostname -s)" != "meshalot-control-01"; then
+            echo M13_G17_UNIT_WRONG_HOST_STOP
+            exit 41
+          fi
+          if test "$(id -u)" = 0; then
+            echo M13_G17_UNIT_ROOT_SHELL_STOP
+            exit 42
+          fi
+          python3 - <<'PY'
+          import base64,json,os,re,subprocess,sys
+          SCHEMA="m13-g17-systemd-service-identity-v1"
+          def emit(result,unit="",user="",active=None,dynamic=None,detail=b""):
+              print(json.dumps({
+                  "schema":SCHEMA,"remote_host":"meshalot-control-01",
+                  "scope":"SYSTEMD_USER_METADATA_ONLY","result":result,
+                  "unit_name":unit,"declared_user":user,
+                  "unit_active":active,"dynamic_user":dynamic,
+                  "passwords_or_environment_read":False,
+                  "postgresql_connected":False,"production_changes":False,
+                  "error_b64":base64.b64encode(detail[:4096]).decode("ascii"),
+                  "error_truncated":len(detail)>4096
+              },separators=(",",":"),sort_keys=True))
+              raise SystemExit(0)
+          if not os.path.isfile("/usr/bin/systemctl"):
+              emit("BLOCKED_NO_SYSTEMCTL")
+          env={"PATH":"/usr/bin:/bin","LANG":"C"}
+          def inspect(argv):
+              try:
+                  p=subprocess.run(["/usr/bin/systemctl"]+argv,
+                      stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
+                      stderr=subprocess.PIPE,env=env,timeout=12,check=False)
+              except (OSError,subprocess.TimeoutExpired):
+                  emit("BLOCKED_SYSTEMCTL_UNAVAILABLE")
+              if p.returncode!=0:
+                  emit("BLOCKED_SYSTEMCTL_QUERY",detail=p.stderr)
+              if len(p.stdout)>4096:
+                  emit("BLOCKED_UNEXPECTED_METADATA_VOLUME")
+              return p.stdout.decode("utf-8","replace")
+          listing=inspect(["list-unit-files","meshalot*.service","--no-legend","--no-pager"])
+          units=[]
+          for line in listing.splitlines():
+              parts=line.split()
+              if parts and re.fullmatch(r"meshalot[A-Za-z0-9_.@-]*\.service",parts[0]):
+                  units.append(parts[0])
+          if len(units)!=1:
+              emit("BLOCKED_UNEXPECTED_SERVICE_COUNT")
+          unit=units[0]
+          raw=inspect(["show",unit,"--no-pager",
+                       "--property=User","--property=DynamicUser",
+                       "--property=LoadState","--property=ActiveState"])
+          values={}
+          for line in raw.splitlines():
+              if "=" not in line:
+                  emit("BLOCKED_UNEXPECTED_METADATA_FORMAT")
+              key,value=line.split("=",1)
+              if key in values:
+                  emit("BLOCKED_DUPLICATE_METADATA_FIELD")
+              values[key]=value
+          if set(values)!={"User","DynamicUser","LoadState","ActiveState"}:
+              emit("BLOCKED_UNEXPECTED_METADATA_FIELDS")
+          if values["LoadState"]!="loaded" or values["ActiveState"]!="active":
+              emit("BLOCKED_SERVICE_NOT_ACTIVE")
+          user=values["User"]
+          if user and not re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}",user):
+              emit("BLOCKED_UNEXPECTED_USER_VALUE")
+          dyn=values["DynamicUser"].lower()
+          if dyn not in ("yes","no","true","false"):
+              emit("BLOCKED_UNEXPECTED_DYNAMIC_USER")
+          emit("METADATA_READ",unit=unit,user=user,active=True,
+               dynamic=dyn in ("yes","true"))
+          PY
+          REMOTE
+          bash -n "$WORK/remote.sh"
+          set +e
+          WRONG="$(bash "$WORK/remote.sh" 2>/dev/null)"
+          WRONG_RC="$?"
+          set -e
+          test "$WRONG_RC" -eq 41 && test "$WRONG" = M13_G17_UNIT_WRONG_HOST_STOP
+          echo M13_G17_UNIT_WRONG_HOST_GUARD=PASS
+          REPORT="$ROOT/m13-g17-systemd-service-user-$(date -u +%Y%m%dT%H%M%SZ)-run-$GITHUB_RUN_ID.json"
+          test ! -e "$REPORT" && test ! -L "$REPORT"
+          PROXY="$GCLOUD compute start-iap-tunnel %h %p --project=meshalot-poc --zone=us-south1-a --listen-on-stdin --quiet --verbosity=error"
+          set +e
+          timeout --signal=TERM --kill-after=5s 115 ssh -F /dev/null -T \
+            -o "ProxyCommand=$PROXY" -o BatchMode=yes -o ConnectTimeout=30 \
+            -o ConnectionAttempts=1 -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$DIR/known_hosts" \
+            -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no \
+            -o LogLevel=ERROR -i "$DIR/id_ed25519" \
+            "$(cat "$WORK/username")@meshalot-control-01" 'bash -s' \
+            <"$WORK/remote.sh" >"$REPORT" 2>"$WORK/ssh-error"
+          RC="$?"
+          set -e
+          if test "$RC" -ne 0; then
+            if test -e "$REPORT"; then chmod 600 "$REPORT"; fi
+            SSH_DETAIL="$REPORT.ssh-error"
+            test ! -e "$SSH_DETAIL" && test ! -L "$SSH_DETAIL"
+            install -m 600 "$WORK/ssh-error" "$SSH_DETAIL"
+            echo M13_G17_UNIT_METADATA_CLASS=BLOCKED_SSH_OR_HOST_SAFE_STOP
+            echo M13_G17_UNIT_DETAILED_ERRORS=PRIVATE_LOCAL_ONLY
+            echo M13_G17_UNIT_NO_ACCESS_CHANGES=PASS
+            exit 0
+          fi
+          chmod 600 "$REPORT"
+          python3 - "$REPORT" <<'PY'
+          import base64,json,os,re,stat,sys
+          from pathlib import Path
+          p=Path(sys.argv[1]);st=p.lstat()
+          assert stat.S_ISREG(st.st_mode) and st.st_uid==os.getuid()
+          assert stat.S_IMODE(st.st_mode)==0o600 and 110<st.st_size<16384
+          o=json.loads(p.read_text())
+          assert o["schema"]=="m13-g17-systemd-service-identity-v1"
+          assert o["remote_host"]=="meshalot-control-01"
+          assert o["scope"]=="SYSTEMD_USER_METADATA_ONLY"
+          assert o["production_changes"] is False
+          assert o["passwords_or_environment_read"] is False
+          assert o["postgresql_connected"] is False
+          assert isinstance(o["error_truncated"],bool)
+          raw=base64.b64decode(o["error_b64"],validate=True)
+          assert len(raw)<=4096
+          status=o["result"]
+          allowed={"METADATA_READ","BLOCKED_NO_SYSTEMCTL","BLOCKED_SYSTEMCTL_UNAVAILABLE",
+                   "BLOCKED_SYSTEMCTL_QUERY","BLOCKED_UNEXPECTED_METADATA_VOLUME",
+                   "BLOCKED_UNEXPECTED_SERVICE_COUNT","BLOCKED_UNEXPECTED_METADATA_FORMAT",
+                   "BLOCKED_DUPLICATE_METADATA_FIELD","BLOCKED_UNEXPECTED_METADATA_FIELDS",
+                   "BLOCKED_SERVICE_NOT_ACTIVE","BLOCKED_UNEXPECTED_USER_VALUE",
+                   "BLOCKED_UNEXPECTED_DYNAMIC_USER"}
+          assert status in allowed
+          if status=="METADATA_READ":
+              assert o["unit_active"] is True
+              assert isinstance(o["dynamic_user"],bool)
+              assert raw==b"" and not o["error_truncated"]
+              assert re.fullmatch(r"meshalot[A-Za-z0-9_.@-]*\.service",o["unit_name"])
+              user=o["declared_user"]
+              assert not user or re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}",user)
+              cls=("EXPLICIT_MESHALOT" if user=="meshalot"
+                   else "UNSET_DEFAULT_ROOT" if not user
+                   else "EXPLICIT_OTHER_NONROOT")
+              print("M13_G17_UNIT_METADATA=PASS_READONLY")
+              print("M13_G17_UNIT_DECLARED_USER_CLASS="+cls)
+              print("M13_G17_UNIT_DYNAMIC_USER="+("YES" if o["dynamic_user"] else "NO"))
+              print("M13_G17_UNIT_ACTUAL_DB_AUTHORIZATION=UNVERIFIED")
+          else:
+              print("M13_G17_UNIT_METADATA=BLOCKED_"+status)
+          print("M13_G17_UNIT_DETAILS=PRIVATE_LOCAL_ONLY")
+          print("M13_G17_UNIT_SUDO_OR_PRIVILEGE_ESCALATION=NONE")
+          print("M13_G17_UNIT_ENVIRONMENT_OR_CREDENTIALS=NOT_READ")
+          print("M13_G17_UNIT_POSTGRESQL_CONNECTION=NOT_ATTEMPTED")
+          print("M13_G17_UNIT_PRODUCTION_CHANGES=NONE")
+          PY
+          sha256sum -- "$REPORT" >"$REPORT.sha256"
+          chmod 600 "$REPORT.sha256"
+          (cd "$ROOT" && sha256sum --check --status "$(basename "$REPORT").sha256")
+          echo M13_G17_UNIT_PRIVATE_EVIDENCE_SHA256=PASS
+          echo M13_G17_UNIT_WORKFLOW_DONE=YES
