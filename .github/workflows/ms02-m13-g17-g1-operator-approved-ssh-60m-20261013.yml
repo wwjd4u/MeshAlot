@@ -15,11 +15,7 @@ concurrency:
 
 jobs:
   renew:
-    if: >-
-      github.repository == 'wwjd4u/MeshAlot' &&
-      github.ref == 'refs/heads/infra/ms02-runner-gateway' &&
-      github.event_name == 'push' &&
-      github.event.head_commit.message == 'chore(m13): execute approved one-time existing VM SSH 60m renewal'
+    if: false # 60-minute existing-identity SSH renewal PASS; prevent additional attempts
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 10
     env:
