@@ -17,6 +17,15 @@ This file is the concise current-status pointer. The Google Drive **AI Mesh POC 
 - Milestone 12 — **PASSED**
 - Milestone 13 — **IN PROGRESS — GATES 1–16 VERIFIED IN ISOLATED TESTS; LIVE ACCEPTANCE PENDING**
 
+## Gate 17 recovery preparation — October 26, 2026
+
+Gate 17/1 remains **BLOCKED** on actual PG16 global-role/ownership recovery and
+Caddy/TLS runtime dependencies; Gate 17/2–7 remain **NOT STARTED**. The new offline
+synthetic bundle integrity preflight passed 12 focused local tests and is
+included in future PR/main CI. It does not execute restored artifacts, inspect
+production or establish recovery acceptance. See
+[the implementation and evidence record](m13-g17-offline-bundle-preflight-2026-10-26.md).
+
 ## Milestone 4 reconciliation
 
 The older Milestone 4 section in `docs/milestones.md` preserves evidence from an earlier point in the build and is stale where it says process-restart verification, restricted-login runtime verification, or controlled production deployment are pending. Do not interpret that older status line as the current gate result.
