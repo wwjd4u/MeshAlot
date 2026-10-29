@@ -4,38 +4,105 @@ on:
   push:
     branches:
       - infra/ms02-runner-gateway
+    paths:
+      - .github/workflows/ms02-gateway-test.yml
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: meshalot-ms02-trusted-gateway-readiness
+  cancel-in-progress: false
+
 jobs:
   ms02-gateway-test:
-    name: Verify trusted MS-02 execution
-    runs-on:
-      - self-hosted
-      - Linux
-      - X64
-      - meshalot
-      - ms02
+    name: Verify trusted MS-02 execution and staging capabilities
+    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
     timeout-minutes: 5
-
     steps:
-      - name: Verify runner identity
+      - name: Read nonsecret runner and local staging metadata
         shell: bash
         run: |
-          echo "===== MESHALOT MS-02 GATEWAY TEST ====="
-          echo "RUNNER_NAME=$RUNNER_NAME"
-          echo "RUNNER_OS=$RUNNER_OS"
-          echo "RUNNER_ARCH=$RUNNER_ARCH"
-          echo "HOSTNAME=$(hostname)"
-          echo "USER=$(whoami)"
-          echo "PWD=$(pwd)"
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import platform
+          import pwd
+          import shutil
+          import stat
+          import subprocess
+          import sys
 
-      - name: Verify local toolchain visibility
-        shell: bash
-        run: |
-          echo "===== LOCAL TOOLCHAIN ====="
-          git --version
-          go version
-          uname -a
+          identity_ok = (
+              os.environ.get("RUNNER_NAME") == "meshalot-ms02"
+              and platform.system() == "Linux"
+              and platform.machine() == "x86_64"
+              and platform.node().split(".")[0] == "wwjd4u-MS-02-Ultra"
+              and pwd.getpwuid(os.geteuid()).pw_name == "jason_guynes"
+              and Path.home() == Path("/home/jason_guynes")
+          )
+          if not identity_ok:
+              print("M13_G17_RUNNER_IDENTITY=BLOCKED")
+              sys.exit(1)
+          print("M13_G17_RUNNER_IDENTITY=PASS")
+
+          try:
+              cpu = os.cpu_count() or 0
+              memory = Path("/proc/meminfo").read_text().splitlines()
+              available = next(int(line.split()[1]) for line in memory
+                               if line.startswith("MemAvailable:"))
+              memory_gib = available // (1024 * 1024)
+              disk = os.statvfs(Path.home())
+              disk_gib = disk.f_bavail * disk.f_frsize // (1024 ** 3)
+              pid1_systemd = Path("/proc/1/comm").read_text().strip() == "systemd"
+          except (OSError, ValueError, StopIteration, IndexError):
+              print("M13_G17_RUNNER_METADATA=BLOCKED")
+              sys.exit(1)
+
+          print("M13_G17_CPU_LOGICAL=" + str(cpu))
+          print("M13_G17_MEMORY_AVAILABLE_GIB_FLOOR=" + str(memory_gib))
+          print("M13_G17_DISK_AVAILABLE_GIB_FLOOR=" + str(disk_gib))
+          print("M13_G17_HOST_PID1_SYSTEMD=" + str(pid1_systemd))
+          qemu = bool(shutil.which("qemu-system-x86_64") or shutil.which("qemu-kvm"))
+          print("M13_G17_QEMU_EXECUTABLE_PRESENT=" + str(qemu))
+          try:
+              kvm = stat.S_ISCHR(os.stat("/dev/kvm").st_mode)
+              kvm_rw = kvm and os.access("/dev/kvm", os.R_OK | os.W_OK)
+          except OSError:
+              kvm_rw = False
+          print("M13_G17_KVM_RW_ACCESS_REPORTED=" + str(kvm_rw))
+
+          docker_state = "UNAVAILABLE_OR_UNVERIFIED"
+          docker = shutil.which("docker")
+          overrides = bool(os.environ.get("DOCKER_CONTEXT") or os.environ.get("DOCKER_HOST"))
+          if overrides:
+              docker_state = "OVERRIDE_PRESENT_NOT_QUERIED"
+          elif docker:
+              try:
+                  if Path("/var/run/docker.sock").is_socket():
+                      result = subprocess.run(
+                          [docker, "--host=unix:///var/run/docker.sock", "info",
+                           "--format", "{{.ServerVersion}}"],
+                          capture_output=True, text=True, timeout=8)
+                      if result.returncode == 0 and result.stdout.strip():
+                          docker_state = "LOCAL_UNIX_DAEMON_ACCESSIBLE"
+              except (OSError, subprocess.SubprocessError):
+                  pass
+          print("M13_G17_DOCKER=" + docker_state)
+          tools_ok = all(shutil.which(tool) for tool in ("git", "go", "python3"))
+          print("M13_G17_BUILD_TOOL_EXECUTABLES_PRESENT=" + str(tools_ok))
+          planning = cpu >= 4 and memory_gib >= 8 and disk_gib >= 15 and tools_ok
+          print("M13_G17_CAPACITY_FOR_PLANNING=" + (
+              "SUFFICIENT" if planning else "REVIEW_REQUIRED"))
+          print("M13_G17_FULL_STAGE_SUITABILITY=NOT_TESTED")
+          print("M13_G17_NETWORK_ISOLATION=NOT_TESTED")
+          print("M13_G17_GATE_ACCEPTANCE=NOT_ASSESSED")
+          print("M13_G17_CONTAINERS_OR_VMS_CREATED=NONE")
+          print("M13_G17_PRODUCTION_CONNECTION=NONE")
+          print("M13_G17_ARCHIVE_OR_KEY_READS=NONE")
+          print("M13_G17_HOST_CONFIGURATION_CHANGES=NONE")
+          sys.exit(0 if planning else 1)
+          PY
