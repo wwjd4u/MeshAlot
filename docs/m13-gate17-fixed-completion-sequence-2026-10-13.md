@@ -461,3 +461,19 @@ backup decryption, migrations, or cutover.
 - The proposal exists **only as a non-executable Markdown review document** on the M13 development branch. No production IAP/SSH, PostgreSQL, sudo, new GitHub Actions workflow, existing workflow rerun, SSH renewal, backup decrypt or service changes were performed. No runtime result is claimed.
 - **NEXT DECISION:** operator reviews the exact one-time proposed service-user identity transition and connection scope; any future execution requires distinct explicit operator approval and an independent, fresh check of existing SSH authorization. SSH renewal is a separate approval if expired. Fail closed on any missing authorization.
 - Gate 17/1 **IN PROGRESS**, real PG global-role and ownership dependencies **UNVERIFIED**; G17/2–17/7 **NOT STARTED**; M13 **OPEN**.
+
+## 2026-10-29 continuation and consolidated Caddy metadata
+
+- [Operator-reported Caddy metadata checkpoint](m13-g17-caddy-metadata-checkpoint-2026-10-29.md): selected service identity, running-binary/CLI match, protected data-directory metadata and loopback admin-listener attribution PASS within their recorded scope. HTTP srv0 listens on port 443, the inspected host matcher names api.meshalot.com, and automatic_https is null. This supports default automatic-HTTPS configuration, not renewal or full recovery acceptance.
+- The targeted journal query timed out with exit 124; its empty result is inconclusive. Do not repeat it or earlier passing tests without a specific material reason. No live TLS issuance, state export or service restart was performed by the checkpoint.
+- The operator authorized routine testing/configuration/preparation without repeated permission to continue. Production pushes and material-risk decisions remain separate. This does not clear the rejected PostgreSQL diagnostic or waive any recovery criterion.
+- Next independent proof: [bounded vault recovery-key check](m13-g17-vault-recovery-key-check-2026-10-29.md) against the existing encrypted backup copies on the Mac. The operator reports the drive connected to the Mac; actual unlock/mount and tool/artifact metadata must be established before execution. No key or archive has been accessed by this documentation step.
+- Real PG16 globals/ownership recovery and remaining TLS/full-service recovery requirements remain open. **G17/1 BLOCKED; G17/2–7 NOT STARTED; M13 OPEN / NOT RELEASE-READY.**
+
+## 2026-10-29 automated runner readiness
+
+- The operator authorized routine testing/configuration and requested use of the existing runner instead of manual execution of small checks.
+- [Existing trusted gateway run 40948897708](https://github.com/wwjd4u/MeshAlot/actions/runs/40948897708) **PASS**, exact infrastructure SHA 81e78c042e3dcc4df75a1a8c2328e11a28f92653: trusted identity, 14 logical CPUs, 113 GiB available RAM, 625 GiB available disk, host systemd, local Docker accessible, build tools present, KVM read/write access reported. QEMU was not found on PATH. Full stage suitability/isolation remain **NOT TESTED**.
+- [Scope, local configuration checks and sanitized execution record](m13-g17-runner-readiness-2026-10-29.md). This was one newly warranted current-readiness check, not a rerun of accepted application/recovery tests. No production access, archive/key read, container/VM creation or host configuration change occurred.
+- Only the existing gateway workflow changed on the existing infrastructure branch. Its push path filter now prevents unrelated pushes from repeating it. Old disabled workflows and attempt markers remain preserved; the rejected diagnostic remains paused.
+- **G17/1 BLOCKED; G17/2–7 NOT STARTED; M13 OPEN / NOT RELEASE-READY.**

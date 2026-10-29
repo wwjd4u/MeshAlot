@@ -17,6 +17,32 @@ This file is the concise current-status pointer. The Google Drive **AI Mesh POC 
 - Milestone 12 — **PASSED**
 - Milestone 13 — **IN PROGRESS — GATES 1–16 VERIFIED IN ISOLATED TESTS; LIVE ACCEPTANCE PENDING**
 
+## Gate 17 continuation — October 29, 2026
+
+Gate 17/1 remains **BLOCKED**; Gate 17/2–7 are **NOT STARTED**. The operator's
+October 27–28 Caddy console results are consolidated in
+[the metadata checkpoint](m13-g17-caddy-metadata-checkpoint-2026-10-29.md).
+They establish selected service/binary/listener/directory metadata and support
+default automatic HTTPS for the inspected API route; renewal, TLS-state restore
+and complete recoverability remain unverified. The timed-out journal query is
+inconclusive and is not a reason to rerun passing tests.
+
+Routine testing/configuration/preparation is authorized without repeated
+continuation approval; production pushes and material-risk decisions remain
+separate. The rejected PostgreSQL diagnostic stays paused. The next independent
+recovery proof is [vault-key availability against the existing encrypted copies](m13-g17-vault-recovery-key-check-2026-10-29.md),
+using the Mac's native encrypted-APFS support. The operator reports the drive
+connected; actual mount/unlock and GnuPG availability still need verification.
+No real archive has been decrypted by this continuation record.
+
+[Automated MS-02 runner readiness](m13-g17-runner-readiness-2026-10-29.md)
+**PASS**: the existing trusted gateway executed the reviewed read-only metadata
+job at infrastructure SHA 81e78c042e3dcc4df75a1a8c2328e11a28f92653. Capacity is
+sufficient for planning; local Docker is accessible. QEMU was not found on PATH,
+so full VM-stage suitability/isolation remains **NOT TESTED**. Suitable automated work
+belongs on the runner; the Mac-attached encrypted drive and private vault entry
+remain operator-local steps.
+
 ## Gate 17 recovery preparation — October 26, 2026
 
 Gate 17/1 remains **BLOCKED** on actual PG16 global-role/ownership recovery and

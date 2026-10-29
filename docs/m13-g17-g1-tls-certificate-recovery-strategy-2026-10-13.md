@@ -4,6 +4,16 @@ Date: 2026-10-13 (US Central)
 Status: **RECOVERY STRATEGY DOCUMENTED; ACTUAL PRODUCTION TLS RECOVERY UNVERIFIED — G17/1 IN PROGRESS**  
 Decision owner: operator. Scope authorized: sanitized planning and GitHub documentation only, **not** production access, certificate issuance, credential use, archive decryption, new infrastructure, or deployment.
 
+**October 29 continuation:** the scope line and observations below describe the
+October 13 checkpoint. Later operator-supervised, metadata-only Caddy results
+are recorded in [the consolidated October 29 checkpoint](m13-g17-caddy-metadata-checkpoint-2026-10-29.md).
+Selected service/binary/data-directory/admin-listener fields passed; the inspected
+HTTP route supports default automatic HTTPS. Actual renewal, issuer/account,
+storage durability and protected TLS-state restoration remain unverified.
+Routine testing/configuration/preparation is now authorized without repeated
+continuation prompts; production pushes and material-risk decisions remain
+separate. This update does not authorize forced issuance or restart a service.
+
 ## Decision
 
 **Primary recovery path: allow Caddy to obtain a fresh publicly trusted certificate for `api.meshalot.com` only during a separately approved real recovery/cutover, using its existing validated automatic-HTTPS configuration and issuer policy.** Reissue instead of copying a live TLS private key through remote-runner/public storage.
