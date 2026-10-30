@@ -38,12 +38,12 @@ jobs:
           assert pwd.getpwuid(os.geteuid()).pw_name == "jason_guynes"
           assert Path.home() == Path("/home/jason_guynes")
           os.umask(0o077)
-          source = "ffea405985ae4d573649b4c1c6bbea2146e2bc38"
+          source = "894c948d31c78a0338706c17807ad278a31ae7a9"
           expected = {
               "run.py": "ff5cf0f79a2069d083364c2110459c755d79adc8b37a6ded7a900add421d9217",
               "boot_vm.py": "82f70ce04d14a1a68097eb4dde11d0ce220b8f200cdf9a3266f82607979fc52c",
               "build_seed.py": "cb39d8808997d3d9030ef93b2bed041fd4e1221b0d51f4dcc697288bc1cd989e",
-              "guest.py": "505e1131377e215aca0818f61a4e079c5a22eb38c99e9555da4f8f9fd44d54ae",
+              "guest.py": "3ca970e0bef8203d9f48720353a77c9bb92354a00f1f8be28fec7cf8cf339e86",
               "safetar.py": "781e1754995c6770e5df3f9fd965ae8c3ecd89e40cc06295362fee4e1aede225",
               "prepare_image.sh": "6cd4177d415a2520f5387db4660b618054500d8ce5b6050ea0ba6800747ee3d0",
               "probe.go": "f85cb8378d37772cd23fed5a814066d0331e000b39734901040f5a766bccffd2",
