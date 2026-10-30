@@ -57,6 +57,7 @@ def docker(*args, timeout=15, check=True):
             "not signed": "APT_SIGNATURE", "signature": "APT_SIGNATURE",
             "no_pubkey": "APT_SIGNING_KEY", "no space left": "DISK_SPACE",
             "could not resolve": "NAME_RESOLUTION", "dpkg": "PACKAGE_INSTALL",
+            "logging driver": "LOGGING_DRIVER", "compression": "LOG_COMPRESSION",
         }
         found = sorted({label for fragment, label in categories.items() if fragment in lower})
         emit("FAILED_DOCKER_REASON_CLASSES", ",".join(found) or "UNCLASSIFIED")
@@ -156,6 +157,7 @@ try:
                "--cpus", "2", "--memory", "3g", "--memory-swap", "3g",
                "--pids-limit", "128", "--restart", "no", "--workdir", "/opt/stage",
                "--log-driver", "local", "--log-opt", "max-size=1m", "--log-opt", "max-file=1",
+               "--log-opt", "compress=false",
                BASE_IMAGE, "/bin/sh", "/opt/stage/prepare_image.sh")
         assembly = json.loads(docker("inspect", builder).stdout)[0]
         assert not assembly["HostConfig"]["Privileged"] and not assembly.get("Mounts")
@@ -184,7 +186,8 @@ try:
                "--memory", "3g", "--memory-swap", "3g", "--pids-limit", "64",
                "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=805306368,mode=1777",
                "--shm-size", "16m", "--restart", "no",
-               "--log-driver", "local", "--log-opt", "max-size=1m", "--log-opt", "max-file=1", tag)
+               "--log-driver", "local", "--log-opt", "max-size=1m", "--log-opt", "max-file=1",
+               "--log-opt", "compress=false", tag)
         validate_container(json.loads(docker("inspect", name).stdout)[0], image_id)
         emit("CONTAINER_BOUNDARIES_BEFORE_START", "PASS")
         result = docker("start", "--attach", name, timeout=420, check=False)
