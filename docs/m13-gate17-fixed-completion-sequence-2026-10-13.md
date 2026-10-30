@@ -160,6 +160,15 @@ need a supervised user window.
   and explicit user signoff are met.
 
 ## What can be done while the operator is driving
+
+**Later prerequisite receipt (October 30):** the public synthetic-only
+[systemd VM target test](m13-g17-systemd-stage-prerequisite.md) passed all 16
+guest checks, containment checks, poweroff and cleanup on MS-02
+([run 41114765692](https://github.com/wwjd4u/MeshAlot/actions/runs/41114765692)).
+The disposable VM was removed. This closes the synthetic systemd-target
+prerequisite only; **G17/1 remains BLOCKED and G17/2–7 NOT STARTED**. It does not
+prove real recovery dependencies or authorize archive replay or production.
+
 Read-only GitHub/runner inspection, review of existing evidence, test
 planning, sanitized documentation, isolated synthetic development/test
 work **after staging approval**, and safe code fixes to the M13 branch.

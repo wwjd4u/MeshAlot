@@ -50,7 +50,7 @@ G17/1 blocked and G17/2 not started until their real prerequisites are met.
   outer attach 420 seconds; workflow 35 minutes. Startup and fault checks inside
   the guest have their own shorter bounds. A command timeout fails, then cleanup
   runs. SIGTERM also enters cleanup; hard host/runner loss cannot guarantee it.
-- Only the explicit five-file public context plus the pinned public cloud disk
+- Only four packaging/probe files plus the pinned public cloud disk
   is copied to the assembly container. A unique per-attempt image is committed
   locally, used, then removed; no image registry publication or artifact upload.
 - Container configuration is inspected before start and after exit. Require
