@@ -38,13 +38,13 @@ jobs:
           assert pwd.getpwuid(os.geteuid()).pw_name == "jason_guynes"
           assert Path.home() == Path("/home/jason_guynes")
           os.umask(0o077)
-          source = "fcfc41a8e2013b9591f05a4d2f0f32d2a06633aa"
+          source = "cfa4753faaa0e62c884c0b382b345484b95653da"
           expected = {
               "boot_vm.py": "8cc29d141ddfc7e056ccf2e521be146390ff7d5a13d2da922f48787716d45958",
               "build_seed.py": "a99455ce487189abf1c1352f40b884bf89ae20f01ec74ba10fd602553e7fb931",
               "guest_probe.py": "b09639f76142fdb93bbba22a3eb37697d0ceb25804c5868eab54c604ca64d4a6",
-              "prepare_image.sh": "3dc33e29376a8019650582c145592b504187e9df47ffc5258d32d54c5b319013",
-              "run_stage.py": "b6f28c76001138d95938ef754d30348b02e63a3d8be79df506dcb1499477dd93",
+              "prepare_image.sh": "fd0ecf9d0a72b5f3138824a786460a5dc59f03b4e576f153ad40ef7922d4015d",
+              "run_stage.py": "0e908b3ed5713b9218632b01e5c78e4f7627dc0b8e6a1029864f203031def177",
           }
 
           class NoRedirect(urllib.request.HTTPRedirectHandler):
