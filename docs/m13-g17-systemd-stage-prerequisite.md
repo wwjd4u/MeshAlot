@@ -22,6 +22,18 @@ metadata fixture confirmed how tmpfs and no-new-privileges are represented by
 the daemon; it was removed without execution. The real VM acceptance checks are
 **NOT RUN** at this source checkpoint. No previously passing suite was repeated.
 
+The first actual [run 41113449849](https://github.com/wwjd4u/MeshAlot/actions/runs/41113449849)
+at infrastructure SHA `2e85bd19e27743584ab56869a9a51a7a6614793b`
+failed before VM startup during package assembly. Trusted allocation preflight
+and the 621284352-byte cloud-image digest passed; task-container/image and
+source-workspace cleanup passed. Source was
+`317489fd47e522f92c0c26b2951319e92934875e`. Only a generic subprocess failure was
+reported, so the Docker wrapper now emits fixed operation/reason classifications
+instead of raw diagnostics. One targeted follow-up is justified by this failed
+assembly result, not by uncertainty about previously accepted suites. Canonical
+cloud bytes and the OCI index/amd64 digests remain unchanged and were confirmed
+at the public registry; no pin was loosened or credential changed.
+
 The later actual runner receipt will be recorded here. Even a passing synthetic
 target test cannot certify the real recovery dependencies or start G17/2 out of
 order. Actual archive/key use, real globals/ownership recovery, TLS prerequisites,

@@ -30,8 +30,29 @@ for selector in ("DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS", "DOCKER_TLS_VERI
 
 
 def docker(*args, timeout=15, check=True):
-    return subprocess.run(DOCKER + list(args), env=environment, capture_output=True,
-                          text=True, timeout=timeout, check=check)
+    result = subprocess.run(DOCKER + list(args), env=environment, capture_output=True,
+                            text=True, timeout=timeout)
+    if check and result.returncode:
+        # Fixed classifications only: never dump Docker config, URLs carrying
+        # credentials, raw package output, private paths or the process env.
+        operation = args[0] + ("_" + args[1] if args[0] in ("image", "container") else "")
+        emit("FAILED_DOCKER_OPERATION", operation)
+        lower = (result.stderr + result.stdout).lower()
+        categories = {
+            "manifest unknown": "MANIFEST_UNKNOWN", "no such image": "IMAGE_NOT_FOUND",
+            "invalid reference format": "INVALID_REFERENCE", "unauthorized": "UNAUTHORIZED",
+            "denied": "ACCESS_DENIED", "toomanyrequests": "REGISTRY_RATE_LIMIT",
+            "pull rate limit": "REGISTRY_RATE_LIMIT", "too many requests": "REGISTRY_RATE_LIMIT",
+            "certificate": "TLS_CERTIFICATE", "no such file": "FILE_NOT_FOUND",
+            "could not find": "FILE_NOT_FOUND", "not found": "NOT_FOUND",
+            "permission": "PERMISSION", "network is unreachable": "NETWORK_UNREACHABLE",
+            "temporary failure": "TEMPORARY_FAILURE", "error resolving": "NAME_RESOLUTION",
+            "unsupported": "UNSUPPORTED", "unknown flag": "UNKNOWN_FLAG",
+        }
+        found = sorted({label for fragment, label in categories.items() if fragment in lower})
+        emit("FAILED_DOCKER_REASON_CLASSES", ",".join(found) or "UNCLASSIFIED")
+        result.check_returncode()
+    return result
 
 
 def emit(name, value):
