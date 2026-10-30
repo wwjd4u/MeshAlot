@@ -38,12 +38,15 @@ full-service rehearsal's entry requirements are satisfied. G17/1 stays BLOCKED.
 
 ## Gate 17 continuation — October 29, 2026
 
-The next hands-free preparation is the
-[synthetic M13 service-composition fixture](m13-g17-service-fixture.md), pairing
-the pinned real API, PG16 and Caddy with synthetic accounts/node inside the
-verified type of systemd guest. Eight new extraction-boundary tests passed;
-actual integration is pending. This does not close G17/1 or start real archived
-G17/2 recovery, and uses no private recovery material or production access.
+The [synthetic M13 service-composition fixture](m13-g17-service-fixture.md)
+is **PASS**: [MS-02 run 41124047221](https://github.com/wwjd4u/MeshAlot/actions/runs/41124047221),
+all **56 guest checks**, containment/poweroff/cleanup, plus eight new local
+extraction-boundary tests. Real restricted PG16/API/Caddy services exercised
+trusted HTTPS login/enrollment, signed WSS/telemetry/dashboard, account isolation,
+API fault/restore and PG restart/session/data preservation. Application source
+is unchanged at the accepted candidate. This is a synthetic integration
+prerequisite; **G17/1 stays BLOCKED and actual archived G17/2 NOT STARTED**.
+No private recovery material, production or real enrolled identity was used.
 
 Gate 17/1 remains **BLOCKED**; Gate 17/2–7 are **NOT STARTED**. The operator's
 October 27–28 Caddy console results are consolidated in

@@ -94,6 +94,15 @@ of skipping ahead to unrelated work.
   PostgreSQL global roles/ownership, Caddy/TLS runtime materials,
   and stage-only service rollback; synthetic ACL PASS is not equivalent
   to complete production recovery.
+- [x] Later synthetic service-composition prerequisite (October 30): real
+  PG16/API/Caddy under systemd in a capped no-NIC VM, trusted HTTPS customer
+  authentication/enrollment, signed WSS to persistent telemetry/dashboard,
+  account isolation, API fault/restore, PG restart and session/ledger/node
+  preservation. All 56 guest checks and teardown PASS
+  ([run 41124047221](https://github.com/wwjd4u/MeshAlot/actions/runs/41124047221),
+  [full receipt and retained failures](m13-g17-service-fixture.md)). Eight new
+  rootfs security tests PASS locally. Synthetic inputs only; no real archive,
+  global-role recovery, production acceptance or G17/2 closure is implied.
 - [x] Operator approved existing MS-02 as a disposable **PG16 synthetic-only** staging target, bounded to 2 logical CPUs, 4 GiB RAM, Docker `--network=none`, no host bind mounts or ports. [Successful one-time bootstrap and isolation proof](https://github.com/wwjd4u/MeshAlot/actions/runs/38419118910); container and tmpfs cleaned. This is **not** a complete rollback rehearsal.
 - [x] One-time MS-02 runner staging resource preflight PASS on 2026-10-13;
   **no staging environment has been created**. [Evidence](https://github.com/wwjd4u/MeshAlot/actions/runs/38399945655).
