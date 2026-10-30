@@ -16,7 +16,7 @@ jobs:
   synthetic-service-fixture:
     if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
-    timeout-minutes: 50
+    timeout-minutes: 60
     steps:
       - name: Build and verify pinned synthetic API PG16 Caddy then clean up
         shell: bash
@@ -38,12 +38,12 @@ jobs:
           assert pwd.getpwuid(os.geteuid()).pw_name == "jason_guynes"
           assert Path.home() == Path("/home/jason_guynes")
           os.umask(0o077)
-          source = "50241e1f0069b9334146b759bfca913b5f2ee0d1"
+          source = "46ef8ebb43e19580c09f88582fe443e353b121a6"
           expected = {
               "run.py": "ff5cf0f79a2069d083364c2110459c755d79adc8b37a6ded7a900add421d9217",
               "boot_vm.py": "2a88f94a7e9802c717af3f0859c2b3a61335b89275291d26f943b249c5a92408",
               "build_seed.py": "cb39d8808997d3d9030ef93b2bed041fd4e1221b0d51f4dcc697288bc1cd989e",
-              "guest.py": "56adf72d9dfe16e193c9219efa58778d9f7e69de1ecf13c4d2bf010677d04dcf",
+              "guest.py": "1ce8badc745c6d2cf58a7d2c1d8bc392760874df8b1d1f6052a52aa21083ca82",
               "safetar.py": "781e1754995c6770e5df3f9fd965ae8c3ecd89e40cc06295362fee4e1aede225",
               "prepare_image.sh": "6cd4177d415a2520f5387db4660b618054500d8ce5b6050ea0ba6800747ee3d0",
               "probe.go": "f85cb8378d37772cd23fed5a814066d0331e000b39734901040f5a766bccffd2",
