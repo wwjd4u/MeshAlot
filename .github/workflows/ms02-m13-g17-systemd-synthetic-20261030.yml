@@ -1,58 +1,68 @@
 name: MS-02 G17 Synthetic Systemd Target Prerequisite
+
 on:
   push:
     branches: [infra/ms02-runner-gateway]
     paths: [.github/workflows/ms02-m13-g17-systemd-synthetic-20261030.yml]
+
 permissions:
   contents: read
+
 concurrency:
   group: meshalot-g17-synthetic-systemd-stage
   cancel-in-progress: false
+
 jobs:
   synthetic-systemd-prerequisite:
     if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
     runs-on: [self-hosted, Linux, X64, meshalot, ms02]
-    timeout-minutes: 5
+    timeout-minutes: 35
     steps:
-      - name: Identify failed package-container startup without downloading or testing VM
+      - name: Build and verify bounded synthetic systemd VM then clean up
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, os, platform, pwd, re, subprocess, uuid
+          import hashlib
+          import os
           from pathlib import Path
+          import platform
+          import pwd
+          import subprocess
+          import sys
+          import tempfile
+          import urllib.request
+
           assert os.environ.get("RUNNER_NAME") == "meshalot-ms02"
           assert platform.node().split(".")[0] == "wwjd4u-MS-02-Ultra"
           assert pwd.getpwuid(os.geteuid()).pw_name == "jason_guynes"
           assert Path.home() == Path("/home/jason_guynes")
-          assert not os.environ.get("DOCKER_HOST") and not os.environ.get("DOCKER_CONTEXT")
-          base = ["docker", "--host=unix:///var/run/docker.sock"]
-          name = "m13-startup-probe-" + uuid.uuid4().hex[:12]
-          image = "ubuntu@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852"
-          allowed = set("error response from daemon failed failure to create start exec task process container runtime oci runc unknown invalid capabilities network bridge endpoint veth sandbox connection memory allocate allocation mount mounting read-only filesystem cgroup cgroups init execve argument chdir cwd already running paused disabled logging driver attach attachable not supported operation service unix socket stopped shim fork restart apparmor seccomp profile apply port pool address overlap permission denied reserved cannot block blocked prohibited nftables iptables table nat filter chain docker does exist permission denied permitted access cgroupfs systemd unable set cpu cpus quota period unified hierarchy controller nvidia gpu hook hooks mode auto legacy detected request device devices failed failure code exit status no available transport namespace namespaces initialize initialization resource resources security proc sys kernel data exists read write closed file directory needed is are configured configuration log local maximum minimum size recognized executable command flag option usage requires argument arguments either or name id sysctl ipv4 ipv6 forwarding failed unknown unsupported cpuset swap limit limits invalid sandbox rtnetlink software caused abort adding pair interfaces link capability exhausted disabled enabled requested limit max-size json-file driver does not support reading missing registration register io containerd executable image apparmor failed shim task denied export not implemented using disabled read-only rootfs stopped terminated killed service unavailable server internal fatal unable invalid value conflict user string expected got decode json unmarshal number into go struct field int64 cannot".split())
-          created = False
-          result = None
-          try:
-              info = subprocess.run(base + ["info", "--format", "{{.DefaultRuntime}}"], capture_output=True, text=True, timeout=10, check=True)
-              runtime = info.stdout.strip()
-              print("M13_G17_STARTUP_DEFAULT_RUNTIME=" + (runtime if runtime in ("runc", "nvidia", "io.containerd.runc.v2") else "OTHER"), flush=True)
-              subprocess.run(base + ["create", "--name", name, "--network", "bridge", "--security-opt", "no-new-privileges", "--cpus", "2", "--memory", "3g", "--memory-swap", "3g", "--pids-limit", "128", "--restart", "no", "--workdir", "/opt/stage", "--log-driver", "local", "--log-opt", "max-size=1m", "--log-opt", "max-file=1", image, "/bin/true"], capture_output=True, timeout=15, check=True)
-              created = True
-              result = subprocess.run(base + ["start", "--attach", name], capture_output=True, text=True, timeout=20)
-              print("M13_G17_STARTUP_EMPTY_CONTAINER_EXIT=" + str(result.returncode), flush=True)
-              # Output consists solely of words from this fixed public vocabulary.
-              # URLs, paths, numbers, identifiers and all unknown tokens are omitted.
-              tokens = re.findall(r"[a-z]+(?:-[a-z]+)*", (result.stderr + result.stdout).lower())
-              print("M13_G17_STARTUP_ERROR_WORDS=" + " ".join(t for t in tokens if t in allowed)[:2048], flush=True)
-              state = json.loads(subprocess.check_output(base + ["inspect", name], timeout=10))[0]["State"]
-              print("M13_G17_STARTUP_CONTAINER_STARTED=" + str(state["StartedAt"] != "0001-01-01T00:00:00Z"), flush=True)
-              print("M13_G17_STARTUP_CONTAINER_EXIT=" + str(state["ExitCode"]), flush=True)
-          finally:
-              if created:
-                  subprocess.run(base + ["rm", "--force", name], capture_output=True, timeout=15, check=True)
-              listing = subprocess.check_output(base + ["container", "ls", "--all", "--filter", "name=^/" + name + "$", "--format", "{{.Names}}"], text=True, timeout=10)
-              assert not listing.strip()
-              print("M13_G17_STARTUP_PROBE_CLEANUP=PASS", flush=True)
-              print("M13_G17_STARTUP_VM_OR_RECOVERY_TEST=NOT_RUN", flush=True)
-          raise SystemExit(0 if result is not None and result.returncode == 0 else 1)
+          os.umask(0o077)
+          source = "905abd6b893d6d194a44dc9138b6f4215dc3dcab"
+          expected = {
+              "boot_vm.py": "8cc29d141ddfc7e056ccf2e521be146390ff7d5a13d2da922f48787716d45958",
+              "build_seed.py": "a99455ce487189abf1c1352f40b884bf89ae20f01ec74ba10fd602553e7fb931",
+              "guest_probe.py": "b09639f76142fdb93bbba22a3eb37697d0ceb25804c5868eab54c604ca64d4a6",
+              "prepare_image.sh": "fd0ecf9d0a72b5f3138824a786460a5dc59f03b4e576f153ad40ef7922d4015d",
+              "run_stage.py": "d01e220be9a9065ce231e0ce626936b05d937a3f7e2c96bb8688f543a91a5fd8",
+          }
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  raise RuntimeError("Unexpected source redirect")
+
+          opener = urllib.request.build_opener(NoRedirect())
+          with tempfile.TemporaryDirectory(prefix="m13-sys-source-", dir="/tmp") as directory:
+              root = Path(directory)
+              for name, digest in expected.items():
+                  url = "https://raw.githubusercontent.com/wwjd4u/MeshAlot/" + source + "/tools/recovery/systemd_stage/" + name
+                  with opener.open(url, timeout=20) as response:
+                      data = response.read(262145)
+                  assert len(data) <= 262144 and hashlib.sha256(data).hexdigest() == digest
+                  (root / name).write_bytes(data)
+              print("M13_G17_STAGE_SOURCE=" + source, flush=True)
+              print("M13_G17_STAGE_SOURCE_DIGESTS=PASS", flush=True)
+              result = subprocess.run([sys.executable, "-B", str(root / "run_stage.py")])
+          print("M13_G17_STAGE_SOURCE_WORKSPACE_CLEANUP=PASS", flush=True)
+          raise SystemExit(result.returncode)
           PY
