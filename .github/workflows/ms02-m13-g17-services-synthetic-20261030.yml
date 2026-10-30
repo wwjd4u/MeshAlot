@@ -1,0 +1,71 @@
+name: MS-02 G17 Synthetic M13 Service Composition
+
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths: [.github/workflows/ms02-m13-g17-services-synthetic-20261030.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meshalot-g17-synthetic-service-fixture
+  cancel-in-progress: false
+
+jobs:
+  synthetic-service-fixture:
+    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 50
+    steps:
+      - name: Build and verify pinned synthetic API PG16 Caddy then clean up
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          import platform
+          import pwd
+          import subprocess
+          import sys
+          import tempfile
+          import urllib.request
+
+          assert os.environ.get("RUNNER_NAME") == "meshalot-ms02"
+          assert platform.node().split(".")[0] == "wwjd4u-MS-02-Ultra"
+          assert pwd.getpwuid(os.geteuid()).pw_name == "jason_guynes"
+          assert Path.home() == Path("/home/jason_guynes")
+          os.umask(0o077)
+          source = "50241e1f0069b9334146b759bfca913b5f2ee0d1"
+          expected = {
+              "run.py": "ff5cf0f79a2069d083364c2110459c755d79adc8b37a6ded7a900add421d9217",
+              "boot_vm.py": "2a88f94a7e9802c717af3f0859c2b3a61335b89275291d26f943b249c5a92408",
+              "build_seed.py": "cb39d8808997d3d9030ef93b2bed041fd4e1221b0d51f4dcc697288bc1cd989e",
+              "guest.py": "56adf72d9dfe16e193c9219efa58778d9f7e69de1ecf13c4d2bf010677d04dcf",
+              "safetar.py": "781e1754995c6770e5df3f9fd965ae8c3ecd89e40cc06295362fee4e1aede225",
+              "prepare_image.sh": "6cd4177d415a2520f5387db4660b618054500d8ce5b6050ea0ba6800747ee3d0",
+              "probe.go": "f85cb8378d37772cd23fed5a814066d0331e000b39734901040f5a766bccffd2",
+              "app-source.json": "954385221ea0b587f6eeb3bc9f0df3d8663a525179fe94a32992a374a2bf9d5e"
+          }
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  raise RuntimeError("Unexpected source redirect")
+
+          opener = urllib.request.build_opener(NoRedirect())
+          with tempfile.TemporaryDirectory(prefix="m13-svc-source-", dir="/tmp") as directory:
+              root = Path(directory)
+              for name, digest in expected.items():
+                  url = "https://raw.githubusercontent.com/wwjd4u/MeshAlot/" + source + "/tools/recovery/service_fixture/" + name
+                  with opener.open(url, timeout=20) as response:
+                      data = response.read(262145)
+                  assert len(data) <= 262144 and hashlib.sha256(data).hexdigest() == digest
+                  (root / name).write_bytes(data)
+              print("M13_G17_SERVICE_SOURCE=" + source, flush=True)
+              print("M13_G17_SERVICE_SOURCE_DIGESTS=PASS", flush=True)
+              result = subprocess.run([sys.executable, "-B", str(root / "run.py")])
+          print("M13_G17_SERVICE_SOURCE_WORKSPACE_CLEANUP=PASS", flush=True)
+          raise SystemExit(result.returncode)
+          PY
