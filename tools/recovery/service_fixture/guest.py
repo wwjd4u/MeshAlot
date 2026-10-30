@@ -33,6 +33,7 @@ started = time.monotonic()
 result = "FAIL"
 performance = {}
 last_failure = {}
+service_failure = {}
 
 
 def run(args, *, input=None, timeout=30, check=True, env=None):
@@ -71,13 +72,37 @@ def digest(path):
 
 def sql(statement, database=DB, role="stage_bootstrap"):
     return run(["chroot", "--userspec=20001:20001", str(PG), "/usr/local/bin/psql",
-                "-X", "--no-password", "--host=/run/pgstage", "--username=" + role,
+                "-X", "--no-password", "--host=/var/lib/postgresql/fixture-socket", "--username=" + role,
                 "--dbname=" + database, "--set=ON_ERROR_STOP=1", "-At", "--file=-"],
                input=statement).stdout.strip()
 
 
 def service(action, name, check=True):
     return run(["systemctl", action, "m13-fixture-" + name + ".service"], check=check)
+
+
+def service_state(name):
+    global service_failure
+    unit = "m13-fixture-" + name + ".service"
+    properties = run(["systemctl", "show", unit, "-p", "ActiveState", "-p", "SubState",
+                      "-p", "Result", "-p", "ExecMainCode", "-p", "ExecMainStatus"]).stdout
+    service_failure = dict(line.split("=", 1) for line in properties.splitlines() if "=" in line)
+    logs = run(["journalctl", "-b", "-u", unit, "-n", "30", "--output=json", "--no-pager"], check=False).stdout
+    messages = []
+    for line in logs.splitlines():
+        try:
+            message = json.loads(line).get("MESSAGE", "")
+            if isinstance(message, str):
+                messages.append(message)
+        except (ValueError, AttributeError):
+            continue
+    text = " ".join(messages).lower()
+    classes = {"permission denied":"PERMISSION", "no such file":"FILE_NOT_FOUND",
+               "group":"GROUP", "user":"USER", "shared memory":"SHARED_MEMORY",
+               "socket":"SOCKET", "mount":"MOUNT", "namespace":"NAMESPACE",
+               "fatal":"FATAL", "could not":"DEPENDENCY", "exec":"EXEC"}
+    service_failure["journal_classes"] = sorted({v for k,v in classes.items() if k in text})
+    return service_failure
 
 
 def opener(jar=None):
@@ -140,6 +165,9 @@ try:
     require("artifact_source_scope", manifest["application_commit"] == APP and manifest["material"] == "public_synthetic_only")
     ROOT.mkdir(mode=0o755)
     shutil.copytree(SEED / "payload", ROOT / "payload")
+    # The private assembler's umask is 077; permit the three guest services to
+    # traverse this public executable directory without widening data/key modes.
+    (ROOT / "payload").chmod(0o755)
     for name, expected in manifest["files"].items():
         path = PurePosixPath(name)
         if path.is_absolute() or ".." in path.parts:
@@ -160,7 +188,9 @@ try:
         run(["useradd", "--system", "--uid", str(uid), "--gid", str(uid), "--no-create-home", "--shell", "/usr/sbin/nologin", name])
         with (PG / "etc/passwd").open("a") as output:
             output.write(name + ":x:" + str(uid) + ":" + str(uid) + ":fixture:/tmp:/bin/sh\n")
-    for path in (PG / "var/lib/postgresql/stage", PG / "run/pgstage"):
+        with (PG / "etc/group").open("a") as output:
+            output.write(name + ":x:" + str(uid) + ":\n")
+    for path in (PG / "var/lib/postgresql/stage", PG / "var/lib/postgresql/fixture-socket"):
         path.mkdir(parents=True, mode=0o755, exist_ok=True)
         os.chown(path, 20001, 20001)
     run(["chroot", "--userspec=20001:20001", str(PG), "/usr/local/bin/initdb", "-D", "/var/lib/postgresql/stage",
@@ -168,8 +198,8 @@ try:
     pgdata = PG / "var/lib/postgresql/stage"
     (pgdata / "pg_hba.conf").write_text("local all stage_bootstrap peer map=stage_local\nlocal all stage_owner peer map=stage_local\nlocal meshalot_m13stage meshalot peer\nlocal all all reject\nhost all all 0.0.0.0/0 reject\nhost all all ::/0 reject\n")
     (pgdata / "pg_ident.conf").write_text("stage_local pgstage stage_bootstrap\nstage_local pgstage stage_owner\n")
-    (pgdata / "postgresql.conf").write_text("listen_addresses = ''\nunix_socket_directories = '/run/pgstage'\nshared_buffers = '32MB'\nmax_connections = 20\nmax_wal_size = '128MB'\nmin_wal_size = '32MB'\n")
-    UNITDIR.joinpath("m13-fixture-pg.service").write_text("[Unit]\nDescription=Disposable synthetic PG16 only\n[Service]\nType=simple\nUser=pgstage\nGroup=pgstage\nRootDirectory=" + str(PG) + "\nExecStart=/usr/local/bin/postgres -D /var/lib/postgresql/stage\nNoNewPrivileges=yes\nRestart=no\nTimeoutStopSec=30\nKillSignal=SIGINT\n")
+    (pgdata / "postgresql.conf").write_text("listen_addresses = ''\nunix_socket_directories = '/var/lib/postgresql/fixture-socket'\nshared_buffers = '32MB'\nmax_connections = 20\nmax_wal_size = '128MB'\nmin_wal_size = '32MB'\n")
+    UNITDIR.joinpath("m13-fixture-pg.service").write_text("[Unit]\nDescription=Disposable synthetic PG16 only\n[Service]\nType=simple\nUser=20001\nGroup=20001\nRootDirectory=" + str(PG) + "\nExecStart=/usr/local/bin/postgres -D /var/lib/postgresql/stage\nNoNewPrivileges=yes\nRestart=no\nTimeoutStopSec=30\nKillSignal=SIGINT\n")
     run(["systemctl", "daemon-reload"])
     service("start", "pg")
     deadline = time.monotonic() + 25
@@ -179,6 +209,7 @@ try:
             break
         except subprocess.SubprocessError:
             if time.monotonic() >= deadline:
+                service_state("pg")
                 raise
             time.sleep(.2)
     require("postgres_major_16", 160000 <= int(version) < 170000)
@@ -189,7 +220,7 @@ try:
     shim.mkdir(mode=0o700)
     shim.joinpath("psql").write_text("#!/bin/sh\nexec /usr/sbin/chroot --userspec=20001:20001 " + str(PG) + " /usr/local/bin/psql \"$@\"\n")
     shim.joinpath("psql").chmod(0o700)
-    env = dict(os.environ, PATH=str(shim) + ":/usr/bin:/bin", PGHOST="/run/pgstage", PGUSER="stage_owner")
+    env = dict(os.environ, PATH=str(shim) + ":/usr/bin:/bin", PGHOST="/var/lib/postgresql/fixture-socket", PGUSER="stage_owner")
     run(["python3", "-B", str(ROOT / "payload/database/migrate.py"), "apply", "--database", DB], env=env, timeout=90)
     sql((ROOT / "payload/database/runtime-grants.sql").read_text(), role="stage_owner")
     ledger_before = sql("SELECT version::text||':'||sha256 FROM meshalot_meta.schema_migrations ORDER BY version;")
@@ -198,7 +229,7 @@ try:
     require("owner_and_runtime_separate", sql("SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=current_database();") == "stage_owner")
     phase = "real_service_start"
     common = "\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=yes\nRestart=no\n"
-    UNITDIR.joinpath("m13-fixture-api.service").write_text("[Unit]\nDescription=Public M13 API fixture only\n[Service]\nType=simple\nUser=meshalot\nGroup=meshalot\nExecStart=" + str(ROOT / "payload/api") + "\nEnvironment=MESHALOT_LISTEN_ADDR=127.0.0.1:18080\nEnvironment=\"MESHALOT_DATABASE_DSN=host=" + str(PG / "run/pgstage") + " dbname=" + DB + " user=meshalot sslmode=disable\"\nEnvironment=MESHALOT_POC_USER_ID=" + USER_A + "\nEnvironment=MESHALOT_DEV_ENROLLMENT_TOKEN=public-synthetic-fixture-only-token-2026\n" + common)
+    UNITDIR.joinpath("m13-fixture-api.service").write_text("[Unit]\nDescription=Public M13 API fixture only\n[Service]\nType=simple\nUser=meshalot\nGroup=meshalot\nExecStart=" + str(ROOT / "payload/api") + "\nEnvironment=MESHALOT_LISTEN_ADDR=127.0.0.1:18080\nEnvironment=\"MESHALOT_DATABASE_DSN=host=" + str(PG / "var/lib/postgresql/fixture-socket") + " dbname=" + DB + " user=meshalot sslmode=disable\"\nEnvironment=MESHALOT_POC_USER_ID=" + USER_A + "\nEnvironment=MESHALOT_DEV_ENROLLMENT_TOKEN=public-synthetic-fixture-only-token-2026\n" + common)
     caddy_state = Path("/var/lib/m13-fixture-caddy")
     caddy_state.mkdir(mode=0o700)
     os.chown(caddy_state, 20003, 20003)
@@ -303,6 +334,7 @@ finally:
     report = {"status":result,"phase":phase,"checks":checks,"application_commit":APP,
               "elapsed_seconds":round(time.monotonic() - started,3),
               "failure":last_failure if result != "PASS" else None,
+              "service_failure":service_failure if result != "PASS" else None,
               "real_archive_recovery":"NOT_TESTED","gate_acceptance":"NOT_ASSESSED"}
     with open("/dev/ttyS0", "w") as output:
         output.write("\nM13_G17_SERVICE_GUEST_JSON=" + json.dumps(report,sort_keys=True) + "\n")

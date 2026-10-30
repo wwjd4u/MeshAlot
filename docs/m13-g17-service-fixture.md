@@ -32,6 +32,24 @@ belong to the disposable guest and synthetic fixture.
 
 ## Pending actual acceptance
 
+The first [run 41119563622](https://github.com/wwjd4u/MeshAlot/actions/runs/41119563622)
+at infrastructure `88cf1c1a7bd467f7395668871f452b9171ad6fd6`, tooling source
+`50241e1f0069b9334146b759bfca913b5f2ee0d1`, **FAILED** during rooted PG startup.
+All 49 application source pins, Go 1.24.13 static API/probe builds, public
+artifact hashes, cloud disk, package assembly, outer containment, real systemd
+boot and payload integrity passed. PG did not become reachable at the proposed
+socket; the guest reported CONNECTION/FILE_NOT_FOUND from psql. This does not
+establish the original launch cause. Customer acceptance was **NOT RUN**.
+Task containers/image/anonymous-volume and source-workspace cleanup passed.
+
+The targeted correction supplies matching group records, uses explicit numeric
+UID/GID for the rooted PG service, locates its socket outside transient /run,
+and makes only the public guest executable directory traversable. Peer auth,
+role separation, no-new-privileges, network isolation and data/key modes are
+preserved. A bounded service-state/journal-classification report will distinguish
+any remaining launch failure. The new resource/setup change warrants a follow-up
+integration run; it does not warrant rerunning unchanged standalone suites.
+
 The new workflow must verify the pinned tool/application bytes, compile the API
 and synthetic probe, boot the capped no-NIC guest, and run the complete contract:
 restricted PG/API/Caddy services; trusted HTTPS sign-in/enrollment; account
