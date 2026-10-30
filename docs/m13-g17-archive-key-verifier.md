@@ -1,7 +1,7 @@
 # M13 G17 — archive key-access tooling evidence
 
 **Local synthetic verification: PASS (13 focused tests).
-MS-02 verification: pending execution receipt below.
+MS-02 synthetic verification: PASS (13 tests, zero skips).
 Real backup/vault check: NOT RUN. G17/1: BLOCKED.**
 
 ## Objective and permitted work
@@ -75,3 +75,31 @@ pinned Toshiba copies remain unverified by this implementation. A successful
 synthetic run cannot close that proof. Real PG16 globals/ownership recovery,
 remaining TLS recovery requirements and full archived service rehearsal remain
 open. Preserve production, backup copies/key custody and Node001/Node002.
+
+## Immutable MS-02 execution receipt
+
+- Tool/test source: 63fc0d0366517f4c6c993cd2c1d9bf6dcf830078 on the existing M13 branch.
+- Infrastructure configuration: 9c82f49d4406e8202f9583ec90791690e3ee40ca on the existing infrastructure branch.
+- [Successful workflow 41108714209](https://github.com/wwjd4u/MeshAlot/actions/runs/41108714209), job 124245156663; provider timestamps 2026-10-30 18:39:05Z–18:39:47Z.
+- Actual runtime: Python 3.14.4, GnuPG 2.4.8 on the trusted MS-02 runner.
+- **13 tests PASS in 6.499 seconds; zero skips; temporary-workspace cleanup PASS.**
+- Downloaded verifier SHA256: 51afc244edccf3ee081de1e6970d4ce6113c08e80e129c2a72c5686f609806f3.
+- Downloaded test SHA256: c89060546be1383e8fccdb0039c7e96710881d21f9ea48f71db3525f2234397a.
+
+The workflow verified trusted host/user/ref identity, fetched only these two
+immutable public source files with independent byte-hash pins and no redirects,
+then ran only the new focused suite. The child test process was restricted to
+two allowed CPUs and a 1-GiB per-process address-space limit, with a 120-second
+suite timeout and five-minute job cap. This is a synthetic local-process test,
+not proof of a network-isolated full service stage. Source retrieval contacted
+GitHub; the verifier itself used only local GnuPG IPC and synthetic files.
+
+The workflow reported REAL_ARCHIVES=NOT_USED, PRODUCTION_CONNECTION=NONE and
+GATE_ACCEPTANCE=NOT_ASSESSED. Static review confirmed no existing workflow matched
+the new workflow's changed path. No old one-attempt marker, disabled workflow,
+passing application/recovery suite or rejected diagnostic was reset or reused.
+
+The runner execution was a required check of the new automation path on a
+different supported runtime, not a repetition of historical recovery evidence.
+No further runtime tests are needed for the documentation-only receipt update.
+The tooling task is complete; real Mac/archive/vault acceptance remains NOT RUN.

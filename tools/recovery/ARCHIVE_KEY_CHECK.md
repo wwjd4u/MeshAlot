@@ -8,8 +8,8 @@ access an enrolled node or close a gate. CI uses synthetic fixtures only.
 ## Interface and acceptance
 
 Use an operator-controlled Linux/macOS terminal with Python 3.8 or later,
-GnuPG/gpgconf and private pinentry. Linux/GnuPG 2.4.7 has been tested; actual Mac
-execution and the three real backup copies remain NOT TESTED. Required GnuPG
+GnuPG/gpgconf and private pinentry. Linux/GnuPG 2.4.7 and 2.4.8 have been tested;
+actual Mac execution and the three real backup copies remain NOT TESTED. Required GnuPG
 options are checked before a key prompt. Source provenance, the approved device
 and the digest from the existing independently verified receipt remain operator
 responsibilities. Do not upload an archive or key to GitHub or run real archives
@@ -80,3 +80,5 @@ redacted receipts and both refused headless and successful terminal CLI paths.
 The existing synthetic bundle checks, application, migration, ACL, Caddy and node
 tests need not be repeated for this independent tool. See the dated G17 evidence
 record for actual source/runner receipts and the remaining real-archive check.
+The pinned MS-02 run passed all 13 tests with zero skips; no real archive or
+vault key was used. [Execution evidence](../../docs/m13-g17-archive-key-verifier.md).

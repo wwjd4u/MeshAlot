@@ -22,8 +22,9 @@ This file is the concise current-status pointer. The Google Drive **AI Mesh POC 
 The operator is traveling; Mac/vault operations are deferred. The new
 [local archive key-access verifier and evidence](m13-g17-archive-key-verifier.md)
 automate digest checks, discard-only authenticated decryption and redacted
-reporting. **13 focused synthetic local tests PASS**; the pinned MS-02 result is
-recorded separately when executed. No real backup/key was used. Actual Mac/vault
+reporting. **13 focused synthetic local tests PASS; 13 pinned MS-02 tests PASS
+with zero skips** ([run 41108714209](https://github.com/wwjd4u/MeshAlot/actions/runs/41108714209)).
+No real backup/key was used. Actual Mac/vault
 acceptance is **NOT RUN**, and Gate 17/1 remains **BLOCKED**.
 
 ## Gate 17 continuation — October 29, 2026

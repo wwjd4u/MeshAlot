@@ -477,3 +477,11 @@ backup decryption, migrations, or cutover.
 - [Scope, local configuration checks and sanitized execution record](m13-g17-runner-readiness-2026-10-29.md). This was one newly warranted current-readiness check, not a rerun of accepted application/recovery tests. No production access, archive/key read, container/VM creation or host configuration change occurred.
 - Only the existing gateway workflow changed on the existing infrastructure branch. Its push path filter now prevents unrelated pushes from repeating it. Old disabled workflows and attempt markers remain preserved; the rejected diagnostic remains paused.
 - **G17/1 BLOCKED; G17/2–7 NOT STARTED; M13 OPEN / NOT RELEASE-READY.**
+
+## Independent archive key-access tooling — operator traveling
+
+- The operator requested work requiring no copy/paste or physical action while traveling. The Mac/vault lane is deferred until parked; approved automated preparation continued through GitHub/MS-02.
+- The new [interactive local verifier and evidence](m13-g17-archive-key-verifier.md) automate pinned-source checks, authenticated AES256 decryption to the null device, private fresh pinentry, redaction, bounds and cleanup. Real archive/vault acceptance remains **NOT RUN**.
+- [Pinned MS-02 workflow 41108714209](https://github.com/wwjd4u/MeshAlot/actions/runs/41108714209) **PASS**: 13 new focused tests, zero skips, 6.499 seconds, workspace cleanup PASS. Source 63fc0d0366517f4c6c993cd2c1d9bf6dcf830078; infrastructure 9c82f49d4406e8202f9583ec90791690e3ee40ca. Earlier application/recovery suites were not repeated.
+- No production connection, actual backup/key use, SSH renewal, original-node change, new stage or host configuration change occurred. The rejected diagnostic and old attempt markers remain preserved.
+- **G17/1 BLOCKED; G17/2–7 NOT STARTED; M13 OPEN / NOT RELEASE-READY.**
