@@ -1,0 +1,89 @@
+name: MS-02 G17 Synthetic Archive Key Verification
+
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths: [.github/workflows/ms02-m13-g17-key-synthetic-20261030.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meshalot-g17-synthetic-key-verifier
+  cancel-in-progress: false
+
+jobs:
+  synthetic-key-verifier:
+    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 5
+    steps:
+      - name: Verify pinned tooling with synthetic material only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          import platform
+          import pwd
+          import shutil
+          import subprocess
+          import sys
+          import tempfile
+          import urllib.request
+
+          assert os.environ.get("RUNNER_NAME") == "meshalot-ms02"
+          assert platform.node().split(".")[0] == "wwjd4u-MS-02-Ultra"
+          assert pwd.getpwuid(os.geteuid()).pw_name == "jason_guynes"
+          assert Path.home() == Path("/home/jason_guynes")
+          assert all(shutil.which(tool) for tool in ("gpg", "gpgconf", "python3"))
+          os.umask(0o077)
+          source = "63fc0d0366517f4c6c993cd2c1d9bf6dcf830078"
+          expected = {
+              "verify_archive_key.py": "51afc244edccf3ee081de1e6970d4ce6113c08e80e129c2a72c5686f609806f3",
+              "test_verify_archive_key.py": "c89060546be1383e8fccdb0039c7e96710881d21f9ea48f71db3525f2234397a",
+          }
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, request, fp, code, message, headers, url):
+                  raise RuntimeError("Unexpected source redirect")
+
+          opener = urllib.request.build_opener(NoRedirect())
+          with tempfile.TemporaryDirectory(prefix="m13-key-ci-", dir="/tmp") as directory:
+              root = Path(directory)
+              for name, digest in expected.items():
+                  url = "https://raw.githubusercontent.com/wwjd4u/MeshAlot/" + source + "/tools/recovery/" + name
+                  with opener.open(url, timeout=20) as response:
+                      data = response.read(262145)
+                  assert len(data) <= 262144 and hashlib.sha256(data).hexdigest() == digest
+                  (root / name).write_bytes(data)
+              (root / "tmp").mkdir(mode=0o700)
+              print("M13_G17_KEY_TOOL_SOURCE=" + source, flush=True)
+              print("M13_G17_KEY_TOOL_SOURCE_DIGESTS=PASS", flush=True)
+              print("M13_G17_KEY_TOOL_PYTHON=" + platform.python_version(), flush=True)
+              version = subprocess.run(["gpg", "--no-options", "--version"],
+                                       capture_output=True, text=True, timeout=5, check=True)
+              print("M13_G17_KEY_TOOL_GPG=" + version.stdout.splitlines()[0], flush=True)
+              environment = dict(os.environ, TMPDIR=str(root / "tmp"))
+              driver = """import os, resource, sys, unittest
+          allowed = sorted(os.sched_getaffinity(0))
+          os.sched_setaffinity(0, set(allowed[:2]))
+          resource.setrlimit(resource.RLIMIT_AS, (1024 ** 3, 1024 ** 3))
+          suite = unittest.defaultTestLoader.discover('.', pattern='test_verify_archive_key.py')
+          assert suite.countTestCases() == 13
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          print('M13_G17_KEY_TOOL_TESTS_RUN=' + str(result.testsRun), flush=True)
+          print('M13_G17_KEY_TOOL_TESTS_SKIPPED=' + str(len(result.skipped)), flush=True)
+          raise SystemExit(0 if result.wasSuccessful() and not result.skipped else 1)
+          """
+              result = subprocess.run([sys.executable, "-B", "-c", driver],
+                                      cwd=root, env=environment, timeout=120)
+              passed = result.returncode == 0
+          print("M13_G17_KEY_TOOL_TEMP_WORKSPACE_CLEANUP=PASS", flush=True)
+          print("M13_G17_KEY_TOOL_REAL_ARCHIVES=NOT_USED", flush=True)
+          print("M13_G17_KEY_TOOL_PRODUCTION_CONNECTION=NONE", flush=True)
+          print("M13_G17_KEY_TOOL_GATE_ACCEPTANCE=NOT_ASSESSED", flush=True)
+          raise SystemExit(0 if passed else 1)
+          PY
