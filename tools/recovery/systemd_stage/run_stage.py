@@ -37,6 +37,10 @@ def docker(*args, timeout=15, check=True):
         # credentials, raw package output, private paths or the process env.
         operation = args[0] + ("_" + args[1] if args[0] in ("image", "container") else "")
         emit("FAILED_DOCKER_OPERATION", operation)
+        emit("FAILED_DOCKER_EXIT", result.returncode)
+        for line in result.stdout.splitlines():
+            if line.startswith("M13_G17_STAGE_ASSEMBLY_"):
+                print(line, flush=True)
         lower = (result.stderr + result.stdout).lower()
         categories = {
             "manifest unknown": "MANIFEST_UNKNOWN", "no such image": "IMAGE_NOT_FOUND",
@@ -48,6 +52,11 @@ def docker(*args, timeout=15, check=True):
             "permission": "PERMISSION", "network is unreachable": "NETWORK_UNREACHABLE",
             "temporary failure": "TEMPORARY_FAILURE", "error resolving": "NAME_RESOLUTION",
             "unsupported": "UNSUPPORTED", "unknown flag": "UNKNOWN_FLAG",
+            "operation not permitted": "PERMISSION", "oci runtime": "CONTAINER_RUNTIME",
+            "cgroup": "CGROUP", "apparmor": "APPARMOR", "seccomp": "SECCOMP",
+            "not signed": "APT_SIGNATURE", "signature": "APT_SIGNATURE",
+            "no_pubkey": "APT_SIGNING_KEY", "no space left": "DISK_SPACE",
+            "could not resolve": "NAME_RESOLUTION", "dpkg": "PACKAGE_INSTALL",
         }
         found = sorted({label for fragment, label in categories.items() if fragment in lower})
         emit("FAILED_DOCKER_REASON_CLASSES", ",".join(found) or "UNCLASSIFIED")
