@@ -1,0 +1,68 @@
+name: MS-02 G17 Synthetic Systemd Target Prerequisite
+
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths: [.github/workflows/ms02-m13-g17-systemd-synthetic-20261030.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meshalot-g17-synthetic-systemd-stage
+  cancel-in-progress: false
+
+jobs:
+  synthetic-systemd-prerequisite:
+    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 35
+    steps:
+      - name: Build and verify bounded synthetic systemd VM then clean up
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          import platform
+          import pwd
+          import subprocess
+          import sys
+          import tempfile
+          import urllib.request
+
+          assert os.environ.get("RUNNER_NAME") == "meshalot-ms02"
+          assert platform.node().split(".")[0] == "wwjd4u-MS-02-Ultra"
+          assert pwd.getpwuid(os.geteuid()).pw_name == "jason_guynes"
+          assert Path.home() == Path("/home/jason_guynes")
+          os.umask(0o077)
+          source = "317489fd47e522f92c0c26b2951319e92934875e"
+          expected = {
+              "boot_vm.py": "8cc29d141ddfc7e056ccf2e521be146390ff7d5a13d2da922f48787716d45958",
+              "build_seed.py": "a99455ce487189abf1c1352f40b884bf89ae20f01ec74ba10fd602553e7fb931",
+              "guest_probe.py": "b09639f76142fdb93bbba22a3eb37697d0ceb25804c5868eab54c604ca64d4a6",
+              "prepare_image.sh": "3dc33e29376a8019650582c145592b504187e9df47ffc5258d32d54c5b319013",
+              "run_stage.py": "526cc8e60d6a276042b2b20060fc70efdd84a97db0fbd1d5fee1489f9c485a8e",
+          }
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  raise RuntimeError("Unexpected source redirect")
+
+          opener = urllib.request.build_opener(NoRedirect())
+          with tempfile.TemporaryDirectory(prefix="m13-sys-source-", dir="/tmp") as directory:
+              root = Path(directory)
+              for name, digest in expected.items():
+                  url = "https://raw.githubusercontent.com/wwjd4u/MeshAlot/" + source + "/tools/recovery/systemd_stage/" + name
+                  with opener.open(url, timeout=20) as response:
+                      data = response.read(262145)
+                  assert len(data) <= 262144 and hashlib.sha256(data).hexdigest() == digest
+                  (root / name).write_bytes(data)
+              print("M13_G17_STAGE_SOURCE=" + source, flush=True)
+              print("M13_G17_STAGE_SOURCE_DIGESTS=PASS", flush=True)
+              result = subprocess.run([sys.executable, "-B", str(root / "run_stage.py")])
+          print("M13_G17_STAGE_SOURCE_WORKSPACE_CLEANUP=PASS", flush=True)
+          raise SystemExit(result.returncode)
+          PY
