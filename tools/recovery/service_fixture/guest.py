@@ -113,6 +113,7 @@ def opener(jar=None):
 
 
 def request(client, method, path, data=None, expected=200):
+    global last_failure
     body = None if data is None else json.dumps(data).encode()
     query = urllib.request.Request(BASE + path, data=body, method=method,
                                    headers={"Content-Type": "application/json"})
@@ -122,6 +123,8 @@ def request(client, method, path, data=None, expected=200):
         response = error
     with response:
         if response.code != expected:
+            last_failure = {"command":"http","method":method,"path":path,
+                            "expected_status":expected,"actual_status":response.code}
             raise RuntimeError("http_expectation")
         raw = response.read(65537)
         if len(raw) > 65536:
@@ -275,7 +278,7 @@ try:
     public = json.loads(run([str(ROOT / "payload/probe"), "public"]).stdout)
     code = request(client_a, "POST", "/v1/account/enrollment-codes", {}, expected=201)["enrollment_code"]
     enrollment = {"node_id":public["node_id"],"public_key":public["public_key"],"agent_version":"public-systemd-fixture","enrollment_code":code}
-    request(anonymous, "POST", "/v1/agent/enroll", enrollment)
+    request(anonymous, "POST", "/v1/agent/enroll", enrollment, expected=201)
     request(anonymous, "POST", "/v1/agent/enroll", enrollment, expected=401)
     require("enrollment_and_replay_denial", True)
     heartbeat("initial")

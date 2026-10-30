@@ -65,6 +65,21 @@ resolved for the checker; the actual service unit is unchanged. Actual rooted
 startup and restricted service execution remain mandatory. No check was marked
 PASS from an ignored failure and no authentication/isolation requirement changed.
 
+The third [run 41122908774](https://github.com/wwjd4u/MeshAlot/actions/runs/41122908774)
+at infrastructure `04d0afc5bf264e274ad47eabf101b4fcac411911`, tooling source
+`ffea405985ae4d573649b4c1c6bbea2146e2bc38`, **FAILED** during customer checks.
+All three real services, rooted unit verification, actual restricted API database
+role, each service's UID/no-new-privileges, trusted HTTPS and secure HttpOnly
+session cookie passed. Cleanup PASS. Heartbeat/fault/persistence acceptance had
+not completed.
+
+Source review identified a fixture expectation error: the secure-enrollment
+handler returns HTTP 201 on success; this new fixture expected 200. That
+expectation is corrected against the pinned source, with exact status-only HTTP
+failure reporting added. No application response, authentication rule or other
+acceptance criterion is changed. A follow-up is required for this failed new
+customer path; old standalone suites remain reusable.
+
 The new workflow must verify the pinned tool/application bytes, compile the API
 and synthetic probe, boot the capped no-NIC guest, and run the complete contract:
 restricted PG/API/Caddy services; trusted HTTPS sign-in/enrollment; account
