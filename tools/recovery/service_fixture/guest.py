@@ -164,6 +164,7 @@ try:
     manifest = json.loads((SEED / "assets.json").read_text())
     require("artifact_source_scope", manifest["application_commit"] == APP and manifest["material"] == "public_synthetic_only")
     ROOT.mkdir(mode=0o755)
+    ROOT.chmod(0o755)
     shutil.copytree(SEED / "payload", ROOT / "payload")
     # The private assembler's umask is 077; permit the three guest services to
     # traverse this public executable directory without widening data/key modes.
@@ -236,8 +237,21 @@ try:
     config = ROOT / "Caddyfile"
     config.write_text("{\n admin off\n auto_https disable_redirects\n skip_install_trust\n}\nhttps://127.0.0.1:18443 {\n bind 127.0.0.1\n tls internal\n reverse_proxy 127.0.0.1:18080\n}\n")
     UNITDIR.joinpath("m13-fixture-caddy.service").write_text("[Unit]\nDescription=Public internal-TLS fixture only\n[Service]\nType=simple\nUser=stagecaddy\nGroup=stagecaddy\nExecStart=" + str(ROOT / "payload/caddy") + " run --config " + str(config) + " --adapter caddyfile\nEnvironment=XDG_DATA_HOME=/var/lib/m13-fixture-caddy/data\nEnvironment=XDG_CONFIG_HOME=/var/lib/m13-fixture-caddy/config\nReadWritePaths=/var/lib/m13-fixture-caddy\n" + common)
-    for name in ("api", "caddy", "pg"):
+    for name in ("api", "caddy"):
         run(["systemd-analyze", "verify", str(UNITDIR / ("m13-fixture-" + name + ".service"))])
+    # systemd-analyze checks ExecStart in its own filesystem, ignoring the
+    # service's RootDirectory for that check (locally reproduced). A lint-only
+    # copy resolves that exact rooted path. PID 1 keeps the original unit, whose
+    # real RootDirectory startup and PG16/schema queries already succeeded.
+    rooted_unit = (UNITDIR / "m13-fixture-pg.service").read_text()
+    assert rooted_unit.count("ExecStart=/usr/local/bin/postgres ") == 1
+    lint = ROOT / "unit-lint"
+    lint.mkdir(mode=0o700)
+    view = lint / "m13-fixture-pg.service"
+    view.write_text(rooted_unit.replace("ExecStart=/usr/local/bin/postgres ",
+                                       "ExecStart=" + str(PG / "usr/local/bin/postgres") + " "))
+    run(["systemd-analyze", "verify", str(view)])
+    require("rooted_pg_unit_static_validation", True)
     run(["systemctl", "daemon-reload"])
     service("start", "api")
     service("start", "caddy")

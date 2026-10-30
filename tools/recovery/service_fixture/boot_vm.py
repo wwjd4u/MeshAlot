@@ -46,7 +46,8 @@ try:
     assert isinstance(report, dict) and report.get("status") == "PASS"
     required = {"guest_pid1_systemd", "guest_no_external_interface", "guest_no_ipv4_external_route",
                 "guest_no_ipv6_external_route", "postgres_major_16", "schema_10_complete",
-                "owner_and_runtime_separate", "real_services_ready", "api_restricted_database_role",
+                "owner_and_runtime_separate", "rooted_pg_unit_static_validation",
+                "real_services_ready", "api_restricted_database_role",
                 "api_restricted_uid", "caddy_restricted_uid", "pg_restricted_uid",
                 "api_no_new_privileges", "caddy_no_new_privileges", "pg_no_new_privileges",
                 "https_session_cookie_secure",

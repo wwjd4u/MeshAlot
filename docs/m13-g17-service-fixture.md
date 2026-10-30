@@ -50,6 +50,21 @@ preserved. A bounded service-state/journal-classification report will distinguis
 any remaining launch failure. The new resource/setup change warrants a follow-up
 integration run; it does not warrant rerunning unchanged standalone suites.
 
+The second [run 41120996165](https://github.com/wwjd4u/MeshAlot/actions/runs/41120996165)
+at infrastructure `c33dcd8b4f39299fbb3a9f77af97b73e58945ff1`, tooling source
+`46ef8ebb43e19580c09f88582fe443e353b121a6`, **FAILED** during unit static
+verification. The rooted PG16 service now started, all ten pinned migrations
+and runtime grants applied, and separate database ownership was verified.
+Cleanup PASS. Actual customer workflow acceptance remained NOT RUN.
+
+A local public synthetic reproduction confirmed that systemd-analyze resolves
+ExecStart against its own filesystem for this check, ignoring RootDirectory.
+The explicit rooted lint view passed locally. The fixture now checks an
+otherwise identical lint-only PG unit copy with that single executable path
+resolved for the checker; the actual service unit is unchanged. Actual rooted
+startup and restricted service execution remain mandatory. No check was marked
+PASS from an ignored failure and no authentication/isolation requirement changed.
+
 The new workflow must verify the pinned tool/application bytes, compile the API
 and synthetic probe, boot the capped no-NIC guest, and run the complete contract:
 restricted PG/API/Caddy services; trusted HTTPS sign-in/enrollment; account

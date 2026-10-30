@@ -85,7 +85,7 @@ a reason for a targeted correction; unchanged passing suites are not repeated.
   operating-system paths; rootfs execution/OS accounts exist only in the VM.
 - Deadlines: 240-second cloud-download budget checked between reads (20-second
   socket timeout); individual pulls 180 seconds; compiler 600; assembly 600;
-  emulator boot/workflow/shutdown 600; outer attach 660; job 50 minutes.
+  emulator boot/workflow/shutdown 600; outer attach 660; job 60 minutes.
   Guest commands/health/readiness/proofs have shorter bounded waits. SIGTERM
   enters cleanup; hard runner loss cannot guarantee cleanup. No retry loop.
 - Shared evidence contains fixed phase/check names, public hashes, versions and
@@ -110,3 +110,10 @@ service composition and full customer API path in this systemd guest**.
 
 See [the execution record](../../../docs/m13-g17-service-fixture.md). No result
 here changes real archive, production push/merge/cutover, SSH or node holds.
+
+For PG's RootDirectory unit, the systemd verifier resolves ExecStart against its
+own filesystem. A local synthetic reproduction confirmed this behavior. An
+explicit lint-only copy outside the unit search paths resolves that executable
+to its rooted location for static verification. The actual service unit remains
+unchanged; its real rooted startup, restricted UID and database workflow are
+required independently. API/Caddy units are checked directly.
