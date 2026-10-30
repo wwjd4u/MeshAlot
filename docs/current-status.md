@@ -27,6 +27,12 @@ with zero skips** ([run 41108714209](https://github.com/wwjd4u/MeshAlot/actions/
 No real backup/key was used. Actual Mac/vault
 acceptance is **NOT RUN**, and Gate 17/1 remains **BLOCKED**.
 
+The next independent preparation addresses the missing systemd-capable stage:
+[synthetic VM target contract and evidence](m13-g17-systemd-stage-prerequisite.md).
+Implementation is prepared; actual execution is pending at this checkpoint.
+It uses public synthetic fixtures only and does not start G17/2 or access the
+operator's Mac, vault, real archives, production or enrolled-node identities.
+
 ## Gate 17 continuation — October 29, 2026
 
 Gate 17/1 remains **BLOCKED**; Gate 17/2–7 are **NOT STARTED**. The operator's
