@@ -1,5 +1,11 @@
 # Gate 17 offline recovery bundle preflight
 
+This README covers the synthetic-only check_bundle.py interface. The separate
+[private archive key-access verifier](ARCHIVE_KEY_CHECK.md) automates a later
+operator-local recovery-key check; its CI uses synthetic encrypted files only.
+It does not relax this bundle tool's material boundary or permit real archives
+or keys in GitHub/Actions.
+
 This tool implements one **offline integrity prerequisite**, not a full recovery
 acceptance harness. It prepares the existing G17 path while the rejected
 service-identity diagnostic remains paused. It has no SSH, subprocess, network,

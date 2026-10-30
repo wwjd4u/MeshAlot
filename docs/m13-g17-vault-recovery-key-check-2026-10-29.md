@@ -2,7 +2,16 @@
 
 Prepared: October 29, 2026 (America/Chicago).
 
-**PROCEDURE PREPARED; REAL ARCHIVE/VAULT CHECK NOT EXECUTED.**
+**LOCAL TOOL IMPLEMENTED / SYNTHETIC TESTS PASS;
+REAL ARCHIVE/VAULT CHECK NOT EXECUTED.**
+
+**Implementation checkpoint:** [the local interactive verifier](../tools/recovery/ARCHIVE_KEY_CHECK.md)
+now automates digest checks, authenticated discard-only decryption, status
+redaction, timeout and private-agent cleanup. Its focused tests use synthetic
+material only. This is implementation/verification of tooling, not execution
+against the actual Toshiba copies or a completed vault recovery check. The Mac
+portion is deferred while the operator is traveling; no copy/paste or key entry
+is requested during travel.
 
 ## Required outcome and scope
 
@@ -47,11 +56,17 @@ version, cache-option support and selected volume fields. It does not decrypt an
 archive or request a passphrase. Share only these metadata results; do not paste
 private artifact paths or keys. Missing GnuPG, unexpected volume name/filesystem,
 locked encryption or missing mount evidence stops this lane for configuration.
+Run it only when parked; no terminal operation is requested during travel.
 
     (
       [ "$(uname -s)" = "Darwin" ] || { printf 'STOP_NOT_MAC\n'; exit 1; }
       printf 'MACOS_VERSION='
       sw_vers -productVersion
+      if command -v python3 >/dev/null 2>&1; then
+        python3 --version 2>/dev/null
+      else
+        printf 'PYTHON3_AVAILABLE=False\n'
+      fi
       if command -v gpg >/dev/null 2>&1; then
         printf 'GPG_AVAILABLE=True\n'
         gpg --no-options --version 2>/dev/null | head -n 1
@@ -76,8 +91,9 @@ volume; a directory name or successful command alone is insufficient.
 ## Execution sequence after device/tool identification
 
 1. Confirm Darwin, the actual mounted/unlocked encrypted APFS backup volume,
-   GnuPG version/cache-option support, private interactive pinentry and a
-   local SHA256 tool. Record only classifications and nonsecret version/size.
+   Python 3.8+, GnuPG/gpgconf/cache-option support and private interactive pinentry.
+   The verifier performs SHA256 checks itself. Record only classifications and
+   nonsecret version/size.
    Missing information is UNVERIFIED; do not format, repair, change encryption,
    install a filesystem driver or modify an existing volume to pass a check.
 2. Select each original encrypted copy locally using the existing private
@@ -100,9 +116,10 @@ volume; a directory name or successful command alone is insufficient.
    encrypted archives, MS-02 key files and RoboForm notes intact. Record no
    passphrases, archive contents, plaintext, account/node identities or paths.
 
-The exact executable command batch is chosen after the Mac's available tools
-and archive metadata are known. This document intentionally does not guess
-private paths, install software or submit a real-archive command remotely.
+The verifier's concrete invocation is documented in its linked README. Select
+the actual input/pin only after the Mac's tools, mount and private receipt are
+verified. This document does not guess private paths, install software or submit
+a real-archive command remotely.
 
 ## Acceptance and stopping point
 

@@ -17,6 +17,15 @@ This file is the concise current-status pointer. The Google Drive **AI Mesh POC 
 - Milestone 12 — **PASSED**
 - Milestone 13 — **IN PROGRESS — GATES 1–16 VERIFIED IN ISOLATED TESTS; LIVE ACCEPTANCE PENDING**
 
+## Hands-free G17 preparation — archive key-access tooling
+
+The operator is traveling; Mac/vault operations are deferred. The new
+[local archive key-access verifier and evidence](m13-g17-archive-key-verifier.md)
+automate digest checks, discard-only authenticated decryption and redacted
+reporting. **13 focused synthetic local tests PASS**; the pinned MS-02 result is
+recorded separately when executed. No real backup/key was used. Actual Mac/vault
+acceptance is **NOT RUN**, and Gate 17/1 remains **BLOCKED**.
+
 ## Gate 17 continuation — October 29, 2026
 
 Gate 17/1 remains **BLOCKED**; Gate 17/2–7 are **NOT STARTED**. The operator's
