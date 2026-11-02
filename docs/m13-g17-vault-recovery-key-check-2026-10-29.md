@@ -2,8 +2,17 @@
 
 Prepared: October 29, 2026 (America/Chicago).
 
-**LOCAL TOOL IMPLEMENTED / SYNTHETIC TESTS PASS;
-REAL ARCHIVE/VAULT CHECK NOT EXECUTED.**
+**November 2 continuation: first Mac PostgreSQL archive-key attempt BLOCKED;
+source unchanged. Updated safe failure classification: 18 local synthetic
+tests PASS. Successful real key access remains unverified.**
+
+The operator confirms the mounted/unlocked external encrypted APFS backup
+volume, macOS/Python/GnuPG versions, private prompt and PostgreSQL RoboForm
+Safenote source. The original verifier reported DECRYPTION_FAILED without a
+specific cause. Do not infer a wrong key or edit the vault/archive. The next
+supported step is one targeted manual attempt with updated redacted failure
+classification, then stop and review. See [the actual receipt and focused
+verification](m13-g17-archive-key-verifier.md). Historical preparation follows.
 
 **Implementation checkpoint:** [the local interactive verifier](../tools/recovery/ARCHIVE_KEY_CHECK.md)
 now automates digest checks, authenticated discard-only decryption, status

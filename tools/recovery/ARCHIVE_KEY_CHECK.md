@@ -8,8 +8,9 @@ access an enrolled node or close a gate. CI uses synthetic fixtures only.
 ## Interface and acceptance
 
 Use an operator-controlled Linux/macOS terminal with Python 3.8 or later,
-GnuPG/gpgconf and private pinentry. Linux/GnuPG 2.4.7 and 2.4.8 have been tested;
-actual Mac execution and the three real backup copies remain NOT TESTED. Required GnuPG
+GnuPG/gpgconf and private pinentry. Linux/GnuPG 2.4.7 and 2.4.8 have been tested.
+The first MacGPG2 2.5.21 PostgreSQL-archive check returned BLOCKED with its source
+unchanged; successful real key access remains unverified. Required GnuPG
 options are checked before a key prompt. Source provenance, the approved device
 and the digest from the existing independently verified receipt remain operator
 responsibilities. Do not upload an archive or key to GitHub or run real archives
@@ -32,6 +33,17 @@ unchanged. They do not prove the human obtained the key from RoboForm: receipts
 explicitly say OPERATOR_ATTESTATION_REQUIRED for the vault source. Restoring the
 contents is NOT_TESTED and gate acceptance is NOT_ASSESSED. Failure exits one
 with a redacted reason and no automatic retry. Argument misuse exits two.
+
+Nonzero GnuPG exits are classified from its bounded machine-readable status,
+using only fixed reason strings: reported bad passphrase, cancellation,
+pinentry/agent failure, missing passphrase, algorithm error, integrity failure
+or no encrypted data. Unknown failures remain DECRYPTION_FAILED. Raw status,
+error arguments, filenames and stderr never become report fields. GnuPG can
+report BAD_PASSPHRASE as a secondary symptom after prompt cancellation/failure;
+the more specific prompt/agent status takes precedence. These reasons describe
+GnuPG's report, not a proven root cause or authority to alter a vault entry.
+After a failure, stop and review before a deliberately targeted manual attempt;
+never loop, guess passphrase variants or strip an unverified prefix.
 
 ## Handling and bounds
 

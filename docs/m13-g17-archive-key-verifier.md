@@ -1,8 +1,56 @@
 # M13 G17 — archive key-access tooling evidence
 
-**Local synthetic verification: PASS (13 focused tests).
-MS-02 synthetic verification: PASS (13 tests, zero skips).
-Real backup/vault check: NOT RUN. G17/1: BLOCKED.**
+**Current local synthetic verification: PASS (18 focused tests).
+Earlier pinned MS-02 revision: PASS (13 tests, zero skips).
+First real Mac PostgreSQL key check: BLOCKED, source unchanged.
+G17/1: BLOCKED.**
+
+## November 2, 2026 — failed Mac attempt and safe failure classification
+
+The operator reports macOS 26.7.1, Python 3.13.15 and MacGPG2/gpgconf 2.5.21,
+with the existing external encrypted APFS backup volume mounted and unlocked.
+The first PostgreSQL-archive attempt used verifier source
+63fc0d0366517f4c6c993cd2c1d9bf6dcf830078 with its independently pinned script hash.
+The operator supplied this sanitized receipt:
+
+    status=BLOCKED; reason=DECRYPTION_FAILED; source_unchanged=true
+    scope=LOCAL_ARCHIVE_KEY_ACCESS_ONLY
+    vault_source=OPERATOR_ATTESTATION_REQUIRED
+    restore_acceptance=NOT_TESTED; gate_acceptance=NOT_ASSESSED
+
+The verifier reached and passed the original ciphertext-receipt comparison,
+private-agent cleanup and final unchanged-source check. GnuPG returned nonzero.
+The operator confirms a private prompt appeared and the submitted value was
+copied from the PostgreSQL RoboForm Safenote. That is source attestation, not
+proof that the copied value was accepted. The original verifier discarded
+failure details, so this receipt cannot distinguish a rejected value from a
+prompt, agent or other GnuPG failure. No cause or passphrase-format correction
+is inferred. Original archives, receipts and vault notes remain preserved.
+
+The existing verifier now maps its bounded GnuPG status to fixed, sanitized
+failure reasons. No new raw diagnostic output, passphrase input path, retry
+loop, file extraction, service connection or permission change was added.
+Actual synthetic wrong-key, cancelled-prompt and missing-pinentry cases prove
+the distinction. The initial synthetic test run exposed two classification
+failures: GnuPG emits BAD_PASSPHRASE after cancellation/missing pinentry too.
+Specific prompt/agent statuses now take precedence over that secondary symptom.
+
+Final focused result: **18 tests PASS, zero skips, in 7.706 seconds** on the
+local Linux/GnuPG runtime. This repeats the affected verifier suite because its
+failure handling changed after a specific real failure; no application,
+service, archive-restore, migration, node or historical acceptance suite ran.
+The earlier 13-test MS-02 receipt below applies to its original source, not this
+revision. Successful real Mac key access and restore remain unverified.
+
+Next supported action: one explicitly targeted, operator-local PostgreSQL
+attempt with the reviewed updated verifier and the same existing checksum,
+to obtain safe error classification. Keep the complete vault value unchanged;
+do not trim unverified characters. Stop on BLOCKED and review that reason;
+do not guess variants, alter permissions or change the original artifacts.
+No production operation or rejected service-identity diagnostic is authorized
+by this local failure-handling change.
+
+The remaining sections preserve the original tooling and runner evidence.
 
 ## Objective and permitted work
 

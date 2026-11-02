@@ -92,7 +92,8 @@ class ArchiveKeyTests(unittest.TestCase):
         info = self.archive.stat()
         return self.archive.read_bytes(), info.st_mode, info.st_mtime_ns, info.st_ctime_ns
 
-    def configure_pinentry(self, key=KEY.decode(), delay=0, mutate_source=False):
+    def configure_pinentry(self, key=KEY.decode(), delay=0, mutate_source=False,
+                          response_error=None):
         executable = self.folder / "synthetic-pinentry"
         executable.write_text(
             "#!" + sys.executable + "\n"
@@ -104,6 +105,9 @@ class ArchiveKeyTests(unittest.TestCase):
             "        with pathlib.Path(" + repr(str(self.pinentry_count)) + ").open('a') as log:\n"
             "            log.write('prompt\\n')\n"
             "        time.sleep(" + repr(delay) + ")\n"
+            "        if " + repr(response_error is not None) + ":\n"
+            "            print('ERR ' + " + repr(str(response_error)) + " + ' synthetic prompt error', flush=True)\n"
+            "            continue\n"
             "        if " + repr(mutate_source) + ":\n"
             "            target = pathlib.Path(" + repr(str(self.archive)) + ")\n"
             "            target.write_bytes(target.read_bytes() + b'changed-during-prompt')\n"
@@ -147,10 +151,34 @@ class ArchiveKeyTests(unittest.TestCase):
         with self.configure_pinentry(key="SYNTHETIC_WRONG_KEY"):
             bad = verifier.verify_archive(self.archive, self.digest(), 5)
         self.assertEqual(bad["status"], "BLOCKED", bad)
-        self.assertEqual(bad["reason"], "DECRYPTION_FAILED")
+        self.assertEqual(bad["reason"], "GNUPG_REPORTED_BAD_PASSPHRASE")
         self.assertIs(bad["source_unchanged"], True)
         self.assertEqual(self.pinentry_count.read_text().splitlines(), ["prompt", "prompt"])
         self.assert_report_private(bad)
+
+    def test_cancelled_pinentry_is_classified_without_retry(self):
+        with self.configure_pinentry(response_error=83886179):
+            report = verifier.verify_archive(self.archive, self.digest(), 5)
+        self.assertEqual(report["reason"], "GNUPG_REPORTED_CANCELLATION", report)
+        self.assertIs(report["source_unchanged"], True)
+        self.assertEqual(self.pinentry_count.read_text().splitlines(), ["prompt"])
+        self.assert_report_private(report)
+
+    def test_missing_pinentry_is_classified_without_a_key(self):
+        original = verifier._prepare_private_home
+
+        def configure(home):
+            self.homes.append(home)
+            original(home)
+            with (home / "gpg-agent.conf").open("a") as config:
+                config.write("pinentry-program " + str(self.folder / "absent-pinentry") + "\n")
+
+        with patch.object(verifier, "_prepare_private_home", configure):
+            report = verifier.verify_archive(self.archive, self.digest(), 5)
+        self.assertEqual(report["reason"], "GNUPG_REPORTED_PINENTRY_FAILURE", report)
+        self.assertIs(report["source_unchanged"], True)
+        self.assertFalse(self.pinentry_count.exists())
+        self.assert_report_private(report)
 
     def test_aead_authenticated_archive_is_supported(self):
         shutil.copyfile(self.aead, self.archive)
@@ -167,6 +195,7 @@ class ArchiveKeyTests(unittest.TestCase):
         with self.configure_pinentry():
             report = verifier.verify_archive(self.archive, self.digest(), 5)
         self.assertEqual(report["status"], "BLOCKED", report)
+        self.assertEqual(report["reason"], "GNUPG_REPORTED_INTEGRITY_FAILURE", report)
         self.assertEqual(self.snapshot(), before)
         self.assert_report_private(report)
 
@@ -280,6 +309,53 @@ class ArchiveKeyTests(unittest.TestCase):
         self.assertEqual(report["reason"], "SOURCE_CHANGED", report)
         self.assertIs(report["source_unchanged"], False)
         self.assert_report_private(report)
+
+
+class FailureClassificationTests(unittest.TestCase):
+    def test_only_allowlisted_reasons_leave_status_parser(self):
+        cases = (
+            (b"ERROR symkey_decrypt.maybe_error 11_BAD_PASSPHRASE", "BAD_PASSPHRASE"),
+            (b"ERROR get_passphrase 67108949", "PINENTRY_FAILURE"),
+            (b"ERROR get_passphrase 86", "PINENTRY_FAILURE"),
+            (b"ERROR get_passphrase 83886179", "CANCELLATION"),
+            (b"FAILURE decrypt 198", "CANCELLATION"),
+            (b"CANCELED_BY_USER", "CANCELLATION"),
+            (b"ERROR get_passphrase 177", "MISSING_PASSPHRASE"),
+            (b"ERROR agent 77", "AGENT_FAILURE"),
+            (b"ERROR agent 78", "AGENT_FAILURE"),
+            (b"ERROR decrypt 12", "ALGORITHM_ERROR"),
+            (b"BADMDC", "INTEGRITY_FAILURE"),
+            (b"BAD_PASSPHRASE PRIVATE_KEY_IDENTIFIER", "BAD_PASSPHRASE"),
+            (b"MISSING_PASSPHRASE", "MISSING_PASSPHRASE"),
+            (b"NODATA 1", "NO_ENCRYPTED_DATA"),
+        )
+        for status, suffix in cases:
+            with self.subTest(suffix=suffix, status=status.split()[0]):
+                raw = (b"[GNUPG:] " + status + b"\n"
+                       b"[GNUPG:] PLAINTEXT 62 0 PRIVATE_LITERAL_FILENAME\n"
+                       b"[GNUPG:] FAILURE gpg-exit 33554433\n")
+                self.assertEqual(verifier._decryption_failure(raw), "GNUPG_REPORTED_" + suffix)
+
+    def test_unknown_malformed_and_untrusted_text_remain_generic(self):
+        for raw in (b"", b"SECRET_ERROR_OR_KEY\n", b"[GNUPG:] ERROR", b"[GNUPG:] ERROR x nope",
+                    b"[GNUPG:] ERROR x 99999999999999",
+                    b"[GNUPG:] ERROR x -11", b"[GNUPG:] FAILURE gpg-exit 33554433"):
+            with self.subTest(raw=raw):
+                report = verifier.receipt(reason=verifier._decryption_failure(raw))
+                self.assertEqual(report["status"], "BLOCKED")
+                self.assertEqual(report["reason"], "DECRYPTION_FAILED")
+                self.assertNotIn("SECRET_ERROR_OR_KEY", json.dumps(report))
+
+    def test_specific_prompt_error_precedes_secondary_bad_passphrase(self):
+        secondary = (b"[GNUPG:] ERROR symkey_decrypt.maybe_error 11_BAD_PASSPHRASE\n"
+                     b"[GNUPG:] FAILURE gpg-exit 33554433\n")
+        for primary, reason in (
+                (b"[GNUPG:] CANCELED_BY_USER\n", "CANCELLATION"),
+                (b"[GNUPG:] ERROR get_passphrase 85\n[GNUPG:] CANCELED_BY_USER\n", "PINENTRY_FAILURE"),
+                (b"[GNUPG:] ERROR agent 77\n", "AGENT_FAILURE")):
+            with self.subTest(reason=reason):
+                self.assertEqual(verifier._decryption_failure(primary + secondary),
+                                 "GNUPG_REPORTED_" + reason)
 
 
 if __name__ == "__main__":

@@ -71,6 +71,40 @@ def _prepare_private_home(home):
     config.chmod(0o600)
 
 
+def _decryption_failure(raw):
+    """Classify documented GnuPG status, never return its private arguments."""
+    events = [line.split()[1:] for line in raw.splitlines()
+              if line.startswith(b"[GNUPG:] ")]
+    tags = {event[0] for event in events if event}
+    codes = set()
+    for event in events:
+        if len(event) >= 3 and event[0] in (b"ERROR", b"FAILURE"):
+            # libgpg-error encodes its source above the low 16-bit error code.
+            # GnuPG may append a symbolic suffix, e.g. 11_BAD_PASSPHRASE.
+            match = re.fullmatch(rb"([0-9]{1,10})(?:_[A-Z0-9_]+)?", event[2])
+            if match and int(match[1]) <= 0xffffffff:
+                codes.add(int(match[1]) & 0xffff)
+    if b"BADMDC" in tags:
+        return "GNUPG_REPORTED_INTEGRITY_FAILURE"
+    # GnuPG also emits BAD_PASSPHRASE after a cancelled/missing prompt.
+    # Prefer the specific prompt/agent failure to that secondary symptom.
+    if codes & {85, 86}:
+        return "GNUPG_REPORTED_PINENTRY_FAILURE"
+    if codes & {77, 78}:
+        return "GNUPG_REPORTED_AGENT_FAILURE"
+    if b"CANCELED_BY_USER" in tags or codes & {99, 198}:
+        return "GNUPG_REPORTED_CANCELLATION"
+    if b"MISSING_PASSPHRASE" in tags or 177 in codes:
+        return "GNUPG_REPORTED_MISSING_PASSPHRASE"
+    if codes & {4, 5, 12, 20}:
+        return "GNUPG_REPORTED_ALGORITHM_ERROR"
+    if b"BAD_PASSPHRASE" in tags or 11 in codes:
+        return "GNUPG_REPORTED_BAD_PASSPHRASE"
+    if b"NODATA" in tags:
+        return "GNUPG_REPORTED_NO_ENCRYPTED_DATA"
+    return "DECRYPTION_FAILED"
+
+
 def _run_crypto(command, fd, seconds, environment):
     """Bound captured metadata without imposing file limits on pinentry."""
     process = subprocess.Popen(command, stdin=subprocess.DEVNULL,
@@ -107,7 +141,7 @@ def _run_crypto(command, fd, seconds, environment):
                 if failure or finished:
                     break
         if failure is None and process.returncode != 0:
-            failure = "DECRYPTION_FAILED"
+            failure = _decryption_failure(bytes(data))
         return failure, bytes(data)
     finally:
         if process.poll() is None:

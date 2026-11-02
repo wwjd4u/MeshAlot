@@ -19,13 +19,22 @@ This file is the concise current-status pointer. The Google Drive **AI Mesh POC 
 
 ## Hands-free G17 preparation — archive key-access tooling
 
-The operator is traveling; Mac/vault operations are deferred. The new
+**November 2 update:** the first operator-local Mac PostgreSQL recovery-key
+check returned **BLOCKED / DECRYPTION_FAILED**, with the independently pinned
+ciphertext unchanged. The operator confirms the private prompt and PostgreSQL
+RoboForm source. This does not establish a bad key or a successful recovery.
+Safe GnuPG failure classification is now implemented and **18 focused local
+synthetic tests PASS**; the next step is one targeted Mac attempt to classify
+the specific failure. Real key access remains unverified; Gate 17/1 is BLOCKED.
+See [the updated evidence](m13-g17-archive-key-verifier.md).
+
+The earlier travel checkpoint follows. The
 [local archive key-access verifier and evidence](m13-g17-archive-key-verifier.md)
 automate digest checks, discard-only authenticated decryption and redacted
 reporting. **13 focused synthetic local tests PASS; 13 pinned MS-02 tests PASS
 with zero skips** ([run 41108714209](https://github.com/wwjd4u/MeshAlot/actions/runs/41108714209)).
-No real backup/key was used. Actual Mac/vault
-acceptance is **NOT RUN**, and Gate 17/1 remains **BLOCKED**.
+No real backup/key was used by those synthetic tests. At that checkpoint, actual
+Mac/vault acceptance was **NOT RUN**, and Gate 17/1 remained **BLOCKED**.
 
 The [synthetic systemd VM target prerequisite](m13-g17-systemd-stage-prerequisite.md)
 is now **PASS**: [MS-02 run 41114765692](https://github.com/wwjd4u/MeshAlot/actions/runs/41114765692)
