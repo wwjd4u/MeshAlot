@@ -2,7 +2,7 @@
 
 **Current local synthetic verification: PASS (18 focused tests).
 Earlier pinned MS-02 revision: PASS (13 tests, zero skips).
-First real Mac PostgreSQL key check: BLOCKED, source unchanged.
+Two real Mac PostgreSQL key attempts: BLOCKED, source unchanged.
 G17/1: BLOCKED.**
 
 ## November 2, 2026 — failed Mac attempt and safe failure classification
@@ -49,6 +49,29 @@ do not trim unverified characters. Stop on BLOCKED and review that reason;
 do not guess variants, alter permissions or change the original artifacts.
 No production operation or rejected service-identity diagnostic is authorized
 by this local failure-handling change.
+
+### Second Mac attempt — generic failure persists
+
+The operator subsequently supplied the targeted attempt using source
+69a8918ac02a30b8b83a90edd72d5299cff8ea9a and its pinned verifier digest. It again
+reported BLOCKED / DECRYPTION_FAILED / source_unchanged=true, with restore
+NOT_TESTED and gate NOT_ASSESSED. The operator confirms the private prompt
+appeared and the key was submitted. The fixed classifier found no recognized
+specific failure; its generic result does not establish wrong credentials,
+corrupt ciphertext or a Mac-runtime cause. Do not retry the real archive again
+without evidence supporting a next change.
+
+Next supported action: execute the existing pinned 18-test synthetic suite on
+the Mac, using only disposable public fixture data and automatic synthetic
+pinentry. This new runtime check is justified by two unresolved real failures;
+the accepted Linux/MS-02 suites are reused, not repeated on those hosts. The
+Mac launcher verifies both public source hashes, uses private temporary homes,
+and may report only allowlisted status tags/numeric GnuPG error codes for
+otherwise generic synthetic failures. It does not name/read a real archive,
+request a vault key or contact production. Its shell/Python syntax was reviewed;
+Mac execution remains NOT TESTED until the operator returns actual output.
+Stop after that one synthetic run and assess its result. Preserve all originals
+and all other gate, production and identity holds.
 
 The remaining sections preserve the original tooling and runner evidence.
 

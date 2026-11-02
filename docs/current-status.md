@@ -19,13 +19,15 @@ This file is the concise current-status pointer. The Google Drive **AI Mesh POC 
 
 ## Hands-free G17 preparation — archive key-access tooling
 
-**November 2 update:** the first operator-local Mac PostgreSQL recovery-key
-check returned **BLOCKED / DECRYPTION_FAILED**, with the independently pinned
+**November 2 update:** two operator-local Mac PostgreSQL recovery-key
+attempts returned **BLOCKED / DECRYPTION_FAILED**, with the independently pinned
 ciphertext unchanged. The operator confirms the private prompt and PostgreSQL
 RoboForm source. This does not establish a bad key or a successful recovery.
 Safe GnuPG failure classification is now implemented and **18 focused local
-synthetic tests PASS**; the next step is one targeted Mac attempt to classify
-the specific failure. Real key access remains unverified; Gate 17/1 is BLOCKED.
+synthetic tests PASS**. The targeted real retry still returned a generic failure.
+The next step is the existing pinned synthetic suite on the Mac to assess that
+runtime without using a real archive or vault key; do not retry the real backup
+yet. Real key access remains unverified; Gate 17/1 is BLOCKED.
 See [the updated evidence](m13-g17-archive-key-verifier.md).
 
 The earlier travel checkpoint follows. The

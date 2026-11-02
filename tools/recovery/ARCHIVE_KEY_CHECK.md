@@ -9,7 +9,7 @@ access an enrolled node or close a gate. CI uses synthetic fixtures only.
 
 Use an operator-controlled Linux/macOS terminal with Python 3.8 or later,
 GnuPG/gpgconf and private pinentry. Linux/GnuPG 2.4.7 and 2.4.8 have been tested.
-The first MacGPG2 2.5.21 PostgreSQL-archive check returned BLOCKED with its source
+Two MacGPG2 2.5.21 PostgreSQL-archive attempts returned BLOCKED with the source
 unchanged; successful real key access remains unverified. Required GnuPG
 options are checked before a key prompt. Source provenance, the approved device
 and the digest from the existing independently verified receipt remain operator
