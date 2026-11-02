@@ -25,9 +25,12 @@ ciphertext unchanged. The operator confirms the private prompt and PostgreSQL
 RoboForm source. This does not establish a bad key or a successful recovery.
 Safe GnuPG failure classification is now implemented and **18 focused local
 synthetic tests PASS**. The targeted real retry still returned a generic failure.
-The next step is the existing pinned synthetic suite on the Mac to assess that
-runtime without using a real archive or vault key; do not retry the real backup
-yet. Real key access remains unverified; Gate 17/1 is BLOCKED.
+That pinned suite now reproduces a failure on the Mac: **13 PASS / 5 FAIL in
+11.289 seconds**, using only known synthetic keys. Correct-key cases report
+successful decryption/integrity status followed by a nonzero general error.
+The next step is temporary public-fixture stderr capture for one failed case;
+keep the zero-exit requirement and do not retry the real backup yet. Real key
+access remains unverified; Gate 17/1 is BLOCKED.
 See [the updated evidence](m13-g17-archive-key-verifier.md).
 
 The earlier travel checkpoint follows. The

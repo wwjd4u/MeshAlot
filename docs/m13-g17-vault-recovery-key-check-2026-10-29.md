@@ -11,8 +11,10 @@ volume, macOS/Python/GnuPG versions, private prompt and PostgreSQL RoboForm
 Safenote source. The original verifier reported DECRYPTION_FAILED without a
 specific cause; the targeted retry with safe classification also returned a
 generic failure. Do not infer a wrong key, edit the vault/archive or retry the
-real backup again. The next supported step is one automatic public-fixture
-compatibility run on the Mac, then stop and review. See [the actual receipts and focused
+real backup again. The automatic Mac public-fixture run returned 13 PASS / 5
+FAIL; correct-key synthetic cases report decryption/integrity success followed
+by a general GnuPG error. The next step is error capture for one specifically
+failed synthetic case, preserving the zero-exit requirement. See [the actual receipts and focused
 verification](m13-g17-archive-key-verifier.md). Historical preparation follows.
 
 **Implementation checkpoint:** [the local interactive verifier](../tools/recovery/ARCHIVE_KEY_CHECK.md)

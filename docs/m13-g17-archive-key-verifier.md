@@ -2,6 +2,7 @@
 
 **Current local synthetic verification: PASS (18 focused tests).
 Earlier pinned MS-02 revision: PASS (13 tests, zero skips).
+Mac synthetic verification: FAIL (13 pass, 5 fail).
 Two real Mac PostgreSQL key attempts: BLOCKED, source unchanged.
 G17/1: BLOCKED.**
 
@@ -72,6 +73,34 @@ request a vault key or contact production. Its shell/Python syntax was reviewed;
 Mac execution remains NOT TESTED until the operator returns actual output.
 Stop after that one synthetic run and assess its result. Preserve all originals
 and all other gate, production and identity holds.
+
+### Actual Mac synthetic result — failure reproduced with a correct dummy key
+
+Operator-provided Mac output for the pinned source above reports **18 tests in
+11.289 seconds: 13 PASS, 5 FAIL**, MAC_SYNTHETIC_RESULT=FAIL. Failures are valid
+MDC-key access, AEAD-key access, the complete terminal CLI, the AES128 rejection
+case (it stopped too early), and the cache-isolation case (its initial correct
+key stopped too early). The supplied automatic pinentry uses only public
+synthetic passphrases. No real archive or vault key was involved in this run.
+
+For known-correct synthetic decryptions, the captured allowlisted status includes
+NEED_PASSPHRASE_SYM, PINENTRY_LAUNCHED, BEGIN_DECRYPTION, DECRYPTION_INFO,
+DECRYPTION_OKAY, GOODMDC, END_DECRYPTION and FAILURE; the parsed GnuPG error code
+is 1 (general error). The same failure occurs independently of the private
+backup and vault. This establishes a Mac runtime/verifier-path problem, not its
+underlying cause, and does not establish acceptance of the actual vault key.
+
+Keep GnuPG zero exit and authenticated AES256 mandatory. Do not accept successful
+status tags while ignoring a nonzero exit, change credentials or retry a real
+backup. The next supported step is one repeat of the specifically failed valid
+synthetic-key test with temporary stderr capture, to identify GnuPG's error.
+The reviewed launcher pins the same two public files, runs only that failed
+case, and prints at most 16 KiB of public-fixture diagnostics after replacing
+the temporary GnuPG-home and user-home paths. Its temporary diagnostic file
+contains synthetic-run metadata only and is removed automatically. Other 13
+passing Mac checks and accepted Linux/MS-02 checks are not repeated.
+Launcher shell/Python syntax: PASS; actual focused Mac result: NOT TESTED.
+All real recovery, production, rejected diagnostic and identity holds remain.
 
 The remaining sections preserve the original tooling and runner evidence.
 
