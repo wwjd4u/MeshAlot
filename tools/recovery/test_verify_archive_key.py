@@ -293,7 +293,8 @@ class ArchiveKeyTests(unittest.TestCase):
             "if '--dump-options' in sys.argv:\n"
             "    print(" + repr("\n".join(options)) + ")\n"
             "else:\n"
-            "    os.write(1, b'x' * 131072)\n")
+            "    status_fd = int(sys.argv[sys.argv.index('--status-fd') + 1])\n"
+            "    os.write(status_fd, b'x' * 131072)\n")
         fake_gpg.chmod(0o700)
         before = self.snapshot()
         with patch.dict(os.environ, {"PATH": str(self.folder) + os.pathsep + os.environ["PATH"]}):
@@ -309,6 +310,61 @@ class ArchiveKeyTests(unittest.TestCase):
         self.assertEqual(report["reason"], "SOURCE_CHANGED", report)
         self.assertIs(report["source_unchanged"], False)
         self.assert_report_private(report)
+
+
+class CryptoPipeTests(unittest.TestCase):
+    STATUS = (b"[GNUPG:] NEED_PASSPHRASE_SYM 9 3 2\n"
+              b"[GNUPG:] DECRYPTION_INFO 2 9 0\n"
+              b"[GNUPG:] GOODMDC\n[GNUPG:] DECRYPTION_OKAY\n"
+              b"[GNUPG:] END_DECRYPTION\n")
+
+    def run_child(self, exit_code):
+        with tempfile.TemporaryDirectory(prefix="meshalot-public-pipe-") as folder:
+            child = Path(folder) / "synthetic-gpg"
+            child.write_text(
+                "#!" + sys.executable + "\nimport os, stat, sys\n"
+                "assert sys.argv[sys.argv.index('--output') + 1] == '-'\n"
+                "assert stat.S_ISCHR(os.fstat(1).st_mode)\n"
+                "assert os.fstat(1).st_rdev == os.stat(os.devnull).st_rdev\n"
+                "status_fd = int(sys.argv[sys.argv.index('--status-fd') + 1])\n"
+                "assert status_fd not in (0, 1, 2)\n"
+                "os.write(1, " + repr(PAYLOAD * 10) + ")\n"
+                "os.write(status_fd, " + repr(self.STATUS) + ")\n"
+                "raise SystemExit(" + str(exit_code) + ")\n")
+            child.chmod(0o700)
+            with tempfile.TemporaryFile() as source:
+                return verifier._run_crypto([str(child), "--output", "-"],
+                                            source.fileno(), 5, dict(os.environ))
+
+    def test_plaintext_goes_to_null_and_never_enters_the_status_pipe(self):
+        failure, raw = self.run_child(0)
+        self.assertIsNone(failure)
+        self.assertEqual(raw, self.STATUS)
+        self.assertNotIn(PAYLOAD[:40], raw)
+
+    def test_good_integrity_status_cannot_override_nonzero_exit(self):
+        failure, raw = self.run_child(1)
+        self.assertTrue(verifier._authenticated_aes256(raw))
+        self.assertEqual(failure, "DECRYPTION_FAILED")
+
+    def test_launch_failure_closes_both_new_status_descriptors(self):
+        descriptors = []
+        native_pipe = os.pipe
+
+        def track_pipe():
+            pair = native_pipe()
+            descriptors.extend(pair)
+            return pair
+
+        with tempfile.TemporaryFile() as source:
+            with patch.object(verifier.os, "pipe", track_pipe), \
+                 patch.object(verifier.subprocess, "Popen", side_effect=OSError("synthetic launch failure")):
+                with self.assertRaises(OSError):
+                    verifier._run_crypto(["synthetic-gpg"], source.fileno(), 5, dict(os.environ))
+        self.assertEqual(len(descriptors), 2)
+        for descriptor in descriptors:
+            with self.assertRaises(OSError):
+                os.fstat(descriptor)
 
 
 class FailureClassificationTests(unittest.TestCase):

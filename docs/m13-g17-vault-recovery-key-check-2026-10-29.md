@@ -2,6 +2,15 @@
 
 Prepared: October 29, 2026 (America/Chicago).
 
+**November 4 continuation:** public-fixture stderr identified GnuPG's attempted
+/dev/null.part creation as the output-handling failure. The verifier's stdout
+discard/separate-status-pipe fix passes 21 local synthetic checks. Updated Mac
+verification remains NOT TESTED; run that public-fixture check before any real
+archive retry. Actual vault-key acceptance remains unverified; G17/1 BLOCKED.
+See [the preserved failure and fix evidence](m13-g17-archive-key-verifier.md).
+
+Historical November 2 checkpoint follows.
+
 **November 2 continuation: two Mac PostgreSQL archive-key attempts BLOCKED;
 source unchanged. Updated safe failure classification: 18 local synthetic
 tests PASS. Successful real key access remains unverified.**

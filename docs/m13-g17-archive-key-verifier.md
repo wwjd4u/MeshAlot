@@ -1,10 +1,49 @@
 # M13 G17 — archive key-access tooling evidence
 
-**Current local synthetic verification: PASS (18 focused tests).
+**Current local synthetic verification: PASS (21 focused tests).
 Earlier pinned MS-02 revision: PASS (13 tests, zero skips).
-Mac synthetic verification: FAIL (13 pass, 5 fail).
+Original Mac synthetic verification: FAIL (13 pass, 5 fail).
+Updated Mac verification: NOT TESTED.
 Two real Mac PostgreSQL key attempts: BLOCKED, source unchanged.
 G17/1: BLOCKED.**
+
+## November 4, 2026 — output-file failure identified and routing corrected
+
+The operator returned the pending single-case synthetic check: **1 FAIL in
+2.237 seconds**, MAC_FOCUSED_RESULT=FAIL, with untruncated public-fixture stderr:
+
+    gpg: error creating '/dev/null.part': Operation not permitted
+    gpg: handle plaintext failed: Operation not permitted
+
+This identifies a compatibility failure in the verifier's output configuration:
+it supplied /dev/null as a GnuPG output filename, and MacGPG attempted a sibling
+temporary output file. Successful integrity status alone could not establish
+success because handling the decrypted output failed. This finding uses only
+the correct public fixture key; acceptance of the actual vault key remains
+unverified. No real backup was retried or original archive/key changed.
+
+The fix requests --output - and redirects the child process's stdout to the
+OS null device. A separate inherited pipe now carries GnuPG status; plaintext
+does not enter Python's captured status, a disk file or shared output. Existing
+64-KiB status/deadline bounds, pinned source checks, authenticated AES256,
+nonzero-exit rejection and private-agent cleanup remain mandatory. Pipe
+descriptors close on normal completion, timeout and child-launch failure.
+No permissions were broadened and no GnuPG integrity/exit error is ignored.
+
+The affected verifier suite passed **21 tests, zero skips, in 7.994 seconds**
+on Linux / Python 3.12.14 / GnuPG 2.4.7. New process-boundary tests exercise
+discarding plaintext larger than the status cap, a separate status descriptor,
+good integrity statuses with nonzero exit, and descriptor cleanup on failed
+launch. Existing crypto/CLI, cache isolation, cancellation, tamper, timeout,
+status-limit and unsafe-source checks pass with the changed routing. Only
+this materially changed verifier suite ran; other accepted suites were reused.
+
+Next supported action: one pinned public-fixture run of the updated 21-test
+suite on the Mac. Rechecking the affected cases on that runtime is required
+because output/status routing changed after a reproduced Mac failure. Do not
+retry real backup keys until this Mac verification passes. G17/1 remains
+BLOCKED; restored data and production acceptance are NOT TESTED. No runner
+dispatch, production connection, release or node operation was performed.
 
 ## November 2, 2026 — failed Mac attempt and safe failure classification
 

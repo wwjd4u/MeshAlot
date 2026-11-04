@@ -19,6 +19,17 @@ This file is the concise current-status pointer. The Google Drive **AI Mesh POC 
 
 ## Hands-free G17 preparation — archive key-access tooling
 
+**November 4 update:** the single failed Mac synthetic case identified GnuPG's
+attempt to create /dev/null.part when /dev/null was passed as an output filename.
+The verifier now requests stdout output, directs plaintext to the OS null
+device, and captures status on a separate bounded pipe. **21 affected local
+synthetic checks PASS**; updated Mac verification is **NOT TESTED**. Next is one
+pinned public-fixture Mac run before any real-key retry. **G17/1 stays BLOCKED**;
+original backups/vault entries and production remain untouched. See
+[the identified cause and fix](m13-g17-archive-key-verifier.md).
+
+The earlier November 2 checkpoint follows.
+
 **November 2 update:** two operator-local Mac PostgreSQL recovery-key
 attempts returned **BLOCKED / DECRYPTION_FAILED**, with the independently pinned
 ciphertext unchanged. The operator confirms the private prompt and PostgreSQL

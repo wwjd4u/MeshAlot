@@ -106,17 +106,25 @@ def _decryption_failure(raw):
 
 
 def _run_crypto(command, fd, seconds, environment):
-    """Bound captured metadata without imposing file limits on pinentry."""
-    process = subprocess.Popen(command, stdin=subprocess.DEVNULL,
-                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                               pass_fds=(fd,), env=environment, start_new_session=True)
+    """Discard plaintext at stdout; bound status on its own inherited pipe."""
+    status_read, status_write = os.pipe()
+    process = None
     data = bytearray()
     failure = None
     try:
-        os.set_blocking(process.stdout.fileno(), False)
+        os.set_blocking(status_read, False)
+        # GnuPG must not open /dev/null as an output filename: versions using
+        # atomic file output may first try to create /dev/null.part instead.
+        process = subprocess.Popen(
+            [command[0], "--status-fd", str(status_write), *command[1:]],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, pass_fds=(fd, status_write),
+            env=environment, start_new_session=True)
+        os.close(status_write)
+        status_write = None
         deadline = time.monotonic() + seconds
         with selectors.DefaultSelector() as selector:
-            selector.register(process.stdout, selectors.EVENT_READ)
+            selector.register(status_read, selectors.EVENT_READ)
             while True:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -127,12 +135,12 @@ def _run_crypto(command, fd, seconds, environment):
                 if ready or finished:
                     while True:
                         try:
-                            chunk = os.read(process.stdout.fileno(), 8192)
+                            chunk = os.read(status_read, 8192)
                         except BlockingIOError:
                             break
                         if not chunk:
                             if selector.get_map():
-                                selector.unregister(process.stdout)
+                                selector.unregister(status_read)
                             break
                         if len(data) + len(chunk) > MAX_STATUS:
                             failure = "STATUS_LIMIT_REACHED"
@@ -144,14 +152,18 @@ def _run_crypto(command, fd, seconds, environment):
             failure = _decryption_failure(bytes(data))
         return failure, bytes(data)
     finally:
-        if process.poll() is None:
-            process.kill()
         try:
-            process.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            raise Blocked("CRYPTO_PROCESS_CLEANUP_UNVERIFIED") from None
+            if process is not None:
+                if process.poll() is None:
+                    process.kill()
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    raise Blocked("CRYPTO_PROCESS_CLEANUP_UNVERIFIED") from None
         finally:
-            process.stdout.close()
+            if status_write is not None:
+                os.close(status_write)
+            os.close(status_read)
 
 
 def _cleanup(gpgconf, home):
@@ -212,7 +224,7 @@ def verify_archive(archive, expected_sha256, seconds=120):
                 command = [gpg, "--no-options", "--homedir", str(home),
                            "--no-symkey-cache", "--pinentry-mode", "ask",
                            "--no-auto-key-retrieve", "--no-auto-key-import",
-                           "--status-fd", "1", "--yes", "--output", os.devnull,
+                           "--yes", "--output", "-",
                            "--decrypt", "/dev/fd/" + str(fd)]
                 environment = dict(os.environ)
                 if sys.stdin.isatty():

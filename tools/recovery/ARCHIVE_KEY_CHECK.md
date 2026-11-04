@@ -10,7 +10,10 @@ access an enrolled node or close a gate. CI uses synthetic fixtures only.
 Use an operator-controlled Linux/macOS terminal with Python 3.8 or later,
 GnuPG/gpgconf and private pinentry. Linux/GnuPG 2.4.7 and 2.4.8 have been tested.
 Two MacGPG2 2.5.21 PostgreSQL-archive attempts returned BLOCKED with the source
-unchanged; successful real key access remains unverified. Required GnuPG
+unchanged. A public-fixture check identified an output-file compatibility
+failure: GnuPG tried creating /dev/null.part. The updated stdout/status-pipe
+routing passes 21 local Linux checks; actual updated Mac verification and
+successful real key access remain unverified. Required GnuPG
 options are checked before a key prompt. Source provenance, the approved device
 and the digest from the existing independently verified receipt remain operator
 responsibilities. Do not upload an archive or key to GitHub or run real archives
@@ -56,9 +59,13 @@ never loop, guess passphrase variants or strip an unverified prefix.
 - Uses a new private temporary GnuPG home. It suppresses default gpg options,
   disables symmetric and external pinentry caches, disables automatic key
   retrieval/import and uses no pre-existing keyring or operator key file.
-- Sends plaintext only to the operating system's null device. Captures at most
-  64 KiB of GnuPG status in memory; raw status, embedded filenames and diagnostics
-  are excluded from JSON. No plaintext or status-output file is created.
+- Requests GnuPG stdout output with --output - and redirects that stdout to
+  the operating system's null device when creating the child process. GnuPG
+  never receives /dev/null as an output filename or creates its .part sibling.
+  A separate inherited pipe captures at most 64 KiB of GnuPG status in memory;
+  plaintext never enters that pipe. Raw status, embedded filenames and
+  diagnostics are excluded from JSON. No plaintext or status-output file is
+  created. Both pipe ends are closed, including on child-launch failure.
 - Requires successful GnuPG exit plus symmetric decryption, AES256 and verified
   MDC/AEAD status. An unencrypted or unsupported-cipher input cannot pass from
   exit status alone.
