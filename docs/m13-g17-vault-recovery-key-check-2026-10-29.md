@@ -2,6 +2,18 @@
 
 Prepared: October 29, 2026 (America/Chicago).
 
+**Latest November 5 execution:** POSTGRESQL returned BLOCKED /
+GNUPG_REPORTED_BAD_PASSPHRASE using the fixed, Mac-verified source, with the
+original ciphertext unchanged. The sequential batch stopped; API_ROLLBACK and
+ENV_SUPPLEMENT are NOT TESTED. Preserve the receipt and do not rerun the batch
+or change archive/vault values. Next is private read-only reconciliation with
+the preserved original MS-02 passphrase after confirming existing account/file
+access. Current original availability and key equality remain unverified.
+The 21 passing Mac tests stand; G17/1 remains BLOCKED. See
+[the failure and original custody reference](m13-g17-archive-key-verifier.md).
+
+Historical November 5 tooling acceptance follows.
+
 **November 5 continuation:** fixed source fc040c80b40106396b618217d190df9b14a72a64
 passed all 21 synthetic Mac checks in 13.196 seconds, zero skips. Reuse that
 evidence. The next approved step is the local discard-only key check for each

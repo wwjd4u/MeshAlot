@@ -19,6 +19,18 @@ This file is the concise current-status pointer. The Google Drive **AI Mesh POC 
 
 ## Hands-free G17 preparation — archive key-access tooling
 
+**Latest November 5 result:** the real PostgreSQL attempt with the Mac-verified
+fixed source returned **BLOCKED / GNUPG_REPORTED_BAD_PASSPHRASE**, with its
+independently pinned source unchanged. The batch stopped before API/environment
+archives; their key checks are **NOT TESTED**. Do not rerun or edit originals.
+Next is read-only private reconciliation of the PostgreSQL vault value against
+the preserved original MS-02 key, after confirming existing account/file access.
+Current original availability is unverified; no key is to leave the operator's
+private device. The 21 passing Mac checks remain accepted. **G17/1 BLOCKED**.
+See [the actual receipt and custody evidence](m13-g17-archive-key-verifier.md).
+
+The earlier November 5 tooling acceptance follows.
+
 **November 5 update:** operator-provided Mac output for fixed source
 fc040c80b40106396b618217d190df9b14a72a64 reports **21 tests PASS, zero skips,
 in 13.196 seconds**. The compatibility fix is verified; reuse these passing

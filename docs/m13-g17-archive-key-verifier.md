@@ -4,8 +4,47 @@
 Earlier pinned MS-02 revision: PASS (13 tests, zero skips).
 Original Mac synthetic verification: FAIL (13 pass, 5 fail).
 Updated Mac verification: PASS (21 tests, zero skips, 13.196 seconds).
-Two real Mac PostgreSQL key attempts: BLOCKED, source unchanged.
+Latest fixed-source PostgreSQL attempt: BLOCKED / GNUPG_REPORTED_BAD_PASSPHRASE,
+source unchanged. API and environment archive key checks: NOT TESTED.
 G17/1: BLOCKED.**
+
+## November 5, 2026 — fixed-source PostgreSQL key attempt blocked
+
+The operator supplied the three-asset launcher's actual output:
+
+    VERIFIER_SOURCE=fc040c80b40106396b618217d190df9b14a72a64
+    ASSET=POSTGRESQL ROBOFORM_NOTE=POSTGRESQL
+    status=BLOCKED; reason=GNUPG_REPORTED_BAD_PASSPHRASE
+    source_unchanged=true; vault_source=OPERATOR_ATTESTATION_REQUIRED
+    scope=LOCAL_ARCHIVE_KEY_ACCESS_ONLY
+    restore_acceptance=NOT_TESTED; gate_acceptance=NOT_ASSESSED
+
+The corrected, Mac-verified tool reached the pinned archive and GnuPG reported
+bad passphrase. The encrypted source retained its checksum and fingerprinted
+metadata. The batch stopped before API_ROLLBACK and ENV_SUPPLEMENT, so those
+two key checks are NOT TESTED. This is distinct from the older output-file
+compatibility failure. It establishes rejection of the submitted value for
+this input; it does not establish the cause of a vault/source mismatch or that
+the original encrypted backup is unrecoverable. Latest vault-source attestation
+remains explicit in the receipt. No archive or vault entry should be changed,
+no character prefix should be guessed/trimmed, and no failed batch rerun.
+
+The original [MS-02 metadata-only custody validation](https://github.com/wwjd4u/MeshAlot/blob/b00ad2faed0de865c27244b3596528a5d0723bf9/.github/workflows/ms02-m13-gate17-local-evidence-readonly.yml)
+ties the original PostgreSQL archive, checksum, prior isolated-restore receipt
+and separate protected passphrase file to the same backup creation record.
+It verified owner/type/0600 mode without reading the passphrase. The October 12
+custody record says the original passphrase files were preserved when copies
+were put in separate RoboForm Safenotes. Current original-file availability
+and equality to the submitted vault value remain unverified.
+
+Next supported action: identify the operator's existing original MS-02 Linux
+account/session, then check the original file's identity and compare the two
+values privately on that device, read-only, without printing/exporting either
+key, changing originals or decrypting the real archive again. Do not create a
+GitHub workflow/secret or send key material to chat/Drive/CI for that comparison.
+Existing original-account access is a resource prerequisite, not a request for
+production authorization or new SSH privileges. The accepted 21-test Mac and
+Linux receipts are reused. G17/1 stays BLOCKED; other recovery holds remain.
 
 ## November 5, 2026 — fixed verifier accepted on the Mac
 
