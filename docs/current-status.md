@@ -19,6 +19,16 @@ This file is the concise current-status pointer. The Google Drive **AI Mesh POC 
 
 ## Hands-free G17 preparation — archive key-access tooling
 
+**November 5 update:** operator-provided Mac output for fixed source
+fc040c80b40106396b618217d190df9b14a72a64 reports **21 tests PASS, zero skips,
+in 13.196 seconds**. The compatibility fix is verified; reuse these passing
+checks. Next are the approved private discard-only vault-key checks for the
+three existing archive copies, one attempt per asset, stopping at first failure.
+Actual key access and restore remain unverified. **G17/1 stays BLOCKED** on
+remaining recovery evidence. See [the Mac receipt and next action](m13-g17-archive-key-verifier.md).
+
+Historical November 4 checkpoint follows.
+
 **November 4 update:** the single failed Mac synthetic case identified GnuPG's
 attempt to create /dev/null.part when /dev/null was passed as an output filename.
 The verifier now requests stdout output, directs plaintext to the OS null

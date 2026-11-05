@@ -12,8 +12,9 @@ GnuPG/gpgconf and private pinentry. Linux/GnuPG 2.4.7 and 2.4.8 have been tested
 Two MacGPG2 2.5.21 PostgreSQL-archive attempts returned BLOCKED with the source
 unchanged. A public-fixture check identified an output-file compatibility
 failure: GnuPG tried creating /dev/null.part. The updated stdout/status-pipe
-routing passes 21 local Linux checks; actual updated Mac verification and
-successful real key access remain unverified. Required GnuPG
+routing passes 21 local Linux checks and 21 Mac checks (13.196 seconds,
+zero skips, source fc040c80b40106396b618217d190df9b14a72a64). Successful real
+key access remains unverified. Required GnuPG
 options are checked before a key prompt. Source provenance, the approved device
 and the digest from the existing independently verified receipt remain operator
 responsibilities. Do not upload an archive or key to GitHub or run real archives

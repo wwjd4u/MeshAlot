@@ -2,6 +2,17 @@
 
 Prepared: October 29, 2026 (America/Chicago).
 
+**November 5 continuation:** fixed source fc040c80b40106396b618217d190df9b14a72a64
+passed all 21 synthetic Mac checks in 13.196 seconds, zero skips. Reuse that
+evidence. The next approved step is the local discard-only key check for each
+of the three existing independently pinned archives. A sequential Mac batch
+stops at first failure and never retries or repeats a passed asset. Use the
+PostgreSQL RoboForm Safenote for the database archive, and the API-rollback
+Safenote for the other two. Actual vault-key/restore acceptance remains
+unverified; G17/1 remains BLOCKED. See [the Mac receipt and batch contract](m13-g17-archive-key-verifier.md).
+
+Historical November 4 checkpoint follows.
+
 **November 4 continuation:** public-fixture stderr identified GnuPG's attempted
 /dev/null.part creation as the output-handling failure. The verifier's stdout
 discard/separate-status-pipe fix passes 21 local synthetic checks. Updated Mac

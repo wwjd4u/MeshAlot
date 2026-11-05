@@ -3,9 +3,52 @@
 **Current local synthetic verification: PASS (21 focused tests).
 Earlier pinned MS-02 revision: PASS (13 tests, zero skips).
 Original Mac synthetic verification: FAIL (13 pass, 5 fail).
-Updated Mac verification: NOT TESTED.
+Updated Mac verification: PASS (21 tests, zero skips, 13.196 seconds).
 Two real Mac PostgreSQL key attempts: BLOCKED, source unchanged.
 G17/1: BLOCKED.**
+
+## November 5, 2026 — fixed verifier accepted on the Mac
+
+Operator-provided output identifies source
+**fc040c80b40106396b618217d190df9b14a72a64**, passes both pinned public source
+hashes, and reports **21 tests PASS, zero skips, in 13.196 seconds** with
+MAC_FIXED_VERIFIER_RESULT=PASS. It includes the complete interactive CLI,
+authenticated MDC/AEAD access, wrong-key/cache isolation, cancellation,
+tampering, timeout, status limit, source preservation, plaintext/status
+separation, nonzero-exit rejection and failed-launch descriptor cleanup.
+
+- Verifier SHA256: 4b05bd2ff0b1efa7a1a5c37b4a420affb334412824bd5aad60bdb97b871771df.
+- Test SHA256: 189d0e079d27ba92bac0453554befb11af260b178d2bc528c9d712ad824368c0.
+
+The earlier additional single-case result still referenced old source
+69a8918ac02a30b8b83a90edd72d5299cff8ea9a and repeated its /dev/null.part
+failure in 2.528 seconds. Preserve that historical receipt; it does not test
+or invalidate the corrected source's later successful Mac result.
+
+Mac compatibility is now verified for this tooling. No synthetic suite needs
+to run again without a material change or failed result. Real vault-key access
+and actual restores remain unverified. The two earlier real PostgreSQL attempts
+remain BLOCKED historical evidence with source unchanged; they are not passes.
+
+Next supported action: the already approved local, discard-only key-access
+checks against the three existing checksum-pinned archive copies. A reviewed
+Mac launcher selects each distinct asset once, in order: PostgreSQL, partial
+API/systemd/Caddy, then environment supplement. It uses the PostgreSQL Safenote
+first and the existing API-rollback Safenote for the latter two. Each invocation
+uses the proven fixed source and its own fresh private GnuPG home; shell failure
+stops the batch before another asset. There is no failed-attempt retry loop.
+The current clipboard is cleared on exit, with a warning if that cannot be
+confirmed. Original archives, checksum receipts and vault entries are retained.
+
+The launcher uses the existing independently verified sidecars as expected
+digest receipts, verifies their association with the selected archive, and
+checks the mounted volume/canonical containment before invoking the core.
+Shell/Python syntax review: PASS; actual three-asset batch: NOT EXECUTED.
+No plaintext output, production operation or rejected diagnostic is introduced.
+After first failure, preserve any earlier PASS and diagnose only what failed;
+do not restart the batch or repeat passed assets. After all three pass, require
+operator attestation of the specified RoboForm sources. G17/1 remains BLOCKED
+on the remaining actual recovery evidence; this is not a restore or deployment.
 
 ## November 4, 2026 — output-file failure identified and routing corrected
 
