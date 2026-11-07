@@ -1,5 +1,14 @@
 # M13 G17 — independent vault recovery-key check
 
+**Latest operator result: PostgreSQL key access PASS**, authenticated pinned
+AES256 archive, source_unchanged=true, accepted fixed verifier, 600-second limit.
+Successful entry was pasted through a text page, not manually typed. Earlier
+real manual-entry failure attributions were corrected by the operator. Exact
+paste-failure cause remains unknown. Do not repeat PostgreSQL or passed tests.
+Next only API_ROLLBACK then ENV_SUPPLEMENT with the existing API rollback vault
+value; both remain NOT TESTED. Restore NOT_TESTED; gate NOT_ASSESSED; G17/1 BLOCKED.
+See [the cumulative receipt and corrections](m13-g17-private-original-vault-comparison-2026-11-07.md).
+
 **Latest real PostgreSQL result:** requested manual-entry attempt again returned
 GNUPG_REPORTED_BAD_PASSPHRASE, source_unchanged=true. Public typed-entry PASS,
 original/vault MATCH and ciphertext SAME stand. Pause further real retries.

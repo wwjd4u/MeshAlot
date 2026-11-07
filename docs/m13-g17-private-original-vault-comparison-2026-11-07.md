@@ -369,3 +369,52 @@ reading keys into cloud tools, decrypting again or bypassing existing holds.
 Asked only where that source is available. No new test/tool was built or run;
 no accepted suites repeated. G17/1 BLOCKED; API_ROLLBACK/ENV_SUPPLEMENT NOT TESTED;
 production, key files, archives and vault entries not changed by this review.
+
+## Corrections, timeout adjustment, and actual PostgreSQL key-access PASS
+
+The operator clarified the earlier purported real typed attempt was actually
+pasted. Supersede any attribution of that real failure to manual typing; real
+manual-entry acceptance was NOT TESTED. A later manual-entry attempt reportedly
+timed out before completion; no receipt was supplied for that timeout and no
+key-validity conclusion follows. The operator then attempted the standalone
+option `--timeout 600`, received command-not-found, and was given the full command.
+The existing supported core deadline was increased to 600 seconds, without
+source changes, relaxed authentication or a repeated synthetic suite.
+
+Operator supplied the full 600-second launch and receipt:
+status=PASS_KEY_ACCESS, reason=PINNED_AES256_ARCHIVE_AUTHENTICATED,
+source_unchanged=true, scope=LOCAL_ARCHIVE_KEY_ACCESS_ONLY,
+vault_source=OPERATOR_ATTESTATION_REQUIRED, restore_acceptance=NOT_TESTED,
+gate_acceptance=NOT_ASSESSED. Source fc040c80b40106396b618217d190df9b14a72a64,
+script SHA256 4b05bd2ff0b1efa7a1a5c37b4a420affb334412824bd5aad60bdb97b871771df,
+and ciphertext digest f60283f0a5563a70c363cdf863c52ecce9eec410d6112411844d948e4f3a699e
+were pinned in the displayed launch command. PostgreSQL key access is now PASS
+by operator-provided evidence. This supersedes the earlier BLOCKED status for
+current key access; historical failures remain preserved.
+
+The operator explicitly reported copying to a text page and then pasting into
+the passphrase prompt. This is NOT a real manual-typing PASS. No exact reason
+for differences between earlier and successful pastes is established. The
+original/vault MATCH and associated ciphertext SAME evidence stands. The receipt
+still requires human vault-origin attestation; intermediary text-page handling
+was not audited, and no claim about storage/sync/history cleanup is made.
+User was advised to keep it private and close without saving if temporary and
+unsaved. No real passphrase or archive contents entered this repository/chat.
+
+Next: only API_ROLLBACK then ENV_SUPPLEMENT, using their shared existing API
+rollback vault entry, never the PostgreSQL value. [One-asset wrapper and contract](../tools/recovery/REMAINING_ARCHIVE_KEYS.md)
+reuse the accepted verifier, accepted original sidecars, existing mounted volume
+and 600-second limit. No PostgreSQL selector, automatic retry or cross-asset
+loop exists. Each result is returned separately, stop on failure. New focused
+wrapper tests verify both asset/receipt selections, receipt formats and wrong
+names, malformed/multiline receipts, unsafe modes, mutation, no retry and
+PostgreSQL exclusion. No passed original/public/GPG suite was repeated.
+Actual API_ROLLBACK and ENV_SUPPLEMENT key checks remain NOT TESTED. PostgreSQL
+PASS is key access only, not restore/gate acceptance. G17/1 remains BLOCKED.
+
+Remaining-wrapper local result: eight focused tests PASS, zero skips, 0.006
+seconds. Manual source review confirmed one selected core invocation, fixed
+whitelisted asset names, immutable verifier hash check, no key input handling,
+no network in the helper, and unchanged existing receipt validation before/after
+crypto. Only public helper/source retrieval uses network in the delivered
+launcher. No real API/environment archive accessed during preparation.

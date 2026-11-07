@@ -1,5 +1,14 @@
 # MeshAlot current milestone status
 
+**Latest operator result: PostgreSQL key access PASS**, authenticated pinned
+AES256 archive, source_unchanged=true, accepted fixed verifier, 600-second limit.
+Successful entry was pasted through a text page, not manually typed. Earlier
+real manual-entry failure attributions were corrected by the operator. Exact
+paste-failure cause remains unknown. Do not repeat PostgreSQL or passed tests.
+Next only API_ROLLBACK then ENV_SUPPLEMENT with the existing API rollback vault
+value; both remain NOT TESTED. Restore NOT_TESTED; gate NOT_ASSESSED; G17/1 BLOCKED.
+See [the cumulative receipt and corrections](m13-g17-private-original-vault-comparison-2026-11-07.md).
+
 This file is the concise current-status pointer. The Google Drive **AI Mesh POC Build, Test, and Release Guide** remains the source of truth for milestone requirements and release gates.
 
 - Milestone 0 — **PASSED**
