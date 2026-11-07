@@ -1,5 +1,12 @@
 # M13 G17 — archive key-access tooling evidence
 
+**Vault-origin clarification:** operator answered that one or both successful
+values came from another source. All three cryptographic key-access receipts
+remain PASS, but retrieval from the intended RoboForm entries is UNVERIFIED;
+do not close the independent vault-recovery check. Which values/source types
+were used is pending nonsecret clarification. No automatic retests or vault edits.
+G17/1 BLOCKED. See [the attestation record](m13-g17-private-original-vault-comparison-2026-11-07.md).
+
 **Current archive key access: ALL THREE PASS** — PostgreSQL, API_ROLLBACK and
 ENV_SUPPLEMENT each authenticated their pinned AES256 ciphertext with
 source_unchanged=true. Do not repeat these checks. Explicit human vault-source

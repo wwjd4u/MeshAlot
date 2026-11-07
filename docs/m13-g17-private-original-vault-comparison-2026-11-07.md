@@ -481,3 +481,25 @@ permission change, or retry of that operation is inferred from key-access PASS.
 This is documentation-only receipt reconciliation; no tests were rerun. Next
 technical scope is real recovery dependencies, starting with the existing PG
 metadata/access hold, not another key test or a production deployment.
+
+## Vault-origin attestation not obtained
+
+In response to the explicit question whether both successful values came from
+their respective existing RoboForm Safenotes without saved-value edits, the
+operator selected: “No—one or both came from another source.” Do not claim
+independent retrieval from the intended vault entries or close the vault-recovery
+procedure. The three authenticated key-access receipts remain PASS; ciphertext
+was unchanged in each. A different reported origin does not invalidate the
+cryptographic receipts, and does not identify an incorrect saved vault value.
+
+Requested a nonsecret clarification: which value(s) and source type only,
+including whether a temporary text page was copied from the intended RoboForm
+entry. No values, character fragments, key hashes or private paths are requested.
+This distinguishes an intermediary from a genuinely different original source;
+no key edits, archive reruns or new handling are authorized by the answer alone.
+Do not infer an original-key-file read, RoboForm failure or note corruption.
+
+Vault-source recovery status: UNVERIFIED / ATTESTATION NOT OBTAINED, superseding
+any implication that only a routine affirmative confirmation remains. Archive
+key-access matrix: all three PASS. G17/1 remains BLOCKED; other recovery holds
+stand. Documentation-only update; no tests or actual archives accessed.
