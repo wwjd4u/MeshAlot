@@ -1,5 +1,12 @@
 # MeshAlot current milestone status
 
+**Next build checkpoint:** all three archive key-access receipts PASS; intended
+RoboForm origin remains UNVERIFIED. G17/1 is still BLOCKED at real recovery
+requirements and the preserved PostgreSQL diagnostic hold. A read-only support
+review found related case 19244760 escalated to a specialist, but no clearance
+or technical resolution. No merge, deployment or production access occurred.
+See [the reconciled next-build checkpoint](m13-g17-next-build-checkpoint-2026-11-07.md).
+
 **Vault-origin clarification:** operator answered that one or both successful
 values came from another source. All three cryptographic key-access receipts
 remain PASS, but retrieval from the intended RoboForm entries is UNVERIFIED;

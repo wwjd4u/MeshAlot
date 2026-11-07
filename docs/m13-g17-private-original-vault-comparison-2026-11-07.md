@@ -503,3 +503,18 @@ Vault-source recovery status: UNVERIFIED / ATTESTATION NOT OBTAINED, superseding
 any implication that only a routine affirmative confirmation remains. Archive
 key-access matrix: all three PASS. G17/1 remains BLOCKED; other recovery holds
 stand. Documentation-only update; no tests or actual archives accessed.
+
+## Continue-build instruction
+
+The operator clarified both successful values were copied into a text document
+and then pasted into GnuPG. This identifies intermediaries, but does not confirm
+the original intended RoboForm note source or absence of edits. The operator
+then requested continuing the build. Preserve UNVERIFIED vault origin without
+repeating the attestation question or treating it as a reason to rerun crypto.
+All three authenticated archive key-access receipts remain PASS.
+
+Read-only review resumed at real recovery dependencies and preserved the exact
+held diagnostic. [Next-build checkpoint](m13-g17-next-build-checkpoint-2026-11-07.md)
+records fresh refs, remaining requirements and new-to-handoff support escalation
+evidence. No executable workaround, production operation or repeated test was
+performed. G17/1 BLOCKED; G17/2–7 NOT STARTED; M13 NOT RELEASE-READY.
