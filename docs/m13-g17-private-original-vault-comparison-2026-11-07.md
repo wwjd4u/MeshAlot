@@ -72,3 +72,27 @@ same clarified value remains pending operator confirmation. This determines
 whether the failure has a concrete input correction to test. Pause additional
 provenance-check development while resolving that historical input question.
 No new archive attempt or production operation was performed.
+
+## Last Mac input clarified; targeted association check prepared
+
+The operator confirmed the last failed Mac attempt already excluded the label
+and used the same clarified value that produced MATCH. This resolves the pending
+historical-input question above by operator attestation; it does not independently
+measure the bytes received by pinentry. Label removal is not grounds for another
+unchanged decryption attempt. No variant guessing or source edits are justified.
+
+Prepared [original ciphertext/receipt association check](../tools/recovery/PG_ARCHIVE_ASSOCIATION.md)
+to obtain the original archive identity tied to the existing creation/restore
+record, for comparison with the Mac selection. This targeted check addresses the
+unresolved cross-device selection question after MATCH; it does not repeat the
+logical restore, GPG suite or archive decryption. Resources are Python standard
+library and temporary public synthetic ciphertext/receipts. Stop after one
+read-only original association result; Mac comparison follows only on PASS.
+
+Nine focused synthetic tests PASS, zero skips, 0.041 seconds. Checks cover valid
+association; each wrong receipt field; wrong checksum digest/path; changed
+ciphertext; unsafe modes/links; malformed/duplicate JSON; timeout; concurrent
+receipt modification; and sanitized refused cloud CLI. Source review confirms
+no key-file reference/access, network, GPG or production operation. Actual
+original archive check NOT TESTED, Mac cross-comparison NOT TESTED. Existing
+MATCH stands; G17/1 BLOCKED; other two archive-key checks NOT TESTED.
