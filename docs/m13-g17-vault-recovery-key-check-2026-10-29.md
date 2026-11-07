@@ -1,5 +1,13 @@
 # M13 G17 — independent vault recovery-key check
 
+**November 7 update:** operator-local original PostgreSQL key versus vault entry
+comparison returned **MATCH**, using pinned source and hash. Original file checks
+and unchanged-source checks passed under the helper contract. This supersedes
+historical statements below that original availability/equality are unverified.
+Archive key access remains BLOCKED; API/environment checks NOT TESTED; G17/1
+BLOCKED. See [the comparison receipt and limits](m13-g17-private-original-vault-comparison-2026-11-07.md).
+Do not repeat the comparison or unchanged archive batch.
+
 Prepared: October 29, 2026 (America/Chicago).
 
 **Latest November 5 execution:** POSTGRESQL returned BLOCKED /

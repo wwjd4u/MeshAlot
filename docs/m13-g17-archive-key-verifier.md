@@ -1,5 +1,13 @@
 # M13 G17 — archive key-access tooling evidence
 
+**November 7 update:** operator-local original PostgreSQL key versus vault entry
+comparison returned **MATCH**, using pinned source and hash. Original file checks
+and unchanged-source checks passed under the helper contract. This supersedes
+historical statements below that original availability/equality are unverified.
+Archive key access remains BLOCKED; API/environment checks NOT TESTED; G17/1
+BLOCKED. See [the comparison receipt and limits](m13-g17-private-original-vault-comparison-2026-11-07.md).
+Do not repeat the comparison or unchanged archive batch.
+
 **Current local synthetic verification: PASS (21 focused tests).
 Earlier pinned MS-02 revision: PASS (13 tests, zero skips).
 Original Mac synthetic verification: FAIL (13 pass, 5 fail).

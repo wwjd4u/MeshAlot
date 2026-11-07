@@ -36,3 +36,26 @@ key access remains BLOCKED from the prior bad-passphrase receipts; ciphertext
 was unchanged in those receipts. Other two archive key checks remain NOT TESTED.
 No original, vault note, archive, production service or held diagnostic changed.
 MATCH would establish comparison only, not decryption/recovery/gate closure.
+
+## Operator execution receipt — November 7
+
+Operator supplied the private MS-02 terminal result: **MATCH**, using the
+published source 2fdb4b7567412921dc5417240b6e733fe4997efa and its SHA256 pin
+14cf22961c05c816ff25a9326e408a79bfd9bdafd2489d1e7f26d73e4d123a8b.
+The displayed launch command includes successful hash verification before the
+helper. This is operator-provided evidence, not remote execution by the agent.
+
+Under the reviewed helper contract, MATCH establishes that the selected original
+file passed identity/ownership/type/mode checks, its first-line record matched
+the entered value, and its bytes/fingerprinted metadata remained unchanged.
+Vault origin remains the operator's attestation. One optional final LF is record
+framing; no other trimming or normalization occurred. No secret was supplied to
+chat. Current original availability and this comparison are now PASS.
+
+This does not prove the same bytes reached the earlier Mac GnuPG prompt or
+establish authenticated archive decryption. The prior bad-passphrase receipts
+stand, PostgreSQL archive key access remains BLOCKED, other two key checks remain
+NOT TESTED, and G17/1 remains BLOCKED. Do not repeat the comparison or edit either
+source. Next review the existing archive/receipt association and Mac key-entry
+path before proposing a targeted action; no unchanged batch retry, secret
+transfer, production access or held diagnostic is authorized by MATCH.
