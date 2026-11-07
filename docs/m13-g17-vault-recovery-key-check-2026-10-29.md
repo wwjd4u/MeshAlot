@@ -1,5 +1,11 @@
 # M13 G17 — independent vault recovery-key check
 
+**Latest public Mac result:** manual typing PASS_KEY_ACCESS with unchanged
+synthetic ciphertext; operator explicitly confirmed typing. The earlier paste
+attempt failed. One targeted PostgreSQL-only check using manual entry is now
+justified by this new evidence; no clipboard paste, variant guesses, batch
+rerun or gate closure. Actual typed real-key check NOT TESTED. See [the cumulative receipt](m13-g17-private-original-vault-comparison-2026-11-07.md).
+
 **Newest Mac diagnostic:** known public synthetic fixture reached the manual
 paste workflow and returned GNUPG_REPORTED_BAD_PASSPHRASE with source unchanged,
 real_archives=NOT_USED. Real backup/vault inputs were absent. Next is one manually

@@ -300,3 +300,38 @@ No implementation change was needed for the manual-entry diagnostic, so no new
 local test suite was run. Actual public typed entry NOT TESTED; original/vault
 MATCH and ciphertext SAME stand. Real PostgreSQL key access BLOCKED; other two
 archive key checks NOT TESTED; G17/1 BLOCKED. No production access/deployment.
+
+## Public typed-entry PASS; one targeted real typed-entry check justified
+
+Operator supplied the accepted fixed-verifier public receipt:
+status=PASS_KEY_ACCESS, reason=PINNED_AES256_ARCHIVE_AUTHENTICATED,
+source_unchanged=true, scope=PUBLIC_SYNTHETIC_PASTE_ONLY,
+real_archives=NOT_USED. Source remained fa5e62efe5950b152d09b031289d9da567dc7351
+with the previously pinned wrapper/verifier hashes. The operator explicitly
+confirmed manual typing of the documented public value for this successful run.
+Public typed-entry acceptance is PASS. Prompt window versus terminal presentation
+was not supplied; it is not needed to reuse the successful manual entry method.
+
+The earlier public paste attempt failed and a subsequent manually typed public
+attempt passed. These distinct generated fixtures use the same known public
+value and wrapper path; this supports a targeted entry-method investigation,
+not proof of the exact clipboard failure or byte-level historical input. Do not
+repeat either passed public checks or the original/vault/ciphertext comparisons.
+
+Next justified action: one PostgreSQL-only invocation of unchanged accepted
+verifier fc040c80b40106396b618217d190df9b14a72a64 with the existing source-hash
+pin and original-associated/Mac-matched ciphertext digest. Manually type the
+exact saved PostgreSQL value at GnuPG's private prompt, without clipboard paste,
+variants, normalization or changes to originals. The operator's clarification
+that “key” is a label remains applicable. No private value is sought in chat.
+Reuse successful terminal-local MacGPG2 PATH setup; check the existing mount
+and canonical folder as before. Clear current clipboard on launcher exit; do
+not claim clipboard-history/sync audit. Decrypted output is discarded locally.
+
+Required outcome: PASS_KEY_ACCESS and source_unchanged=true. On anything else,
+stop without another attempt. Do not advance to the API/environment archives
+within this invocation, restore anything, contact production or close G17/1.
+Vault source still requires operator attestation; even PASS is key access only.
+Accepted verifier code/tests are unchanged, so no local suite is rerun for this
+entry-method-only command. Actual PostgreSQL typed-entry check NOT TESTED;
+G17/1 BLOCKED; API/environment archive key checks NOT TESTED.
