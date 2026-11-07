@@ -1,5 +1,13 @@
 # M13 G17 — independent vault recovery-key check
 
+**Latest real PostgreSQL result:** requested manual-entry attempt again returned
+GNUPG_REPORTED_BAD_PASSPHRASE, source_unchanged=true. Public typed-entry PASS,
+original/vault MATCH and ciphertext SAME stand. Pause further real retries.
+Next locate/review the original encryption command: repository custody evidence
+checks key permissions but deliberately does not test its contents against the
+archive. That relationship remains unresolved; backup loss is not established.
+G17/1 BLOCKED. See [the cumulative receipt](m13-g17-private-original-vault-comparison-2026-11-07.md).
+
 **Latest public Mac result:** manual typing PASS_KEY_ACCESS with unchanged
 synthetic ciphertext; operator explicitly confirmed typing. The earlier paste
 attempt failed. One targeted PostgreSQL-only check using manual entry is now

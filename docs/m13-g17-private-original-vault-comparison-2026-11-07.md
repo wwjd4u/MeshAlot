@@ -335,3 +335,37 @@ Vault source still requires operator attestation; even PASS is key access only.
 Accepted verifier code/tests are unchanged, so no local suite is rerun for this
 entry-method-only command. Actual PostgreSQL typed-entry check NOT TESTED;
 G17/1 BLOCKED; API/environment archive key checks NOT TESTED.
+
+## Real PostgreSQL manually typed attempt BLOCKED
+
+Operator supplied the requested typed-entry command's receipt:
+status=BLOCKED, reason=GNUPG_REPORTED_BAD_PASSPHRASE, source_unchanged=true,
+scope=LOCAL_ARCHIVE_KEY_ACCESS_ONLY, vault_source=OPERATOR_ATTESTATION_REQUIRED,
+restore_acceptance=NOT_TESTED, gate_acceptance=NOT_ASSESSED. The displayed command
+pins accepted verifier source/hash, the associated original ciphertext digest,
+MacGPG2 PATH, existing mount/canonical folder and a 120-second limit.
+This records the requested manual-entry attempt by operator output; no separate
+byte-level measurement or new vault-source attestation is inferred.
+
+Real archive typed-entry result is BLOCKED, superseding NOT TESTED above.
+The successful known-public typed-entry test stands. Paste handling alone cannot
+account for the real failure. Original/vault MATCH and current ciphertext SAME
+also stand within their contracts. No more real attempts or passphrase variants
+are justified by these results; preserve originals, vault entries and receipts.
+
+Read-only repository review of the backup-readiness record (including original
+commit 7de98be) and immutable custody workflow confirms: initial decryption/TOC
+and isolated logical restore are historical operator-reported PASS; later
+workflow validates checksum/receipt and key permissions only, explicitly never
+reads the key. The reviewed repository records do not contain the actual original
+PostgreSQL encryption/key-generation command. Current file naming/custody and
+vault equality are not a fresh cryptographic test that this preserved original
+key file decrypts these archive bytes. That relationship remains unresolved.
+This is a documented evidence limit, not proof of a wrong key or lost backup.
+
+Next locate the original creation command/script in prior chat/archive or private
+MS-02 records and review its input method, without sharing secrets/raw history,
+reading keys into cloud tools, decrypting again or bypassing existing holds.
+Asked only where that source is available. No new test/tool was built or run;
+no accepted suites repeated. G17/1 BLOCKED; API_ROLLBACK/ENV_SUPPLEMENT NOT TESTED;
+production, key files, archives and vault entries not changed by this review.
