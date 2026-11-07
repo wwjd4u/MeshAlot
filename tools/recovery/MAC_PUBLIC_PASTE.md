@@ -43,3 +43,14 @@ adds fixed `stage` and `failure_kind` fields on exceptions, without raw errors
 or private paths. A failure before PUBLIC_INTERACTIVE_VERIFIER is not a paste
 result. Reuse of the wrapper check is justified by that concrete setup failure;
 no accepted core tests or actual backup attempts need repeating.
+
+The diagnostic Mac run stopped at PUBLIC_FIXTURE_ENCRYPTION. Local public-only
+reproduction with a long temporary home failed at the same stage and emitted
+agent-related diagnostics. The Mac root cause is not confirmed by that receipt.
+The fixture generator now uses a separate short, owner-only random /tmp home,
+cleans its agent before deleting it, and never accesses the existing keyring.
+The accepted verifier and its own private-home handling are unchanged. Long
+fixture-directory regression and public diagnostic-redaction tests were added.
+On generation failure, a temporary public-only diagnostic file is read up to
+8 KiB and removed; only fixed diagnostic enums are reported, never raw stderr
+or paths. A new public-only attempt is warranted by the specific setup failure.

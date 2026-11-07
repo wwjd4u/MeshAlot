@@ -15,7 +15,9 @@ PUBLIC_DATA = b'Public synthetic clipboard and pinentry fixture. No production d
 VERIFIER_SHA = '4b05bd2ff0b1efa7a1a5c37b4a420affb334412824bd5aad60bdb97b871771df'
 
 class Stop(Exception):
-    pass
+    def __init__(self, detail='LOCAL_CHECK_FAILED'):
+        self.detail = detail
+        super().__init__()
 
 def require(ok):
     if not ok:
@@ -30,23 +32,35 @@ def load_verifier(path):
     return module
 
 def generate(folder, gpg, gpgconf, stage=lambda value: None):
+    # Agent sockets have platform-specific Unix path limits. Keep only the new
+    # public fixture generator's private home short, with no existing keyring.
+    stage("PUBLIC_GENERATION_HOME")
+    with tempfile.TemporaryDirectory(prefix='mpg-', dir='/tmp') as short_home:
+        return _generate(folder, Path(short_home), gpg, gpgconf, stage)
+
+def _generate(folder, home, gpg, gpgconf, stage):
     stage("PUBLIC_FIXTURE_FILES")
-    home = folder / 'generation-home'
-    home.mkdir(mode=0o700)
     plain = folder / 'public.txt'
     plain.write_bytes(PUBLIC_DATA)
     plain.chmod(0o600)
     archive = folder / 'public.gpg'
     try:
         stage("PUBLIC_FIXTURE_ENCRYPTION")
-        result = subprocess.run(
-            [gpg, '--no-options', '--homedir', str(home), '--batch', '--yes',
-             '--pinentry-mode', 'loopback', '--passphrase-fd', '0',
-             '--cipher-algo', 'AES256', '--symmetric', '--output', str(archive), str(plain)],
-            input=PUBLIC_VALUE + b'\n', stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL, timeout=30)
-        if result.returncode != 0:
-            raise Stop('PUBLIC_FIXTURE_ENCRYPTION_FAILED')
+        with tempfile.TemporaryFile() as diagnostics:
+            result = subprocess.run(
+                [gpg, '--no-options', '--homedir', str(home), '--batch', '--yes',
+                 '--pinentry-mode', 'loopback', '--passphrase-fd', '0',
+                 '--cipher-algo', 'AES256', '--symmetric', '--output', str(archive), str(plain)],
+                input=PUBLIC_VALUE + b'\n', stdout=subprocess.DEVNULL,
+                stderr=diagnostics, timeout=30)
+            if result.returncode != 0:
+                diagnostics.seek(0)
+                message = diagnostics.read(8192).lower()
+                # Only fixed classifications leave this public-only setup.
+                detail = ('PUBLIC_AGENT_OR_SOCKET_ERROR' if b'agent' in message or b'socket' in message else
+                          'PUBLIC_LOOPBACK_OPTION_ERROR' if b'loopback' in message or b'invalid option' in message else
+                          'PUBLIC_FIXTURE_ENCRYPTION_FAILED')
+                raise Stop(detail)
         stage("PUBLIC_FIXTURE_HASH")
         archive.chmod(0o600)
         digest = hashlib.sha256(archive.read_bytes()).hexdigest()
@@ -96,6 +110,7 @@ def main():
         report = {'status': 'BLOCKED', 'reason': 'PUBLIC_PASTE_SETUP_OR_CLEANUP_STOP',
                   'scope': 'PUBLIC_SYNTHETIC_PASTE_ONLY', 'real_archives': 'NOT_USED',
                   'stage': state['stage'],
+                  'diagnostic': error.detail if isinstance(error, Stop) else 'LOCAL_OPERATION_FAILED',
                   'failure_kind': ('TIMEOUT' if isinstance(error, subprocess.TimeoutExpired) else
                                    'OS_ERROR' if isinstance(error, OSError) else
                                    'CHECK_OR_LOCAL_ERROR')}

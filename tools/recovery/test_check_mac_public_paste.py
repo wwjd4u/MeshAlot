@@ -38,6 +38,25 @@ class PublicPasteTests(unittest.TestCase):
                 done = subprocess.run([conf, '--homedir', str(home), '--kill', 'all'],
                                       capture_output=True, timeout=5)
                 self.assertEqual(done.returncode, 0)
+    def test_long_fixture_folder_uses_short_private_agent_home(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp) / ('public-synthetic-long-directory-' * 4)
+            folder.mkdir(mode=0o700)
+            archive, digest = c.generate(folder, shutil.which('gpg'), shutil.which('gpgconf'))
+            self.assertTrue(archive.is_file())
+            self.assertEqual(len(digest), 64)
+    def test_agent_error_is_redacted(self):
+        with tempfile.TemporaryDirectory() as temp:
+            def fake_run(command, **kwargs):
+                if '--symmetric' in command:
+                    kwargs['stderr'].write(b'agent failure at /PRIVATE/PATH public fixture')
+                    return subprocess.CompletedProcess([], 2)
+                return subprocess.CompletedProcess([], 0)
+            with patch.object(c.subprocess, 'run', side_effect=fake_run):
+                with self.assertRaises(c.Stop) as caught:
+                    c.generate(Path(temp), 'gpg', 'gpgconf')
+                self.assertEqual(caught.exception.detail, 'PUBLIC_AGENT_OR_SOCKET_ERROR')
+                self.assertNotIn('PRIVATE', str(caught.exception))
     def test_generation_failure_cleans_agent(self):
         with tempfile.TemporaryDirectory() as temp:
             failed = subprocess.CompletedProcess([], 1)

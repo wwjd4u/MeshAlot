@@ -238,3 +238,32 @@ the same single public-only workflow with new diagnostics, justified by this
 specific setup failure. Stop after one receipt. Actual paste path NOT TESTED;
 real PostgreSQL key access BLOCKED, ciphertext unchanged in its last receipt;
 API_ROLLBACK/ENV_SUPPLEMENT NOT TESTED; G17/1 BLOCKED.
+
+## Public fixture encryption failure isolated; short generator home fix
+
+Operator receipt from a89f629833a056a80e55d8dad9fa6012fc307e1a:
+status=BLOCKED, stage=PUBLIC_FIXTURE_ENCRYPTION,
+failure_kind=CHECK_OR_LOCAL_ERROR, reason=PUBLIC_PASTE_SETUP_OR_CLEANUP_STOP,
+scope=PUBLIC_SYNTHETIC_PASTE_ONLY, real_archives=NOT_USED. No paste prompt was
+reached. This supersedes the earlier unknown setup stage, not real key evidence.
+
+A targeted local public-only long-home reproduction failed in the same
+PUBLIC_FIXTURE_ENCRYPTION stage. A separate public GnuPG probe showed an
+agent-related diagnostic; no literal socket-length message was detected.
+This supports a compatibility hypothesis, not a confirmed Mac root cause.
+
+Changed only the public fixture generator to use a short random owner-only
+/tmp GnuPG home, with agent cleanup before context removal. The fixture folder
+can remain on the normal temporary filesystem. Existing user keyrings and
+accepted core-verifier source/requirements are untouched. Failure diagnostics
+are captured to a temporary public-only file, read with an 8-KiB bound and mapped
+to fixed enums. No raw diagnostics, private paths or real secrets leave it.
+
+Seven focused tests PASS, zero skips, 2.737 seconds. New checks cover successful
+actual public fixture generation from a long working path and fixed agent-error
+classification/redaction. Prior focused wrapper checks were rerun for this
+material generator change; accepted 21-test verifier suite was not repeated.
+Next: one corrected public-only Mac prompt/paste check, then stop. Mac result
+NOT TESTED; actual clipboard-to-pinentry acceptance NOT TESTED. Real PostgreSQL
+key-access remains BLOCKED with ciphertext unchanged in its last receipt;
+other archive key checks NOT TESTED; G17/1 BLOCKED. No production activity.
