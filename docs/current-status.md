@@ -1,5 +1,12 @@
 # MeshAlot current milestone status
 
+**Autonomous runner work completed:** the five new recovery-helper suites passed
+43 tests on trusted MS-02 (run 42374733813); source pins and cleanup PASS.
+The one-time job was disabled and follow-up 42374789313 SKIPPED. No real keys,
+archives, production connection, held diagnostic, merge or deployment involved.
+Reuse the result. [Runner receipt](m13-g17-new-wrapper-runner-validation-2026-11-07.md).
+G17/1 remains BLOCKED by the remaining real recovery requirements.
+
 **Next build checkpoint:** all three archive key-access receipts PASS; intended
 RoboForm origin remains UNVERIFIED. G17/1 is still BLOCKED at real recovery
 requirements and the preserved PostgreSQL diagnostic hold. A read-only support

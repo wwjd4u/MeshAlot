@@ -79,3 +79,15 @@ Documentation/source reconciliation only; no tests repeated for this update.
 Historical production remains PG16/schema 1–8 evidence, not a new live query.
 Original backups, key files/vault notes, Toshiba/Time Machine and both node
 identities are unchanged by this review.
+
+## Autonomous runner follow-through
+
+After the operator requested independent runner execution, the new helper suites
+were identified as an uncompleted target-runtime check and executed directly on
+MS-02. [43 tests PASS with source pins and cleanup](m13-g17-new-wrapper-runner-validation-2026-11-07.md);
+new one-time workflow disabled and follow-up SKIPPED. This supersedes any
+interpretation that the entire build/tooling effort was inaccessible under the
+production diagnostic hold. The hold restricts the exact operation and related
+bypasses, not unrelated approved synthetic development. No unnecessary operator
+copy/paste, new permission question or repeated accepted application test was
+needed. No new runtime defect found. Real recovery and release boundaries stand.
