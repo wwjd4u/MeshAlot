@@ -37,3 +37,9 @@ pending, not a claim from Linux tests.
 Focused new tests (not the accepted verifier suite):
 
     python3 -B -m unittest discover -s tools/recovery -p 'test_check_mac_public_paste.py' -v
+
+A Mac operator run stopped during setup before the prompt. The revised wrapper
+adds fixed `stage` and `failure_kind` fields on exceptions, without raw errors
+or private paths. A failure before PUBLIC_INTERACTIVE_VERIFIER is not a paste
+result. Reuse of the wrapper check is justified by that concrete setup failure;
+no accepted core tests or actual backup attempts need repeating.

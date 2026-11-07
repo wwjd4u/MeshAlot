@@ -212,3 +212,29 @@ new wrapper to block on temporary-context cleanup exceptions. Tests were rerun
 for that material error-path change. No existing accepted suite was repeated.
 Actual Mac public paste check NOT TESTED pending operator output. G17/1 BLOCKED;
 API_ROLLBACK/ENV_SUPPLEMENT key access NOT TESTED; production untouched.
+
+## Public Mac paste check stopped during setup
+
+Operator returned status=BLOCKED, reason=PUBLIC_PASTE_SETUP_OR_CLEANUP_STOP,
+scope=PUBLIC_SYNTHETIC_PASTE_ONLY, real_archives=NOT_USED from source
+eba7bdcb2f874e29faa8bf0ebf1b7bc34f09fac8 with the pinned wrapper/verifier.
+No public-prompt instruction appeared. This establishes a setup failure before
+interactive verifier invocation, not a failed paste or real key attempt.
+The wrapper's generic error gives no evidence for a specific root cause.
+
+Updated only the new public wrapper with fixed stage labels (platform, CI,
+terminal, tools, verifier loading, temporary directory, fixture files/encryption/
+hash, clipboard, interactive core and cleanup) and a fixed failure-kind enum.
+No raw exceptions, stderr, paths, values or hashes are added to receipts.
+Generation failures retain the encryption stage when cleanup succeeds; failed
+generation-agent cleanup blocks explicitly. No source-integrity, crypto,
+original-file or accepted core-verifier checks were relaxed. No path workaround,
+new installation, real retry or production operation was attempted.
+
+Five focused wrapper checks PASS after this diagnostic change, including
+assertions for encryption-failure stage retention and sanitized guard-stage
+output; the accepted 21-test suite was not repeated. The next operator run is
+the same single public-only workflow with new diagnostics, justified by this
+specific setup failure. Stop after one receipt. Actual paste path NOT TESTED;
+real PostgreSQL key access BLOCKED, ciphertext unchanged in its last receipt;
+API_ROLLBACK/ENV_SUPPLEMENT NOT TESTED; G17/1 BLOCKED.

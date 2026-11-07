@@ -1,6 +1,7 @@
 """New fixture construction and pin validation only; not the accepted GPG suite."""
 from pathlib import Path
 import shutil
+import json
 import subprocess
 import sys
 import tempfile
@@ -42,12 +43,17 @@ class PublicPasteTests(unittest.TestCase):
             failed = subprocess.CompletedProcess([], 1)
             passed = subprocess.CompletedProcess([], 0)
             with patch.object(c.subprocess, 'run', side_effect=[failed, passed]) as run:
-                with self.assertRaises(c.Stop): c.generate(Path(temp), 'gpg', 'gpgconf')
+                stages = []
+                with self.assertRaises(c.Stop): c.generate(Path(temp), 'gpg', 'gpgconf', stages.append)
+                self.assertEqual(stages[-1], 'PUBLIC_FIXTURE_ENCRYPTION')
                 self.assertIn('--kill', run.call_args_list[-1].args[0])
     def test_refused_cloud_cli(self):
         result = subprocess.run([sys.executable, '-B', c.__file__], capture_output=True, timeout=3)
         self.assertEqual(result.returncode, 1)
         self.assertIn(b'PUBLIC_PASTE_SETUP_OR_CLEANUP_STOP', result.stdout)
         self.assertEqual(result.stderr, b'')
+        report = json.loads(result.stdout)
+        self.assertEqual(report['stage'], 'PLATFORM_GUARD')
+        self.assertEqual(report['failure_kind'], 'CHECK_OR_LOCAL_ERROR')
 
 if __name__ == '__main__': unittest.main()
