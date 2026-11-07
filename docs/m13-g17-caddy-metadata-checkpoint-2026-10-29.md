@@ -1,5 +1,11 @@
 # M13 G17/1 — consolidated Caddy metadata checkpoint
 
+**Later key-access update:** all three archive key checks now PASS with unchanged
+ciphertext by operator receipts; explicit human vault-source attestation is
+pending. Historical NOT TESTED key-access entries below are superseded by
+[the cumulative receipts](m13-g17-private-original-vault-comparison-2026-11-07.md).
+Caddy/TLS recovery limits and the production diagnostic hold remain unchanged.
+
 Recorded: October 29, 2026 (America/Chicago). Observations were supplied by the
 operator in this conversation on October 27–28. These are operator-reported
 console results, not a new automated inspection, signed receipt or CI run.

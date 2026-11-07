@@ -442,3 +442,42 @@ change or local test repetition is needed for the already-tested asset selector.
 Actual ENV_SUPPLEMENT key check NOT TESTED. G17/1 remains BLOCKED by remaining
 key/recovery proof; restore acceptance NOT TESTED, gate acceptance NOT_ASSESSED.
 No production, key-source or archive modification occurred in recording this.
+
+## Environment supplement PASS — all three key-access receipts accepted
+
+Operator supplied ENV_SUPPLEMENT receipt from pinned wrapper source
+9c00e10f21e222597618d36314b4b4292b4eae9d and unchanged accepted verifier:
+asset=ENV_SUPPLEMENT, status=PASS_KEY_ACCESS,
+reason=PINNED_AES256_ARCHIVE_AUTHENTICATED, source_unchanged=true,
+scope=LOCAL_ARCHIVE_KEY_ACCESS_ONLY, vault_source=OPERATOR_ATTESTATION_REQUIRED,
+restore_acceptance=NOT_TESTED, gate_acceptance=NOT_ASSESSED.
+This supersedes ENV_SUPPLEMENT NOT TESTED above. Its own existing associated
+sidecar was used as expected digest provenance. Source stayed unchanged and
+no extraction or restore occurred under this discard-only verifier.
+
+Current archive key-access matrix (operator-provided receipts):
+- PostgreSQL: PASS; source unchanged.
+- API_ROLLBACK: PASS; source unchanged.
+- ENV_SUPPLEMENT: PASS; source unchanged.
+
+All three key-access checks are complete. Do not repeat them or any accepted
+synthetic/recovery test. The tool cannot verify human vault retrieval; requested
+explicit operator attestation that both successful values came from the two
+existing respective RoboForm Safenotes without saved-value edits. Vault-source
+attestation remains pending until that answer; no secret contents are requested.
+
+Read-only review of the real PG16 globals runbook, TLS recovery strategy and
+October 29 Caddy metadata checkpoint confirms remaining G17/1 blockers:
+actual PG16 global roles/memberships/authentication/ownership/ACL recovery and
+protected globals material; target-specific TLS reissuance prerequisites and
+protected fallback state; full archived API/systemd/Caddy rehearsal with correct
+historical v8 service/database grants and separate approved real-artifact scope.
+Synthetic composition/ACL/globals PASS does not close these. Prior logical DB
+restore stands; do not repeat it. G17/2–7 NOT STARTED; M13 NOT RELEASE-READY.
+
+The rejected PostgreSQL service diagnostic/upload remains paused. No production
+route, SSH renewal, workflow dispatch, archive extraction, certificate export,
+permission change, or retry of that operation is inferred from key-access PASS.
+This is documentation-only receipt reconciliation; no tests were rerun. Next
+technical scope is real recovery dependencies, starting with the existing PG
+metadata/access hold, not another key test or a production deployment.

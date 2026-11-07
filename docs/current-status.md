@@ -1,5 +1,13 @@
 # MeshAlot current milestone status
 
+**Current archive key access: ALL THREE PASS** — PostgreSQL, API_ROLLBACK and
+ENV_SUPPLEMENT each authenticated their pinned AES256 ciphertext with
+source_unchanged=true. Do not repeat these checks. Explicit human vault-source
+attestation is pending; the receipts cannot prove retrieval from RoboForm.
+Restore NOT_TESTED; gate NOT_ASSESSED. G17/1 remains BLOCKED by real PG globals/
+ownership/ACL recovery, TLS recovery dependencies and archived service rehearsal.
+The rejected diagnostic hold remains. See [the final key-access receipts and remaining scope](m13-g17-private-original-vault-comparison-2026-11-07.md).
+
 **Latest key-access status:** PostgreSQL PASS; API_ROLLBACK PASS, each authenticated
 AES256 with source_unchanged=true. Only ENV_SUPPLEMENT remains NOT TESTED; use
 its existing sidecar and the same API rollback vault value. Do not repeat either

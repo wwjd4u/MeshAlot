@@ -1,4 +1,11 @@
 # MeshAlot M13 — Gate 17 fixed completion sequence
+
+**Later key-access checkpoint:** PostgreSQL, API rollback and environment
+supplement archive key checks all PASS with unchanged ciphertext. Explicit
+operator vault-source attestation is pending; archive restoration and gate
+acceptance are not established. Reuse these passes. G17/1 BLOCKED on real recovery
+dependencies; G17/2–7 NOT STARTED. Existing holds remain. See
+[the cumulative receipts](m13-g17-private-original-vault-comparison-2026-11-07.md).
 Date: 2026-10-13 (US Central)
 Status: **IN PROGRESS — NOT RELEASE-READY**
 
