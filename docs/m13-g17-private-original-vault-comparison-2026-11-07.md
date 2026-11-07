@@ -267,3 +267,36 @@ Next: one corrected public-only Mac prompt/paste check, then stop. Mac result
 NOT TESTED; actual clipboard-to-pinentry acceptance NOT TESTED. Real PostgreSQL
 key-access remains BLOCKED with ciphertext unchanged in its last receipt;
 other archive key checks NOT TESTED; G17/1 BLOCKED. No production activity.
+
+## Actual Mac public-paste workflow failed with known public fixture
+
+Operator output from pinned source fa5e62efe5950b152d09b031289d9da567dc7351
+and wrapper SHA256 cf79544ee7f523d90e6e8360f5e995a32f362278c9a3e5b337d9a8557a947a49
+shows the public-prompt instruction followed by status=BLOCKED,
+reason=GNUPG_REPORTED_BAD_PASSPHRASE, source_unchanged=true,
+scope=PUBLIC_SYNTHETIC_PASTE_ONLY, real_archives=NOT_USED.
+Public fixture generation now completed; short-home setup issue no longer
+blocks this run. It does not retrospectively prove the old Mac setup cause.
+
+Known public fixture generation, accepted verifier, and actual Mac clipboard/
+private-prompt workflow can produce the same bad-passphrase result without
+any real vault value or archive. This fails the public paste workflow but does
+not alone establish that clipboard handling is the cause or identify the bytes
+received by pinentry. It is not evidence that the original backup/key is lost.
+Real key/backup checks remain paused; all originals and prior evidence preserved.
+
+Next targeted check: reuse only this tiny public fixture workflow once, changing
+only human entry to manual typing of its documented known public ASCII value.
+Do not paste or enter a real credential. This tests a distinct input method
+against the specifically failed manual-paste workflow; accepted automated suites
+and real archive checks need no repetition. The wrapper's on-screen paste
+instruction is superseded for that single typed-entry diagnostic. Required
+outcome: PASS_KEY_ACCESS with source_unchanged=true, or a redacted failure and
+stop. A typed success would support narrowing to clipboard/paste selection;
+a typed failure would leave wider actual-prompt/fixture compatibility unresolved.
+It would not justify real retries or gate closure by itself.
+
+No implementation change was needed for the manual-entry diagnostic, so no new
+local test suite was run. Actual public typed entry NOT TESTED; original/vault
+MATCH and ciphertext SAME stand. Real PostgreSQL key access BLOCKED; other two
+archive key checks NOT TESTED; G17/1 BLOCKED. No production access/deployment.

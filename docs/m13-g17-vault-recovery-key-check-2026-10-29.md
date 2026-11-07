@@ -1,5 +1,11 @@
 # M13 G17 — independent vault recovery-key check
 
+**Newest Mac diagnostic:** known public synthetic fixture reached the manual
+paste workflow and returned GNUPG_REPORTED_BAD_PASSPHRASE with source unchanged,
+real_archives=NOT_USED. Real backup/vault inputs were absent. Next is one manually
+typed public-value comparison of entry methods; real retries remain paused.
+No root cause or gate closure is established. See [the cumulative receipt](m13-g17-private-original-vault-comparison-2026-11-07.md).
+
 **Latest targeted Mac retry:** after fixing terminal-local gpgconf PATH discovery,
 PostgreSQL again returned GNUPG_REPORTED_BAD_PASSPHRASE, source_unchanged=true.
 Original/vault MATCH and ciphertext SAME stand. Further real retries are paused;
