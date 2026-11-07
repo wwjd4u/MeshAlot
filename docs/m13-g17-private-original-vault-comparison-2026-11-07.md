@@ -180,3 +180,35 @@ NOT TESTED pending operator receipt. No archive/key/production access occurred
 in preparation. G17/1 remains BLOCKED; other two key checks NOT TESTED.
 The proposed additional public-fixture paste check is superseded by the user's
 explicit targeted real-check request; it was not built or run.
+
+## Targeted real Mac retry BLOCKED; tool discovery resolved
+
+The first launch returned GNUPG_TOOLS_UNAVAILABLE, source_unchanged=NOT_ASSESSED;
+no prompt opened and no key was tested. Operator metadata then established gpg
+on PATH, gpgconf absent from PATH, and both executables present in the existing
+MacGPG2/bin directory. A terminal-local PATH prefix yielded GNUPG_TOOLS=READY.
+No install, persistent shell configuration change or new permission was needed.
+
+The subsequent targeted PostgreSQL attempt returned operator-provided receipt:
+status=BLOCKED, reason=GNUPG_REPORTED_BAD_PASSPHRASE, source_unchanged=true,
+scope=LOCAL_ARCHIVE_KEY_ACCESS_ONLY, vault_source=OPERATOR_ATTESTATION_REQUIRED,
+restore_acceptance=NOT_TESTED, gate_acceptance=NOT_ASSESSED. The displayed command
+used accepted fixed source and independent script hash plus the associated
+ciphertext digest. This supersedes targeted retry NOT TESTED above. It is not a
+new missing-tool failure, proof of vault corruption or proof the backup is lost.
+No further unchanged real retry, variant guesses or secret transfer is justified.
+
+Prepared [one public synthetic clipboard/private-prompt check](../tools/recovery/MAC_PUBLIC_PASTE.md)
+to test the actual human paste interface omitted by automated pinentry fixtures.
+This is a newly targeted workflow check, not a rerun of the accepted 21-test
+suite. It uses no real archive/key or external volume. Required outcome: known
+public clipboard input authenticates the tiny known public fixture via actual
+Mac pinentry, with unchanged fixture and cleanup. Stop after one result.
+
+Five focused local tests PASS, zero skips, 1.389 seconds: pinned verifier loading,
+wrong-source refusal, actual public fixture roundtrip with a separate GnuPG home,
+generation-failure cleanup, and refused cloud CLI. A final review corrected the
+new wrapper to block on temporary-context cleanup exceptions. Tests were rerun
+for that material error-path change. No existing accepted suite was repeated.
+Actual Mac public paste check NOT TESTED pending operator output. G17/1 BLOCKED;
+API_ROLLBACK/ENV_SUPPLEMENT key access NOT TESTED; production untouched.

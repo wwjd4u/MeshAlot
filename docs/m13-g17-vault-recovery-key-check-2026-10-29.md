@@ -1,5 +1,11 @@
 # M13 G17 — independent vault recovery-key check
 
+**Latest targeted Mac retry:** after fixing terminal-local gpgconf PATH discovery,
+PostgreSQL again returned GNUPG_REPORTED_BAD_PASSPHRASE, source_unchanged=true.
+Original/vault MATCH and ciphertext SAME stand. Further real retries are paused;
+next is one public synthetic paste-to-actual-pinentry workflow check, without
+real keys/archives. G17/1 BLOCKED. See [the cumulative receipt](m13-g17-private-original-vault-comparison-2026-11-07.md).
+
 **Latest operator evidence:** original/vault MATCH, original archive/restore-receipt
 association PASS, and current Mac ciphertext SAME as that original. These are
 comparison/provenance results, not authenticated decryption. Last failed Mac
