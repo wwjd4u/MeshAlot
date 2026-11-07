@@ -96,3 +96,28 @@ receipt modification; and sanitized refused cloud CLI. Source review confirms
 no key-file reference/access, network, GPG or production operation. Actual
 original archive check NOT TESTED, Mac cross-comparison NOT TESTED. Existing
 MATCH stands; G17/1 BLOCKED; other two archive-key checks NOT TESTED.
+
+## Operator original archive association receipt and Mac next check
+
+Operator returned ARCHIVE_ASSOCIATION=PASS and
+CIPHERTEXT_SHA256=f60283f0a5563a70c363cdf863c52ecce9eec410d6112411844d948e4f3a699e.
+This supersedes the original archive NOT TESTED status above. Under the published
+helper contract, the original ciphertext matches its existing checksum/path and
+creation/restore receipt, with source identity/metadata checks passing. This is
+operator-provided evidence; no original archive or receipt entered cloud tools.
+Original/vault MATCH stands. Neither receipt establishes current decryption.
+
+Prepared a Mac-only check of the documented existing PostgreSQL external copy
+against this now-recorded original ciphertext digest. Required outcome: SAME
+for unchanged, safely selected ciphertext; otherwise MISMATCH or STOP. Resources:
+Python standard library and public synthetic files for development. Actual check
+uses only the existing encrypted APFS volume and PostgreSQL encrypted archive,
+without key input, decryption, other archives or production access. Stop after
+one result; do not retry the failed key-access batch.
+
+Seven focused local synthetic tests PASS, zero skips, 0.032 seconds: same and
+different ciphertext, unsafe modes/links, empty/FIFO input, timeout, concurrent
+change and sanitized refused Linux CLI. Source review confirms no GPG, secret
+file access, subprocess or network. Actual Mac check remains NOT TESTED. SAME
+would establish current-copy identity only, not retrospectively prove the earlier
+launcher selection. G17/1 BLOCKED; other archive key checks NOT TESTED.

@@ -42,3 +42,31 @@ acceptance. The check remains NOT TESTED on actual inputs until operator output.
 Focused synthetic verification:
 
     python3 -B -m unittest discover -s tools/recovery -p 'test_check_pg_archive_association.py' -v
+
+## Mac ciphertext comparison after original association PASS
+
+`compare_mac_pg_ciphertext.py` pins the operator-reported original ciphertext
+SHA256 f60283f0a5563a70c363cdf863c52ecce9eec410d6112411844d948e4f3a699e.
+Run its published, independently hash-checked source only on the existing Mac,
+with the previously verified encrypted APFS MeshAlot-Backup volume mounted and
+unlocked. It selects only the PostgreSQL archive in the documented existing
+external-copy folder. No file picker, key entry, decryption, sidecar rewrite,
+archive transfer or production connection occurs. No other archive is checked.
+
+It requires Darwin, a private terminal, an actual volume mount, canonical paths,
+owner-only folder/file modes, a regular single-link file, unchanged descriptors
+and named-file metadata, a size below 2 GiB and a 120-second hashing deadline
+(125-second overall alarm). It performs no writes; reading can update atime.
+Output is only MAC_POSTGRESQL_CIPHERTEXT=SAME, MISMATCH or STOP. SAME identifies
+current bytes as matching the operator-reported original receipt digest; it
+does not retrospectively prove which bytes the earlier Mac launcher selected
+or authenticate decryption, vault retrieval or gate acceptance. On MISMATCH or
+STOP, preserve all files and stop. No automatic retry or repair is permitted.
+
+This check does not independently reverify APFS encryption or physical disk
+identity; use the established operator volume evidence. Filesystem checks assume
+an owner-controlled device rather than a hostile writer or compromised OS.
+
+Focused synthetic verification:
+
+    python3 -B -m unittest discover -s tools/recovery -p 'test_compare_mac_pg_ciphertext.py' -v
