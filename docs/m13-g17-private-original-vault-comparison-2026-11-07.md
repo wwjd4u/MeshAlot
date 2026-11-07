@@ -150,3 +150,33 @@ No new tool/runtime test is warranted for this documentation-only update.
 G17/1 BLOCKED; PostgreSQL authenticated key access unresolved; API_ROLLBACK and
 ENV_SUPPLEMENT key checks NOT TESTED; no merge/main deployment or production
 access performed.
+
+## Operator clarification and explicit single PostgreSQL retry request
+
+The operator described the prior Mac input as copy/paste from RoboForm, resolving
+the preceding entry-method question. No different source or changed credential
+is established from that answer alone. The operator then explicitly requested
+re-doing the Mac test now that the intended copy is understood. This supports
+one deliberate PostgreSQL-only key-access attempt with fresh exact vault-value
+entry, not a claim that the prior failure's cause is known or a batch rerun.
+
+Prepared a private Mac launcher using unchanged accepted verifier source
+fc040c80b40106396b618217d190df9b14a72a64, independently pinned script SHA256
+4b05bd2ff0b1efa7a1a5c37b4a420affb334412824bd5aad60bdb97b871771df,
+and the original-associated, Mac-matched ciphertext digest recorded above.
+It checks Darwin, clipboard-tool availability, mounted/canonical volume/folder,
+then invokes the core exactly once for PostgreSQL. Existing core checks require
+pinned/unchanged ciphertext, authenticated AES256, successful GnuPG exit, fresh
+private-agent isolation and cleanup. Decrypted output goes to the null device.
+Current clipboard is cleared on launcher exit, with explicit warning if that
+fails; clipboard-history/sync clearing is not claimed. No other archive is run.
+
+Acceptance is PASS_KEY_ACCESS plus source_unchanged=true. Any other result stops
+without retry, key modification, variant guessing or relaxed checks. Vault origin
+remains operator attestation. Even PASS is not restore or gate acceptance.
+Bash wrapper and embedded Python syntax: PASS. The accepted 21-test verifier
+suite was not repeated because its code is unchanged. Actual targeted retry
+NOT TESTED pending operator receipt. No archive/key/production access occurred
+in preparation. G17/1 remains BLOCKED; other two key checks NOT TESTED.
+The proposed additional public-fixture paste check is superseded by the user's
+explicit targeted real-check request; it was not built or run.
