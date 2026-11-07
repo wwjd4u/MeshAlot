@@ -418,3 +418,27 @@ whitelisted asset names, immutable verifier hash check, no key input handling,
 no network in the helper, and unchanged existing receipt validation before/after
 crypto. Only public helper/source retrieval uses network in the delivered
 launcher. No real API/environment archive accessed during preparation.
+
+## API rollback key-access PASS; only environment supplement remains
+
+Operator supplied API_ROLLBACK receipt from wrapper source
+9c00e10f21e222597618d36314b4b4292b4eae9d with its independent hash and accepted
+fixed-verifier source/hash pinned in the displayed command:
+asset=API_ROLLBACK, status=PASS_KEY_ACCESS,
+reason=PINNED_AES256_ARCHIVE_AUTHENTICATED, source_unchanged=true,
+scope=LOCAL_ARCHIVE_KEY_ACCESS_ONLY, vault_source=OPERATOR_ATTESTATION_REQUIRED,
+restore_acceptance=NOT_TESTED, gate_acceptance=NOT_ASSESSED.
+API_ROLLBACK key access is PASS by operator-provided evidence, superseding
+NOT TESTED above. The wrapper checked the existing associated sidecar, not a
+newly computed expected digest. No archive was extracted or restored.
+The operator was instructed to use the existing API rollback RoboForm entry;
+vault origin remains operator attestation rather than machine verification.
+
+PostgreSQL PASS stands and neither passed archive is repeated. Next and only
+remaining key-access check is ENV_SUPPLEMENT with the same existing API rollback
+vault value, same pinned wrapper/verifier, its own existing sidecar, and the
+600-second deadline. Exactly one invocation, stop after its result. No code
+change or local test repetition is needed for the already-tested asset selector.
+Actual ENV_SUPPLEMENT key check NOT TESTED. G17/1 remains BLOCKED by remaining
+key/recovery proof; restore acceptance NOT TESTED, gate acceptance NOT_ASSESSED.
+No production, key-source or archive modification occurred in recording this.

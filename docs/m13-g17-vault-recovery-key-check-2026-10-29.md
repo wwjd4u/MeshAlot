@@ -1,5 +1,11 @@
 # M13 G17 — independent vault recovery-key check
 
+**Latest key-access status:** PostgreSQL PASS; API_ROLLBACK PASS, each authenticated
+AES256 with source_unchanged=true. Only ENV_SUPPLEMENT remains NOT TESTED; use
+its existing sidecar and the same API rollback vault value. Do not repeat either
+passed archive. Vault origin remains operator attestation. Restore NOT_TESTED;
+gate NOT_ASSESSED; G17/1 BLOCKED. See [the cumulative receipts](m13-g17-private-original-vault-comparison-2026-11-07.md).
+
 **Latest operator result: PostgreSQL key access PASS**, authenticated pinned
 AES256 archive, source_unchanged=true, accepted fixed verifier, 600-second limit.
 Successful entry was pasted through a text page, not manually typed. Earlier
