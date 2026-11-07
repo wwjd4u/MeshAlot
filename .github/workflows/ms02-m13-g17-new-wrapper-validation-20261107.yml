@@ -1,0 +1,72 @@
+name: MS-02 G17 New Recovery Wrapper Validation
+on:
+  push:
+    branches: [infra/ms02-runner-gateway]
+    paths: [.github/workflows/ms02-m13-g17-new-wrapper-validation-20261107.yml]
+permissions:
+  contents: read
+concurrency:
+  group: meshalot-ms02-new-public-wrapper-validation
+  cancel-in-progress: false
+jobs:
+  public-wrappers:
+    if: github.repository == 'wwjd4u/MeshAlot' && github.ref == 'refs/heads/infra/ms02-runner-gateway'
+    runs-on: [self-hosted, Linux, X64, meshalot, ms02]
+    timeout-minutes: 6
+    steps:
+      - name: Validate only new public synthetic recovery wrappers
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY'
+          import hashlib, os, platform, pwd, resource, shutil, subprocess, sys, tempfile, urllib.request
+          from pathlib import Path
+          require = lambda ok: None if ok else (_ for _ in ()).throw(RuntimeError("SAFE_STOP"))
+          require(os.environ.get("GITHUB_REPOSITORY") == "wwjd4u/MeshAlot")
+          require(os.environ.get("GITHUB_REF") == "refs/heads/infra/ms02-runner-gateway")
+          require(os.environ.get("RUNNER_NAME") == "meshalot-ms02")
+          require(platform.system() == "Linux" and platform.machine() == "x86_64")
+          require(platform.node().split(".")[0] == "wwjd4u-MS-02-Ultra")
+          require(pwd.getpwuid(os.getuid()).pw_name == "jason_guynes")
+          require(Path.home() == Path("/home/jason_guynes"))
+          require(all(shutil.which(t) for t in ("python3", "gpg", "gpgconf")))
+          print("SYNTHETIC_WRAPPER_RUNNER_IDENTITY=PASS", flush=True)
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  raise RuntimeError("REDIRECT_REFUSED")
+          opener = urllib.request.build_opener(NoRedirect)
+          SOURCE = '760d046c87566fa9fc9fdebec5ecbfade8338dd3'
+          PINS = {'compare_original_vault.py': '14cf22961c05c816ff25a9326e408a79bfd9bdafd2489d1e7f26d73e4d123a8b', 'test_compare_original_vault.py': 'df5e0d53e4f3f4fd2e155d2c1529afbddbb3cc147be31d8a343b40ba592a4caf', 'check_pg_archive_association.py': 'd22f63a7fd8911b2690082df951ffa9889384a8caab65aaf741f249b153775ad', 'test_check_pg_archive_association.py': '48d6ba6ff43b00c661a70313a30481ded18e59e39d2b29e156066e23ddb9b9f4', 'compare_mac_pg_ciphertext.py': '7cdb21aacca5a6656ce09d82bcadb14d154d5c90b47eec2aef411fe81f1a505d', 'test_compare_mac_pg_ciphertext.py': 'fbef508e8ef8cd3c2ae8568f50a2fa75578ae55d02048ba5baae05c4cbdb7796', 'check_mac_public_paste.py': 'cf79544ee7f523d90e6e8360f5e995a32f362278c9a3e5b337d9a8557a947a49', 'test_check_mac_public_paste.py': '3ece9eb3272230cb15d3408bd1b766b014a828aa019ae649eecfedbc718336a9', 'check_remaining_archive.py': 'b1a7db5a42ec7e906850b3b8a42e9895dfb4f4dc8e51ef0389bf2e6c2432289a', 'test_check_remaining_archive.py': 'df7ade334c829fb9df6674aead77d6bb62a7416e01e13dcd79534d7a61ad123b', 'verify_archive_key.py': '4b05bd2ff0b1efa7a1a5c37b4a420affb334412824bd5aad60bdb97b871771df'}
+          with tempfile.TemporaryDirectory(prefix="m13-public-wrapper-", dir=Path.home()) as temp:
+              folder = Path(temp)
+              os.chmod(folder, 0o700)
+              for name, expected in PINS.items():
+                  url = "https://raw.githubusercontent.com/wwjd4u/MeshAlot/" + SOURCE + "/tools/recovery/" + name
+                  with opener.open(url, timeout=20) as response:
+                      require(response.status == 200)
+                      data = response.read(262145)
+                  require(len(data) <= 262144 and hashlib.sha256(data).hexdigest() == expected)
+                  path = folder / name
+                  path.write_bytes(data)
+                  path.chmod(0o600)
+              print("SYNTHETIC_WRAPPER_SOURCE_PINS=PASS", flush=True)
+              def limits():
+                  cpus = sorted(os.sched_getaffinity(0))[:2]
+                  os.sched_setaffinity(0, cpus)
+                  resource.setrlimit(resource.RLIMIT_AS, (1024**3, 1024**3))
+                  resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+              patterns = ["test_compare_original_vault", "test_check_pg_archive_association",
+                          "test_compare_mac_pg_ciphertext", "test_check_mac_public_paste",
+                          "test_check_remaining_archive"]
+              result = subprocess.run([sys.executable, "-B", "-m", "unittest", *patterns, "-v"],
+                                      cwd=folder, preexec_fn=limits, timeout=180)
+              require(result.returncode == 0)
+          require(not folder.exists())
+          print("SYNTHETIC_WRAPPER_TESTS=PASS")
+          print("SYNTHETIC_TEMPORARY_WORKSPACE_CLEANUP=PASS")
+          print("REAL_ARCHIVES_AND_KEYS=NOT_USED")
+          print("PRODUCTION_CONNECTION=NONE")
+          print("APPLICATION_REBUILD=NOT_REPEATED")
+          print("GATE_ACCEPTANCE=NOT_ASSESSED")
+          PY
