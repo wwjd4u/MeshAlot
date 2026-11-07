@@ -1,5 +1,12 @@
 # M13 G17 — independent vault recovery-key check
 
+**Latest operator evidence:** original/vault MATCH, original archive/restore-receipt
+association PASS, and current Mac ciphertext SAME as that original. These are
+comparison/provenance results, not authenticated decryption. Last failed Mac
+entry already excluded the label “key”. G17/1 remains BLOCKED. Preserve passing
+checks; next clarify the Mac private-prompt entry path, without secret output
+or an unchanged batch retry. See [the cumulative receipt](m13-g17-private-original-vault-comparison-2026-11-07.md).
+
 **November 7 update:** operator-local original PostgreSQL key versus vault entry
 comparison returned **MATCH**, using pinned source and hash. Original file checks
 and unchanged-source checks passed under the helper contract. This supersedes

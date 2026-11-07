@@ -121,3 +121,32 @@ change and sanitized refused Linux CLI. Source review confirms no GPG, secret
 file access, subprocess or network. Actual Mac check remains NOT TESTED. SAME
 would establish current-copy identity only, not retrospectively prove the earlier
 launcher selection. G17/1 BLOCKED; other archive key checks NOT TESTED.
+
+## Operator Mac ciphertext result — SAME
+
+Operator supplied MAC_POSTGRESQL_CIPHERTEXT=SAME from the Mac terminal using
+published source 250e095e3bced10393f73edea1cb09c3e8eb906b and script hash
+7cdb21aacca5a6656ce09d82bcadb14d154d5c90b47eec2aef411fe81f1a505d.
+The shown command verifies the hash before invoking the helper. Under that
+contract, the safely selected current Mac PostgreSQL encrypted copy matches
+original receipt digest
+f60283f0a5563a70c363cdf863c52ecce9eec410d6112411844d948e4f3a699e,
+with unchanged source fingerprints. Current cross-device ciphertext identity:
+PASS by operator-provided evidence. This supersedes Mac NOT TESTED above.
+No decryption or key entry was performed by this check.
+
+Together with original/vault MATCH and original association PASS, current
+archive selection and saved-value equality are established within the recorded
+contracts. The operator confirms the last failed Mac attempt already excluded
+the word “key”. These observations do not measure the bytes received by the
+historical GnuPG private prompt, retrospectively prove its selected input, or
+establish successful key access. Do not repeat these passed checks, edit vault
+or original files, guess variants, or rerun the unchanged three-archive batch.
+
+Next narrow the Mac entry path: operator clarification of whether the last
+failed prompt received a direct RoboForm paste, manual typing, or another copy
+is pending. No passphrase contents, fragments or passphrase hashes are sought.
+No new tool/runtime test is warranted for this documentation-only update.
+G17/1 BLOCKED; PostgreSQL authenticated key access unresolved; API_ROLLBACK and
+ENV_SUPPLEMENT key checks NOT TESTED; no merge/main deployment or production
+access performed.
