@@ -59,3 +59,16 @@ NOT TESTED, and G17/1 remains BLOCKED. Do not repeat the comparison or edit eith
 source. Next review the existing archive/receipt association and Mac key-entry
 path before proposing a targeted action; no unchanged batch retry, secret
 transfer, production access or held diagnostic is authorized by MATCH.
+
+## Operator clarification — PostgreSQL Safenote label
+
+The operator clarified that the word “key” is not part of the saved PostgreSQL
+vault value. Treat it as a label, not as credential bytes. This is operator
+clarification, not an instruction to strip arbitrary prefixes or edit the vault.
+The prior MATCH remains accepted; do not repeat it.
+
+Whether the last failed Mac attempt included that label or already used the
+same clarified value remains pending operator confirmation. This determines
+whether the failure has a concrete input correction to test. Pause additional
+provenance-check development while resolving that historical input question.
+No new archive attempt or production operation was performed.
